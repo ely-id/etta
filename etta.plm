@@ -65,7 +65,9 @@ scene Etta {
     prop paging = 0 ~240ms
     follow paging = if(page == none, 0, 1)
     model networks max 8 { name: text; signal: number; current: bool; secure: bool; known: bool }
-    model gadgets max 8 { name: text; current: bool; paired: bool; battery: number = -1 }
+    model gadgets max 8 { name: text; current: bool; paired: bool; battery: number = -1; kind: number = 0 }
+    fact bt.paired.n = 0
+    fact bt.near.n = 0
     //  A network that asks for its password: which row (−1, none), and the
     //  one being joined right now, which breathes until it is.
     fact asking = -1
@@ -177,11 +179,11 @@ scene Etta {
         //  she is in it or on her way through it, which is what lets you see her
         //  leap out of one and fall into the other; `swim.here` is this copy's one.
         open: swim.here > 0.01
-        //  Sixty frames per second, decided here and not by the monitor: she is
-        //  always breathing, and at 165 Hz she painted every breath 165 times a
-        //  second. Measured: 21.5 % of a core, against 8.6 % on a 60 Hz screen.
-        //  What she costs has to be the same on any screen.
-        rate: 60
+        //  The monitor's own pace. Marea held her at 60 to save power, but 60 on
+        //  a 100 Hz screen is judder —each frame stays one refresh or two, in
+        //  turns— and she looked like a game at low fps. Since pleamar repaints
+        //  only what changed, the monitor's rate costs the same (measured on
+        //  HDMI-A-1 at 100 Hz: 7.5–10 % of a core, as at 60).
         //  Keyboard only while something of hers is open, and handed back on
         //  closing: «the click gives keyboard focus, but does not leave them
         //  stuck to the screen». Exclusive once used to close the menu by
@@ -330,6 +332,8 @@ scene Etta {
     event direct                       // one that arrives with another on screen
     text who = ""
     text line = ""
+    text notice.app = ""               // who sends the one being read
+    measure toast.app
     fact phase = 0                     // 0 nothing · 1 being read · 2 flying
     fact hovered = false               // the pointer over it: stops the reading
     fact mark = 0                      // every time the reading starts over
@@ -434,7 +438,7 @@ scene Etta {
     prop hist_link.glow = 0 ~140ms
     prop tide.t = 0
     spin tide.t by if(page == history, 0.4, 0)
-    on show_history { menu_open = false; tray_open = false; open = true; page = history; emit history_open }
+    on show_history { menu_open = false; tray_open = false; open = true; page = history; hist.cat = 0; emit history_open }
     event history_open ->
     event close_tray
     event resolve ->                   // with which one, as payload: the logic marks it read
@@ -744,10 +748,10 @@ scene Etta {
     prop attentive = 0 ~gentle         // looking at the card
     follow attentive = if(phase == 1, 1, 0)
 
-    let blue = #6fb1e6
-    let lilac = #a68be4
-    let green = #8fd1ae
-    let amber = #e3a35c
+    let blue = #86b6f2
+    let lilac = #b5a0f2
+    let green = #9ed6bd
+    let amber = #e8c07a
     //  How many there are of each, and when the last one arrived: they are
     //  declared before the drops because each drop looks at the other three.
     repeat k in 1..5 {
@@ -2321,7 +2325,9 @@ scene Etta {
         group {
             pivot: gx.$k, gy.$k
             scale: wide.$k, tall.$k
-            opacity: shown.$k
+            //  With the swell coming out, each drop hands itself over to the one
+            //  that flies into its category.
+            opacity: shown.$k * (1 - clamp(lane * 6, 0, 1))
             ellipse { at: gx.$k, gy.$k; radius: 7 + 3 * fan; color: color.$k }
             //  Gathered, it shows its count; open, its category's icon. What it
             //  says changes because what you ask is something else: gathered, how
@@ -2734,7 +2740,7 @@ scene Etta {
     //  however many arrive. A mascot that jumps for every message in a group is
     //  a mascot that ends up switched off.
     let hue = mix(mix(mix(blue, lilac, reading_cat > 1.5), green, reading_cat > 2.5), amber, reading_cat > 3.5)
-    let arrival.x0 = cx + 23 + 14 + 125
+    let arrival.x0 = cx + r + 14 + 190
     let arrival.dx = cx + 31.7 * pk * cos(-24) - arrival.x0
     let arrival.dy = 31.7 * pk * sin(-24)
 
@@ -2750,14 +2756,14 @@ scene Etta {
         let behind = 2 - j
         let flight = fly.$j
         let front = if(behind == 0, 1, 0)
-        let aw = (250 - behind * 22) + (8.3 - 250 + behind * 22) * flight
-        let ah.rest = 44 + 30 * chips * front
+        let aw = (380 - behind * 24) + (8.3 - 380 + behind * 24) * flight
+        let ah.rest = 100 + 44 * chips * front
         let ah = ah.rest + (8.3 - ah.rest) * flight
         //  Under the pointer the ones behind slide out to the right and turn,
         //  like cards held in a hand: they peek out beside the front one instead
         //  of hiding under it. Not upwards: she lives at the screen's top edge.
         let ax = arrival.x0 + arrival.dx * flight + (1 - arrive) * 30 + behind * 26 * pile.open * (1 - flight)
-        let ay = cy_actual + 15 * chips * front + arrival.dy * (1 - (1 - flight) * (1 - flight)) + behind * (8 + 10 * pile.open) * (1 - flight)
+        let ay = cy_actual + 4 + 22 * chips * front + arrival.dy * (1 - (1 - flight) * (1 - flight)) + behind * (8 + 10 * pile.open) * (1 - flight)
         //  Only the front one falls: the others were already there.
         let fall.y = -12 + (ay + 12) * land.a * land.a
         let at.y = if(front > 0.5, fall.y, ay)
@@ -2768,11 +2774,12 @@ scene Etta {
             //  The ones behind do not carry their colour until they fly: while
             //  they wait they are stacked paper, and the colour belongs to the one
             //  being read. Falling, it is water: its colour.
-            color: mix(mix(mix(#0c0f12, #1f252a, behind > 0), hue, flight), hue, (1 - unf) * front)
+            color: mix(mix(mix(#151616, #101111, behind > 0), hue, flight), hue, (1 - unf) * front)
             opacity: arrive
-            shadow: 0, 6, 14, 30% * unf
+            rim: 9%
+            shadow: 0, 16, 30, 45% * unf
             show: burst > behind
-            box { at: ax, at.y; size: w, h; corner: min(h / 2, 14 + (h / 2 - 14) * flight)
+            box { at: ax, at.y; size: w, h; corner: min(h / 2, 20 + (h / 2 - 20) * flight)
                   rotate: behind * (2 + 5 * pile.open) * (1 - flight) * 1deg }
         }
         //  Flying to its count, it leaves a trail of drops.
@@ -2786,14 +2793,14 @@ scene Etta {
     ellipse { at: arrival.x0 + (1 - arrive) * 30, cy_actual; radius: 6 + 40 * land.b; stroke: 1.5; color: hue
               opacity: (1 - land.b) * 70% * if(land > 0.44, 1, 0) * arrive }
 
-    //  The front card, once it is a card: who in a bubble, the words written by
-    //  a wave, its reading as a water line that drains, and under the pointer
-    //  what can be done with it.
+    //  The front card, once it is a card: who sends it in a bubble of its
+    //  colour, the words written by a wave, its reading as a fuse that burns
+    //  along the bottom, and under the pointer what can be done with it.
     let f.x = arrival.x0 + (1 - arrive) * 30
-    let f.h = 44 + 30 * chips
-    let f.top = cy_actual + 15 * chips - f.h / 2
-    let f.left = f.x - 125
-    //  The chips' places: 0 Open, 1 Done, 4 «All» (only with a pile), 2 and 3
+    let f.h = 100 + 44 * chips
+    let f.top = cy_actual + 4 + 22 * chips - f.h / 2
+    let f.left = f.x - 190
+    //  The buttons' places: 0 Open, 1 Done, 4 «All» (only with a pile), 2 and 3
     //  its own actions after them —one fewer when «All» takes a place—.
     let pile.many = if(burst > 1, 1, 0)
     let chip.slot.0 = 0
@@ -2807,268 +2814,267 @@ scene Etta {
     let chip.on.2 = if(acts > 0, 1, 0)
     let chip.on.3 = if(acts > 1 and pile.many < 0.5, 1, 0)
     let f.show = arrive * clamp(land.c * 3 - 2, 0, 1)
-    //  Urgent: a coral edge that beats.
-    box { at: f.x, f.top + f.h / 2; size: 250, f.h; corner: 14; stroke: 1.6; color: #ef7a66
-          opacity: f.show * (1 - clamp(fly.2 * 5, 0, 1)) * if(reading_urgent, 0.45 + 0.4 * sin(urgent.beat * 360), 0) }
+    //  Urgent: a ring of sand that breathes.
+    box { at: f.x, f.top + f.h / 2; size: 380, f.h; corner: 20; stroke: 1.5; color: tk.sand
+          opacity: f.show * (1 - clamp(fly.2 * 5, 0, 1)) * if(reading_urgent, 0.5 + 0.3 * sin(urgent.beat * 360), 0) }
     group {
         opacity: f.show * (1 - clamp(fly.2 * 5, 0, 1))
-        //  Who: its icon in a bubble of glass with a halo of its colour; without
-        //  one, a drop of that colour.
+        //  Who: its own icon if it brings one, else its category's, in a
+        //  bubble tinted with its colour.
+        box { from: f.left + 16, f.top + 14; size: 28, 28; corner: 9; color: hue; opacity: 16% }
         group {
-            glow: 8, 60%, hue
-            ellipse { at: f.left + 21, f.top + 22; radius: 13; color: mix(#0c0f12, hue, 0.28) }
+            show: not notice.icon
+            figure Kit.i_chat { at: f.left + 30, f.top + 28; size: 16, 16; color: hue; show: reading_cat < 1.5 }
+            figure Kit.i_mail { at: f.left + 30, f.top + 28; size: 16, 16; color: hue; show: reading_cat > 1.5 and reading_cat < 2.5 }
+            figure Kit.i_calendar { at: f.left + 30, f.top + 28; size: 16, 16; color: hue; show: reading_cat > 2.5 and reading_cat < 3.5 }
+            figure Kit.i_alert { at: f.left + 30, f.top + 28; size: 16, 16; color: hue; show: reading_cat > 3.5 }
         }
-        ellipse { at: f.left + 21, f.top + 22; radius: 13; stroke: 1.2; color: hue; opacity: 75% }
-        ellipse { at: f.left + 17, f.top + 17; radius: 4; color: #ffffff; opacity: 14% }
-        //  Under it always: if the icon does not load, the drop is there.
-        ellipse { at: f.left + 21, f.top + 22; radius: 4; color: hue }
         component NoticeIcon(i: record) {
             size: 18, 18
             image i.icon { at: 0, 0; size: 18, 18 }
         }
         column notice_icon {
-            at: f.left + 12, f.top + 13
+            at: f.left + 21, f.top + 19
             show: notice.icon
             for i in notice_face { NoticeIcon(i) }
         }
-        //  The words, written by a wave passing left to right: each letter rises
-        //  into its place as it arrives.
-        text who { family: "Geist"; at: f.left + 42, f.top + 14; anchor: left center; size: 11.5; weight: 600; width: 160; lines: 1; color: #f6f6f5
-                   letter_opacity: clamp(write * (letters + 8) - letter, 0, 1)
-                   letter_move: 0, (1 - clamp(write * (letters + 8) - letter, 0, 1)) * 6 }
-        text line { family: "Geist"; at: f.left + 42, f.top + 30; anchor: left center; size: 10.5; width: 196; lines: 1; color: #a9adb3
-                    letter_opacity: clamp((write * 1.4 - 0.4) * (letters + 8) - letter, 0, 1)
-                    letter_move: 0, (1 - clamp((write * 1.4 - 0.4) * (letters + 8) - letter, 0, 1)) * 6 }
-        text "now" { family: "Geist"; at: f.left + 238, f.top + 14; anchor: right center; size: 9.5; color: #8b8f95; opacity: 1 - chips }
-        //  Under the pointer, two small drops take its place: «later», a clock
-        //  that brings it back in a while, and «mute», a bell that is crossed
-        //  out, for the app that sent it.
+        text notice.app { family: "Geist"; at: f.left + 54, f.top + 28; anchor: left center; size: 12; weight: 600; width: 150; lines: 1; color: hue; measure: toast.app }
+        group { move: f.left + 62 + min(toast.app.width, 150), f.top + 17; show: reading_urgent; Tag("Urgent", w: 62, tone: 2) }
+        group { move: f.left + 62 + min(toast.app.width, 150) + if(reading_urgent, 70, 0), f.top + 17; show: burst > 1; Tag("+{burst - 1, 0} more", w: 72, tone: 0) }
+        text "now" { family: "Geist"; at: f.left + 364, f.top + 28; anchor: right center; size: 12; weight: 500; color: tk.ink3; opacity: 1 - chips }
+        //  Under the pointer, «later» (a clock: it comes back in a while) and
+        //  «mute» (a crossed bell: its app goes straight to the history) take
+        //  the place of the time.
         group {
             opacity: clamp(chips * 2 - 1, 0, 1)
             prop later.glow = 0 ~140ms
             prop hush.glow = 0 ~140ms
-            ellipse { at: f.left + 208, f.top + 15; radius: 10; color: #ffffff; opacity: 7% + later.glow * 12% }
-            ellipse { at: f.left + 208, f.top + 15; radius: 5; stroke: 1.3; color: mix(#a9adb3, #f6f6f5, later.glow) }
-            line { from: f.left + 208, f.top + 15; to: f.left + 208, f.top + 12; width: 1.3; color: mix(#a9adb3, #f6f6f5, later.glow) }
-            line { from: f.left + 208, f.top + 15; to: f.left + 210.5, f.top + 16.5; width: 1.3; color: mix(#a9adb3, #f6f6f5, later.glow) }
-            ellipse { at: f.left + 232, f.top + 15; radius: 10; color: #ffffff; opacity: 7% + hush.glow * 12% }
-            path { at: f.left + 232, f.top + 15; color: mix(#a9adb3, #f6f6f5, hush.glow)
-                   move -4.5, 3; line -3.5, 1.5; line -3.5, -1.5; curve 0, -5.5 via -3.5, -5.5; curve 3.5, -1.5 via 3.5, -5.5; line 3.5, 1.5; line 4.5, 3; close }
-            ellipse { at: f.left + 232, f.top + 19.5; radius: 1.3; color: mix(#a9adb3, #f6f6f5, hush.glow) }
-            line { from: f.left + 227, f.top + 10; to: f.left + 237, f.top + 20; width: 1.4; color: #ef7a66; opacity: 60% + 40% * hush.glow }
+            box { from: f.left + 306, f.top + 14; size: 28, 28; corner: 9; color: tk.s2; opacity: later.glow }
+            figure Kit.i_history { at: f.left + 320, f.top + 28; size: 16, 16; color: mix(tk.ink3, tk.ink, later.glow) }
+            box { from: f.left + 338, f.top + 14; size: 28, 28; corner: 9; color: tk.s2; opacity: hush.glow }
+            figure Kit.i_bell_off { at: f.left + 352, f.top + 28; size: 16, 16; color: mix(tk.ink3, tk.red, hush.glow) }
         }
-        //  Its reading, as water draining: when the line runs out it goes. The
-        //  pointer over it stops it.
-        box { from: f.left + 14, f.top + f.h - 6; size: 222 * clamp(1 - read.t, 0, 1), 2.4; corner: 1.2; color: hue; opacity: 80% }
-        ellipse { at: f.left + 14 + 222 * clamp(1 - read.t, 0, 1), f.top + f.h - 4.8; radius: 2.3; color: hue; opacity: 90% * if(read.t < 0.99, 1, 0) }
-        //  What can be done with it, like little drops: open it, done with it,
-        //  and its own actions.
+        //  The words, written by a wave passing left to right.
+        text who { family: "Geist"; at: f.left + 16, f.top + 56; anchor: left center; size: 15; weight: 600; width: 348; lines: 1; color: tk.ink
+                   letter_opacity: clamp(write * (letters + 8) - letter, 0, 1)
+                   letter_move: 0, (1 - clamp(write * (letters + 8) - letter, 0, 1)) * 6 }
+        text line { family: "Geist"; at: f.left + 16, f.top + 76; anchor: left center; size: 13; weight: 500; width: 348; lines: 1; color: tk.ink2
+                    letter_opacity: clamp((write * 1.4 - 0.4) * (letters + 8) - letter, 0, 1)
+                    letter_move: 0, (1 - clamp((write * 1.4 - 0.4) * (letters + 8) - letter, 0, 1)) * 6 }
+        //  Its reading, as a fuse burning along the bottom: when it runs out
+        //  the card goes. The pointer over it stops it.
+        box { from: f.left + 16, f.top + f.h - 9; size: 348 * clamp(1 - read.t, 0, 1), 3; corner: 1.5; color: hue; opacity: 85% }
+        //  What can be done with it: open it, done with it, and its own.
         group {
             opacity: clamp(chips * 2 - 1, 0, 1)
             repeat i in 0..5 {
                 prop chip.glow.$i = 0 ~140ms
-                let cx.i = f.left + 41 + chip.slot.$i * 58
+                let bx.i = f.left + 16 + chip.slot.$i * 86
                 group {
                     show: chip.on.$i
-                    box { at: cx.i, f.top + 58; size: 54, 22; corner: 11; color: #ffffff; opacity: 9% + chip.glow.$i * 12% }
-                    text "Open" { family: "Geist"; at: cx.i, f.top + 58; anchor: center; size: 10.5; weight: 500; color: #f6f6f5; show: i == 0 }
-                    text "Done" { family: "Geist"; at: cx.i, f.top + 58; anchor: center; size: 10.5; weight: 500; color: #f6f6f5; show: i == 1 }
-                    text act.1 { family: "Geist"; at: cx.i, f.top + 58; anchor: center; size: 10.5; weight: 500; width: 48; lines: 1; color: #f6f6f5; show: i == 2 }
-                    text act.2 { family: "Geist"; at: cx.i, f.top + 58; anchor: center; size: 10.5; weight: 500; width: 48; lines: 1; color: #f6f6f5; show: i == 3 }
-                    text "All" { family: "Geist"; at: cx.i, f.top + 58; anchor: center; size: 10.5; weight: 500; color: #f6f6f5; show: i == 4 }
+                    box { from: bx.i, f.top + 94; size: 80, 32; corner: 10; color: mix(tk.s2, tk.s3, chip.glow.$i) }
+                    text "Open" { family: "Geist"; at: bx.i + 40, f.top + 110; anchor: center; size: 13; weight: 600; color: tk.ink; show: i == 0 }
+                    text "Done" { family: "Geist"; at: bx.i + 40, f.top + 110; anchor: center; size: 13; weight: 600; color: tk.ink; show: i == 1 }
+                    text act.1 { family: "Geist"; at: bx.i + 40, f.top + 110; anchor: center; size: 13; weight: 600; width: 72; lines: 1; align: center; color: tk.ink; show: i == 2 }
+                    text act.2 { family: "Geist"; at: bx.i + 40, f.top + 110; anchor: center; size: 13; weight: 600; width: 72; lines: 1; align: center; color: tk.ink; show: i == 3 }
+                    text "All done" { family: "Geist"; at: bx.i + 40, f.top + 110; anchor: center; size: 13; weight: 600; color: tk.ink; show: i == 4 }
                 }
             }
         }
         //  The one in front, done: a puff where it was.
-        particles { at: f.x, cy_actual; area: 200, 20; count: 90; life: 0.3s .. 0.6s; speed: 10 .. 50; spread: 360deg
+        particles { at: f.x, cy_actual; area: 320, 30; count: 90; life: 0.3s .. 0.6s; speed: 10 .. 50; spread: 360deg
                     gravity: 0, -60; size: 3, 0.5; colors: #ffffff, hue; opacity: 60%, 0%; burst: notice_puff }
-    }
-    //  And the ones that do not fit, said and not drawn: «+N more» below the pile.
-    text "+{burst - 3, 0} more" { family: "Geist";
-        at: arrival.x0 + 113, cy_actual + 40
-        anchor: right center
-        size: 9.5
-        weight: 600
-        color: #8b8f95
-        opacity: arrive * (1 - clamp(fly.2 * 5, 0, 1))
-        show: burst > 3
     }
 
 
     // ── the tray: the swell ──────────────────────────────────────
-    //  Its place and its size. The shape is set by her body, further up; here go
-    //  the measurements and what it has written on it.
-    let tray.w = 520 * tray
-    let tray.h = 460 * tray
-    //  Stuck to her, not beside her: they overlap 17 px, and with that the
-    //  melting makes a real neck. With the 40 gap the other card has there was
-    //  nothing to melt and they stayed as two things side by side.
+    //  Her notifications, pending: it comes out of her like the control
+    //  center (its shape is in her body, further up). 560 × 580: the header,
+    //  the categories, five rows and the footer.
+    let tray.w = 560 * tray
+    let tray.h = 580 * tray
     let tray.x = cx + 6 + tray.w / 2
     let tray.y = cy_actual + tray.h / 2 - 8
+    //  And where everything on it hangs from: its final top left corner.
+    let sw.l = cx + 6
+    let sw.t = cy_actual - 8
 
     //  The grace zone goes BELOW the rows: the press belongs to the topmost
     //  zone, and declared at the end it kept every row's click.
-    //  It closes on leaving the whole —her and the tray—, with the same 320 ms
-    //  as the note: the gap between the two is real.
     zone box tray_area { at: cx + tray.w / 2, cy_actual + tray.h / 2 - 8; size: 2 * r + 40 + tray.w, 2 * r + 40 + tray.h; corner: 30; active: tray_open }
-    //  Like the card: Esc or a click outside, not leaving it.
+
+    event pick_f0
+    event pick_f1
+    event pick_f2
+    event pick_f3
+    event pick_f4
+    event clear_all ->
+    event swell_settings
+    on pick_f0 { filter = 0 }
+    on pick_f1 { filter = 1 }
+    on pick_f2 { filter = 2 }
+    on pick_f3 { filter = 3 }
+    on pick_f4 { filter = 4 }
+    on swell_settings { tray_open = false; open = true; page = concentration }
+    on clear_all { undoable = false }
+    repeat k in 1..6 {
+        on clear_all while alive.$k { alive.$k = false }
+    }
+    //  The categories' places in their row, for the drops that fly into them.
+    let chipx.1 = 90 + 15
+    let chipx.2 = 216 + 15
+    let chipx.3 = 314 + 15
+    let chipx.4 = 432 + 15
+    repeat c in 1..5 {
+        prop rows.of.$c = 0 ~16ms
+        follow rows.of.$c = if(alive.1 and row_cat.1 == c, 1, 0) + if(alive.2 and row_cat.2 == c, 1, 0) + if(alive.3 and row_cat.3 == c, 1, 0) + if(alive.4 and row_cat.4 == c, 1, 0) + if(alive.5 and row_cat.5 == c, 1, 0)
+        prop cnt.$c = 0 ~16ms
+        follow cnt.$c = max(n.$c, rows.of.$c)
+    }
+    prop cnt.all = 0 ~16ms
+    follow cnt.all = cnt.1 + cnt.2 + cnt.3 + cnt.4
+    prop any.visible = 0 ~16ms
+    follow any.visible = visible.1 + visible.2 + visible.3 + visible.4 + visible.5
+    measure sw.title
 
     group {
         opacity: clamp(tray * 2.6 - 1.6, 0, 1)
-        let tx0 = tray.x - 232
-        let ty0 = tray.y - 198
+        //  The header: the title clear of her, how many, and what can be done
+        //  with all of them.
+        text "Notifications" { family: "Geist"; at: sw.l + 64, sw.t + 32; anchor: left center; size: 20; weight: 600; color: tk.ink; measure: sw.title }
+        group { move: sw.l + 74 + sw.title.width, sw.t + 21; Tag("{cnt.all, 0}", w: 32, tone: 0) }
+        group { move: sw.l + 368, sw.t + 14; Ib(tap_dnd) { figure Kit.i_moon { at: 0, 0; size: 20, 20; color: if(haven, tk.mint, tk.ink2) } } }
+        group { move: sw.l + 408, sw.t + 16; Btn("Clear all", clear_all, w: 96, kind: 3, h: 32, live: cnt.all > 0.5) }
+        group { move: sw.l + 508, sw.t + 14; Ib(close_tray) { figure Kit.i_close { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+        //  In the Haven, said once at the top.
+        //  The categories, with how many each one holds.
+        row {
+            at: sw.l + 20, sw.t + 68
+            gap: 6
+            Chip("All", pick_f0, w: 64, on: if(filter < 0.5, 1, 0))
+            Chip("Messages {cnt.1, 0}", pick_f1, w: 120, on: if(filter == 1, 1, 0), hasdot: 1, dot: blue)
+            Chip("Work {cnt.2, 0}", pick_f2, w: 92, on: if(filter == 2, 1, 0), hasdot: 1, dot: lilac)
+            Chip("Calendar {cnt.3, 0}", pick_f3, w: 112, on: if(filter == 3, 1, 0), hasdot: 1, dot: green)
+            Chip("System {cnt.4, 0}", pick_f4, w: 104, on: if(filter == 4, 1, 0), hasdot: 1, dot: amber)
+        }
 
-        text "SWELL" { family: "Geist"; at: tx0, ty0; anchor: left center; size: 9.5; weight: 600; color: ink; opacity: 35% }
-        // ── the header, by columns ───────────────────────────────
-        //  The title on the left, the lane of pills in the middle and «View all»
-        //  on the right. The three places come from ONE sum, from the right edge
-        //  inwards, so there is no way they can overlap: by hand, the fourth pill
-        //  landed right on top of the button.
-        let header.right = tray.x + 232
-        let header.button = header.right - 39
-        let header.lane = header.button - 39 - 22
-        //  And what is being shown: «Now» is everything, and with a filter, the
-        //  name of its category. You asked about the blue drop; it answers the
-        //  question you asked.
-        text "Now" { family: "Geist"; at: tx0, ty0 + 24; anchor: left center; size: 19; weight: 500; color: ink; show: filter < 0.5 }
-        text "Messages" { family: "Geist"; at: tx0, ty0 + 24; anchor: left center; size: 19; weight: 500; color: ink; show: filter == 1 }
-        text "Work" { family: "Geist"; at: tx0, ty0 + 24; anchor: left center; size: 19; weight: 500; color: ink; show: filter == 2 }
-        text "Calendar" { family: "Geist"; at: tx0, ty0 + 24; anchor: left center; size: 19; weight: 500; color: ink; show: filter == 3 }
-        text "System" { family: "Geist"; at: tx0, ty0 + 24; anchor: left center; size: 19; weight: 500; color: ink; show: filter == 4 }
-        //  And how to see everything again, or else it is a dead end.
-        box { at: header.button, ty0 + 24; size: 78, 26; corner: 13; color: #202021; opacity: if(filter > 0.5, 1, 0) }
-        text "View all" { family: "Geist"; at: header.button, ty0 + 24; anchor: center; size: 11.5; color: #8b8f95; show: filter > 0.5 }
-        zone box show_all { at: header.button, ty0 + 24; size: 78, 26; corner: 13; cursor: pointer; active: tray > 0.9 and filter > 0.5 }
-        on press show_all { filter = 0 }
-
-        //  The lane: the drops go from her shoulder to the tray's header, and
-        //  there they stay as pills with their count. The journey is along the
-        //  arc —what is animated is the angle—, so they come out going around
-        //  her and not cutting through.
+        //  The lane: the drops go from her shoulder into their category's dot.
+        //  The journey is along the arc —what is animated is the angle—, so
+        //  they come out going around her and not cutting through.
         repeat k in 1..5 {
             let ang = -24 + 26 * slot.$k
             let gx = cx + 31.7 * pk * cos(ang)
             let gy = cy_actual + 31.7 * pk * sin(ang)
-            //  Packed to the end of the lane and in their order —the same as on
-            //  her shoulder—, not by their category's number: if one is missing,
-            //  the others close up instead of leaving its gap.
-            let rx = header.lane - slot.$k * 40
-            let ry = ty0 + 24
+            let rx = sw.l + 20 + pick(clamp(k - 1, 0, 3), chipx.1, chipx.2, chipx.3, chipx.4)
+            let ry = sw.t + 83
             let px = gx + (rx - gx) * lane
             let py = gy + (ry - gy) * (1 - (1 - lane) * (1 - lane))
             group {
-                opacity: shown.$k
-                ellipse { at: px, py; radius: 7 + 4 * lane; color: mix(mix(mix(blue, lilac, k > 1.5), green, k > 2.5), amber, k > 3.5) }
-                text number(n.$k, 0) { family: "Geist"; at: px, py + 0.5; anchor: center; size: 8.5 + 2 * lane; weight: 700; color: #0a0c10; opacity: if(n.$k < 10, 1, 0) }
+                opacity: if(cnt.$k > 0.5, 1, 0) * clamp(lane * 6, 0, 1) * (1 - clamp(lane * 3 - 2, 0, 1))
+                ellipse { at: px, py; radius: 7 - 3 * lane; color: mix(mix(mix(blue, lilac, k > 1.5), green, k > 2.5), amber, k > 3.5) }
+                text number(cnt.$k, 0) { family: "Geist"; at: px, py + 0.5; anchor: center; size: 8.5; weight: 700; color: #0a0c10; opacity: if(cnt.$k < 10, 1, 0) * (1 - lane) }
             }
         }
 
         //  The rows. Each one arrives a little after the one above: that is the
-        //  swell, and that is why they do not all come in at once like a list.
-        //
-        //  And they are clipped to the tray itself: dragging one to a side it
-        //  came out of the panel and was seen floating over the desktop, which is
-        //  exactly what a panel does not do. The clip goes inside its group,
-        //  which is where it ends.
+        //  swell. Clipped to the tray: dragged to a side, a row must not float
+        //  over the desktop.
         group {
-        clip inset 3 box { at: tray.x, tray.y; size: tray.w, tray.h; corner: 22 * tray }
+        clip inset 3 box { at: tray.x, tray.y; size: tray.w, tray.h; corner: 24 * tray }
         repeat k in 1..6 {
-            let fy = ty0 + 76 + above.$k * 66 + (1 - rise.$k) * 26
-            //  Where it rests, and where it is now. What is uncovered goes in the
-            //  resting place —the gap it leaves— and not following it, or it
-            //  would stay underneath it and never be seen.
-            let fx0 = tx0 + 232
-            let fx = fx0 + flung.$k * 520 + pull.$k
-            //  How much it is being stretched: how far the finger has dragged it,
-            //  with a cap so the corner does not eat the row.
+            let fy = sw.t + 152 + above.$k * 78 + (1 - rise.$k) * 26
+            let fx0 = sw.l + 280
+            let fx = fx0 + flung.$k * 560 + pull.$k
             let stretch.$k = clamp(abs(pull.$k) + abs(flung.$k) * 120, 0, 150)
-            //  The colour is that of ITS CATEGORY, not of its place in the list.
-            //  It came from `k` —the row— and with five sample rows, one per
-            //  category and in that order, it did not show: two Telegram notices
-            //  in a row came out in different colours as soon as they arrived for
-            //  real. It is what the demo mode uncovered.
-            //
-            //  And the amber of an urgent one overrides its category's: what
-            //  matters about that row is no longer whose it is, it is that it is
-            //  urgent.
-            let color.$k = mix(mix(mix(mix(blue, lilac, row_cat.$k > 1.5), green, row_cat.$k > 2.5), amber, row_cat.$k > 3.5), #e2b25a, if(row_urgent.$k, 1, 0))
+            //  The colour is its category's, and an urgent one is sand: what
+            //  matters about it is no longer whose it is.
+            let color.$k = mix(mix(mix(mix(blue, lilac, row_cat.$k > 1.5), green, row_cat.$k > 2.5), amber, row_cat.$k > 3.5), amber, if(row_urgent.$k, 1, 0))
             group {
                 opacity: rise.$k * (1 - flung.$k)
                 show: visible.$k > 0.5
-                //  What it uncovers when slid, to one side and the other: to the
-                //  right, «Done»; to the left, «Dismiss». And they are two
-                //  different things: what is done sends its drop back, **what is
-                //  dismissed does not**, because what is dismissed does not come
-                //  back.
+                //  What it uncovers when slid: to the right «Done», which sends
+                //  its drop back; to the left «Dismiss», which does not.
                 group {
-                    opacity: clamp((pull.$k + flung.$k * 520) / 40, 0, 1)
-                    box { at: fx0 - 160, fy; size: 130, 58; corner: 14; color: #1b2a22 }
-                    text "Done" { family: "Geist"; at: fx0 - 160, fy; anchor: center; size: 12; weight: 600; color: mint }
+                    opacity: clamp((pull.$k + flung.$k * 560) / 40, 0, 1)
+                    box { at: fx0 - 190, fy; size: 140, 72; corner: 16; color: tk.mint_soft }
+                    figure Kit.i_check { at: fx0 - 222, fy; size: 18, 18; color: tk.mint }
+                    text "Done" { family: "Geist"; at: fx0 - 206, fy; anchor: left center; size: 13; weight: 600; color: tk.mint }
                 }
                 group {
-                    opacity: clamp((0 - pull.$k - flung.$k * 520) / 40, 0, 1)
-                    box { at: fx0 + 160, fy; size: 130, 58; corner: 14; color: #2a1b1b }
-                    text "Dismiss" { family: "Geist"; at: fx0 + 160, fy; anchor: center; size: 12; weight: 600; color: #e0655a }
+                    opacity: clamp((0 - pull.$k - flung.$k * 560) / 40, 0, 1)
+                    box { at: fx0 + 190, fy; size: 140, 72; corner: 16; color: tk.red_soft }
+                    figure Kit.i_close { at: fx0 + 222, fy; size: 18, 18; color: tk.red }
+                    text "Dismiss" { family: "Geist"; at: fx0 + 208, fy; anchor: right center; size: 13; weight: 600; color: tk.red }
                 }
-                //  Pulling a row stretches it: it lengthens where you pull, thins a
-                //  little and rounds off, like a drop you are stretching. On
-                //  letting go it comes back by itself with its spring, and the
-                //  stretch undoes itself with it without anyone animating it
-                //  separately.
-                box { at: fx, fy; size: 456 + stretch.$k * 0.12, 58 - stretch.$k * 0.045
-                      corner: 14 + stretch.$k * 0.10
-                      color: mix(mix(#171717, #1d1d1e, touch.$k), #241f16, if(row_urgent.$k, 1, 0)) }
-                //  Its category's bar, on the left: it is where the drop will come
-                //  out of when it is resolved.
-                box { at: fx - 214, fy; size: 4, if(row_urgent.$k, 46, 34); corner: 2; color: color.$k }
-                text row.$k.app { family: "Geist"; at: fx - 200, fy - 18; anchor: left center; size: 8.5; weight: 700; color: color.$k }
-                text row.$k.title { family: "Geist"; at: fx - 200, fy - 1; anchor: left center; size: 12.5; weight: 500; width: 300; lines: 1; color: ink }
-                text row.$k.detail { family: "Geist"; at: fx - 200, fy + 17; anchor: left center; size: 10.5; width: 300; lines: 1; color: #8b8f95 }
-                text row.$k.age { family: "Geist"; at: fx + 208, fy - 18; anchor: right center; size: 9.5; color: #8b8f95 }
+                //  Pulling a row stretches it, like a drop being pulled; let go,
+                //  it comes back with its spring.
+                box { at: fx, fy; size: 520 + stretch.$k * 0.12, 72 - stretch.$k * 0.045
+                      corner: 16 + stretch.$k * 0.10
+                      color: mix(tk.s1, tk.s2, touch.$k) }
+                box { at: fx, fy; size: 520, 72; corner: 16; stroke: 1.5; color: tk.sand; opacity: if(row_urgent.$k, 55%, 0) }
+                //  Its category, in a bubble on the left: it is where the drop
+                //  comes out of when it is resolved.
+                box { at: fx - 228, fy; size: 32, 32; corner: 10; color: color.$k; opacity: 16% }
+                figure Kit.i_chat { at: fx - 228, fy; size: 16, 16; color: color.$k; show: row_cat.$k < 1.5 and not row_urgent.$k }
+                figure Kit.i_mail { at: fx - 228, fy; size: 16, 16; color: color.$k; show: row_cat.$k > 1.5 and row_cat.$k < 2.5 and not row_urgent.$k }
+                figure Kit.i_calendar { at: fx - 228, fy; size: 16, 16; color: color.$k; show: row_cat.$k > 2.5 and row_cat.$k < 3.5 and not row_urgent.$k }
+                figure Kit.i_alert { at: fx - 228, fy; size: 16, 16; color: color.$k; show: row_cat.$k > 3.5 or row_urgent.$k }
+                text row.$k.app { family: "Geist"; at: fx - 200, fy - 20; anchor: left center; size: 11; weight: 600; width: 220; lines: 1; color: color.$k }
+                text row.$k.title { family: "Geist"; at: fx - 200, fy; anchor: left center; size: 14; weight: 600; width: 400; lines: 1; color: tk.ink }
+                text row.$k.detail { family: "Geist"; at: fx - 200, fy + 19; anchor: left center; size: 13; weight: 500; width: 400; lines: 1; color: tk.ink2 }
+                text row.$k.age { family: "Geist"; at: fx + 244, fy - 20; anchor: right center; size: 12; weight: 500; color: tk.ink3 }
             }
-            zone box row_zone.$k { at: fx, fy; size: 456, 58; corner: 14; cursor: pointer; active: tray > 0.9 and visible.$k > 0.5 }
+            zone box row_zone.$k { at: fx, fy; size: 520, 72; corner: 16; cursor: pointer; active: tray > 0.9 and visible.$k > 0.5 }
             on enter row_zone.$k { touch.$k: 1 }
             on leave row_zone.$k { touch.$k: 0 }
             on press row_zone.$k { emit resolve(k) }
 
-            //  And the drop that comes back. It is born STUCK to its row's colour
-            //  bar —melted with it— and comes loose on leaving: the pinch is not
-            //  drawn, it comes from the distances, like the one at the water's edge.
-            let vx = fx - 214 + (cx + 31.7 * pk * cos(-24) - fx + 214) * freed.$k
+            //  And the drop that comes back. It is born stuck to its row's
+            //  bubble —melted with it— and comes loose on leaving: the pinch is
+            //  not drawn, it comes from the distances.
+            let vx = fx - 228 + (cx + 31.7 * pk * cos(-24) - fx + 228) * freed.$k
             let vy = fy + (cy_actual + 31.7 * pk * sin(-24) - fy) * (1 - (1 - freed.$k) * (1 - freed.$k))
             body {
                 color: color.$k
                 opacity: clamp(freed.$k * 8, 0, 1) * (1 - clamp(freed.$k * 8 - 7, 0, 1))
-                box { at: fx - 214, fy; size: 4, 34 * (1 - freed.$k); corner: 2; blend: 14 * 4 * freed.$k * (1 - freed.$k) }
+                box { at: fx - 228, fy; size: 16 * (1 - freed.$k), 16 * (1 - freed.$k); corner: 5; blend: 14 * 4 * freed.$k * (1 - freed.$k) }
                 ellipse { at: vx, vy; radius: 4 + 3 * freed.$k; blend: 14 * 4 * freed.$k * (1 - freed.$k) }
             }
         }
-
         }
 
-        //  The footer: what has arrived, and its settings. While it can be undone
-        //  its place belongs to the fuse, which is more urgent than a link.
+        //  Nothing pending: said, and where the rest went.
+        group {
+            show: any.visible < 0.5
+            group { move: sw.l + 262, sw.t + 236; Bubble(1) { figure Kit.i_check { at: 0, 0; size: 18, 18; color: tk.mint_ink } } }
+            text pick(if(filter < 0.5, 0, 1), "All caught up", "Nothing in this one") { family: "Geist"; at: sw.l + 280, sw.t + 300; anchor: center; size: 15; weight: 600; color: tk.ink }
+            text "What you dealt with is in the history" { family: "Geist"; at: sw.l + 280, sw.t + 322; anchor: center; size: 12; weight: 500; color: tk.ink3 }
+        }
+
+        //  The footer: the history and the settings. While something can be
+        //  undone its place belongs to the fuse, which is more urgent.
         group {
             show: not undoable
-            text "History" { family: "Geist"; at: tx0, tray.y + 198; anchor: left center; size: 11.5; color: mix(#8b8f95, ink, hist_link.glow) }
-            zone box hist_link { from: tx0 - 6, tray.y + 186; size: 80, 24; corner: 8; cursor: pointer; active: tray > 0.9 and not undoable }
-            text "Settings" { family: "Geist"; at: tray.x + 232, tray.y + 198; anchor: right center; size: 11.5; color: #8b8f95 }
+            prop hist_link.hl = 0 ~140ms
+            follow hist_link.hl = if(hist_link.hover, 1, 0)
+            box { from: sw.l + 20, sw.t + 528; size: 108, 32; corner: 10; color: tk.s2; opacity: hist_link.hl }
+            figure Kit.i_history { at: sw.l + 40, sw.t + 544; size: 16, 16; color: mix(tk.ink2, tk.ink, hist_link.hl) }
+            text "History" { family: "Geist"; at: sw.l + 56, sw.t + 544; anchor: left center; size: 13; weight: 600; color: mix(tk.ink2, tk.ink, hist_link.hl) }
+            zone box hist_link { from: sw.l + 20, sw.t + 528; size: 108, 32; corner: 10; cursor: pointer; active: tray > 0.9 and not undoable }
+            group { move: sw.l + 360, sw.t + 528; Btn("Notification settings", swell_settings, w: 180, kind: 3, h: 32) }
         }
 
         // ── undo, with its fuse ──────────────────────────────────
-        //  Five seconds, and you can see how many are left: the fuse burns from
-        //  left to right at a constant pace. Seeing the time go is what makes it
-        //  unnecessary to read «5 s» anywhere.
+        //  Five seconds, and you can see how many are left: the fuse burns
+        //  from left to right at a constant pace.
         group {
             show: undoable
-            let undo.y = tray.y + 198
             prop undo.glow = 0 ~140ms
-            box { at: tray.x, undo.y; size: 456, 40; corner: 12; color: mix(#1b1b1c, #232425, undo.glow) }
-            //  The fuse, stuck to the bottom edge of its pill.
-            box { from: tray.x - 228, undo.y + 16; size: 456 * fuse, 4; corner: 2; color: mint }
-            text "Done. Undo it?" { family: "Geist"; at: tray.x - 208, undo.y - 3; anchor: left center; size: 11.5; color: #8b8f95 }
-            text "Undo" { family: "Geist"; at: tray.x + 192, undo.y - 3; anchor: right center; size: 12; weight: 600; color: mint }
-            zone box undo_zone { at: tray.x, undo.y; size: 456, 40; corner: 12; cursor: pointer; active: undoable }
+            box { from: sw.l + 20, sw.t + 520; size: 520, 48; corner: 14; color: mix(tk.s1, tk.s2, undo.glow) }
+            box { from: sw.l + 20, sw.t + 565; size: 520 * fuse, 3; corner: 1.5; color: tk.mint }
+            text "Done · undo it?" { family: "Geist"; at: sw.l + 36, sw.t + 544; anchor: left center; size: 13; weight: 500; color: tk.ink2 }
+            text "Undo" { family: "Geist"; at: sw.l + 524, sw.t + 544; anchor: right center; size: 13; weight: 600; color: tk.mint }
+            zone box undo_zone { from: sw.l + 20, sw.t + 520; size: 520, 48; corner: 14; cursor: pointer; active: undoable }
             on enter undo_zone { undo.glow: 1 }
             on leave undo_zone { undo.glow: 0 }
         }
@@ -3723,6 +3729,12 @@ scene Etta {
         text wx.h.t.$k = ""
     }
     let wx.now.k = if(wx.storm > 0.5, 5, if(wx.snow > 0.05, 4, if(wx.rain > 0.05, 3, if(wx.fog > 0.5, 6, if(wx.cloud > 0.4, 2, if(sky.day > 0.3, 0, 1))))))
+    //  What is playing, as the logic sees it: whether there is something
+    //  (paused counts), its cover, and the player's name.
+    fact media.has = false
+    fact media.art = false
+    text media.player = ""
+    model cover max 1 { pic: image 144, 144 }
     //  What is playing: its place, counted here between readings.
     prop media.pos = 0
     spin media.pos by if(playback.playing, max(playback.rate, 0), 0)
@@ -4072,12 +4084,12 @@ scene Etta {
     //  3.2 s to read it, which the pointer over it stops: when it leaves, it
     //  counts again. It is `on still` again: «when it has gone that long without
     //  anything starting the reading over».
-    zone box notice_zone { at: arrival.x0, cy_actual + 7 + 15 * chips; size: 250, 58 + 30 * chips; corner: 14; cursor: pointer; active: phase == 1 }
+    zone box notice_zone { at: arrival.x0, cy_actual + 4 + 22 * chips; size: 380, 100 + 44 * chips; corner: 20; cursor: pointer; active: phase == 1 }
     //  Its chips, on top of it: the press belongs to the zone declared last.
     //  Where each chip goes: Open and Done first; with a pile, «All» third;
     //  then its own actions, as many as fit.
     repeat i in 0..5 {
-        zone box chip.$i { at: f.left + 41 + chip.slot.$i * 58, f.top + 58; size: 54, 22; corner: 11; cursor: pointer
+        zone box chip.$i { at: f.left + 56 + chip.slot.$i * 86, f.top + 110; size: 80, 32; corner: 10; cursor: pointer
                            active: chips > 0.8 and phase == 1 and chip.on.$i }
         on enter chip.$i { chip.glow.$i: 1 }
         on leave chip.$i { chip.glow.$i: 0 }
@@ -4096,8 +4108,8 @@ scene Etta {
     on press chip.4 { emit notice_act(9); emit notice_gone }
     //  Later and mute: the one in front leaves like «Done», without history for
     //  «later» —it comes back— and with it for «mute».
-    zone ellipse later_zone { at: f.left + 208, f.top + 15; radius: 11; cursor: pointer; active: chips > 0.8 and phase == 1 }
-    zone ellipse hush_zone { at: f.left + 232, f.top + 15; radius: 11; cursor: pointer; active: chips > 0.8 and phase == 1 }
+    zone ellipse later_zone { at: f.left + 320, f.top + 28; radius: 14; cursor: pointer; active: chips > 0.8 and phase == 1 }
+    zone ellipse hush_zone { at: f.left + 352, f.top + 28; radius: 14; cursor: pointer; active: chips > 0.8 and phase == 1 }
     on enter later_zone { later.glow: 1 }
     on leave later_zone { later.glow: 0 }
     on enter hush_zone { hush.glow: 1 }
@@ -4128,6 +4140,10 @@ scene Etta {
     //  The reading ends when its water line runs out: 3.2 s, or 4.2 with
     //  several; the pointer over the card stops it where it is.
     on change read.t >= 1 while phase == 1 and read.t >= 1 { phase = 2 }
+    //  A reading whose card never came out —two arrivals crossing, a close in
+    //  between— would keep the clock away for ever: after two seconds with
+    //  nothing on screen, it is let go.
+    on still arrive for 2s while phase == 1 and arrive < 0.05 { phase = 0; burst = 1; read.t: 0 ~16ms }
     //  And they fly together, each one a little after the previous one.
     on change phase while phase == 2 {
         fly.2: 1 ~280ms
@@ -4149,8 +4165,6 @@ scene Etta {
     // ── opening and closing the swell ────────────────────────────
     //  Arriving opens nothing: it opens by pressing her, or a drop.
     on open_tray { tray_open = true }
-    on enter hist_link { hist_link.glow: 1 }
-    on leave hist_link { hist_link.glow: 0 }
     on press hist_link { emit show_history }
     on close_tray { tray_open = false }
     //  And if it opened BY ITSELF —an urgent one— and nobody comes near, it

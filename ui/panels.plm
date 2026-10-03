@@ -147,24 +147,29 @@ library Panels {
             }
         }
 
-        //  What is playing.
+        //  What is playing —or paused: it is still there to resume—.
         group {
-            show: playback.playing or playback.length > 0
+            show: media.has
             box { from: 20, 492; size: 580, 96; corner: 16; color: tk.s1 }
-            body {
-                gradient: 32, 504 to 104, 576, #2f5d50, #9ed6bd 60%, #e8c07a
-                box { from: 32, 504; size: 72, 72; corner: 12 }
+            group {
+                clip box { from: 32, 504; size: 72, 72; corner: 12 }
+                body {
+                    gradient: 32, 504 to 104, 576, #2f5d50, #9ed6bd 60%, #e8c07a
+                    box { from: 32, 504; size: 72, 72 }
+                }
+                figure Kit.i_play { at: 68, 540; size: 22, 22; color: #0e2a1f; opacity: 40% }
+                for c in cover { image c.pic { at: 32, 504; size: 72, 72; show: media.art } }
             }
-            figure Kit.i_play { at: 68, 540; size: 22, 22; color: #0e2a1f; opacity: 40% }
-            text playback.title { family: "Geist"; at: 120, 516; anchor: left center; size: 15; weight: 600; width: 300; lines: 1; color: tk.ink }
-            text playback.artist { family: "Geist"; at: 120, 536; anchor: left center; size: 13; weight: 500; width: 300; lines: 1; color: tk.ink2 }
-            text "{media.pos, time}" { family: "Geist"; at: 120, 564; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
+            text playback.title { family: "Geist"; at: 120, 518; anchor: left center; size: 15; weight: 600; width: 300; lines: 1; color: tk.ink }
+            text playback.artist { family: "Geist"; at: 120, 539; anchor: left center; size: 13; weight: 500; width: 300; lines: 1; color: tk.ink2 }
             group {
                 show: playback.length > 0
+                text "{media.pos, time}" { family: "Geist"; at: 120, 564; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
                 box { from: 160, 562; size: 220, 4; corner: 2; color: tk.s3 }
                 box { from: 160, 562; size: 220 * clamp(media.pos / max(playback.length, 1), 0, 1), 4; corner: 2; color: tk.ink2 }
                 text "{playback.length, time}" { family: "Geist"; at: 390, 564; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
             }
+            text media.player { family: "Geist"; at: 120, 564; anchor: left center; size: 12; weight: 500; width: 300; lines: 1; color: tk.ink3; show: playback.length < 1 }
             group { move: 452, 520; Ib(previous, d: 40) { figure Kit.i_prev { at: 0, 0; size: 20, 20; color: tk.ink } } }
             group { move: 500, 516
                 zone box pp { from: 0, 0; size: 48, 48; corner: 24; cursor: pointer }
@@ -176,7 +181,7 @@ library Panels {
             group { move: 556, 520; Ib(next, d: 40) { figure Kit.i_next { at: 0, 0; size: 20, 20; color: tk.ink } } }
         }
         group {
-            show: not (playback.playing or playback.length > 0)
+            show: not media.has
             box { from: 20, 492; size: 580, 64; corner: 16; color: tk.s1 }
             group { move: 34, 506; Bubble(0) { figure Kit.i_play { at: 0, 0; size: 18, 18; color: tk.ink3 } } }
             text "Nothing playing" { family: "Geist"; at: 84, 524; anchor: left center; size: 14; weight: 500; color: tk.ink2 }
@@ -267,60 +272,68 @@ library Panels {
 
     // ── bluetooth ────────────────────────────────────────────────
     component BtRow(r: record) {
-        size: 564, 56
-        zone box touch { from: 0, 0; size: 564, 56; corner: 12; active: page == bluetooth and paging > 0.9 }
-        box { from: 0, 0; size: 564, 56; corner: 12; color: tk.s2; opacity: touch.hover * 0.6 }
-        group { move: 10, 10; Bubble(if(r.current, 1, 0)) { figure Kit.i_bluetooth { at: 0, 0; size: 18, 18; color: if(r.current, tk.mint_ink, tk.ink2) } } }
-        text r.name { family: "Geist"; at: 58, 20; anchor: left center; size: 14; weight: 500; width: 340; lines: 1; color: tk.ink }
-        text pick(if(r.current, 0, if(r.paired, 1, 2)), "Connected", "Paired", "Nearby · not paired yet") { family: "Geist"; at: 58, 38; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
-        group {
-            show: r.battery >= 0
-            box { from: 360, 24; size: 20, 10; corner: 2.5; stroke: 1.2; color: tk.ink3 }
-            box { from: 361.8, 25.8; size: max(1, 16.4 * clamp(r.battery, 0, 1)), 6.4; corner: 1.4; color: mix(tk.red, tk.mint, clamp(r.battery * 3 - 0.3, 0, 1)) }
-        }
-        group { move: 440, 12; show: r.current; Btn("Disconnect", noop, w: 116, kind: 3, h: 32) }
-        group { move: 456, 12; show: not r.current and r.paired; Btn("Connect", noop, w: 100, h: 32) }
-        group { move: 476, 12; show: not r.paired; Btn("Pair", noop, w: 80, kind: 1, h: 32) }
-        zone box act { from: 436, 8; size: 124, 40; corner: 12; cursor: pointer; active: page == bluetooth and paging > 0.9 }
+        size: 564, 60
+        zone box touch { from: 0, 0; size: 564, 60; corner: 12; active: page == bluetooth and paging > 0.9 }
+        box { from: 0, 0; size: 564, 60; corner: 12; color: tk.s2; opacity: touch.hover * 0.6 }
+        group { move: 10, 12; Bubble(if(r.current, 1, 0)) {
+            figure Kit.i_headphones { at: 0, 0; size: 18, 18; color: if(r.current, tk.mint_ink, tk.ink2); show: r.kind == 1 }
+            figure Kit.i_phone { at: 0, 0; size: 18, 18; color: if(r.current, tk.mint_ink, tk.ink2); show: r.kind == 2 }
+            figure Kit.i_keyboard { at: 0, 0; size: 18, 18; color: if(r.current, tk.mint_ink, tk.ink2); show: r.kind == 3 }
+            figure Kit.i_bluetooth { at: 0, 0; size: 18, 18; color: if(r.current, tk.mint_ink, tk.ink2); show: r.kind == 0 }
+        } }
+        text r.name { family: "Geist"; at: 58, 21; anchor: left center; size: 14; weight: 500; width: 340; lines: 1; color: tk.ink }
+        text pick(if(r.current, if(r.battery >= 0, 1, 0), if(r.paired, 2, 3)), "Connected", "Connected · {r.battery * 100, 0}% battery", "Paired · not connected", "Nearby · not paired yet") { family: "Geist"; at: 58, 40; anchor: left center; size: 12; weight: 500; width: 340; lines: 1; color: if(r.current, tk.mint, tk.ink3) }
+        group { move: 436, 14; show: r.current; Btn("Disconnect", noop, w: 116, kind: 3, h: 32) }
+        group { move: 452, 14; show: not r.current and r.paired; Btn("Connect", noop, w: 100, h: 32) }
+        group { move: 472, 14; show: not r.paired; Btn("Pair", noop, w: 80, kind: 1, h: 32) }
+        zone box act { from: 432, 10; size: 124, 40; corner: 12; cursor: pointer; active: page == bluetooth and paging > 0.9 }
         on press act { emit pick_gadget(r.index) }
     }
 
     component BtPage() {
         size: 620, 716
-        PageHead("Bluetooth") {
-            group { move: 400, 16; show: switched_on.2
-                Btn(pick(if(bt_scanning, 1, 0), "Search", "Searching…"), bt_scan, w: 140, kind: 3, h: 32)
-            }
-        }
+        PageHead("Bluetooth")
         group {
             show: not switched_on.2
-            box { from: 20, 76; size: 580, 140; corner: 16; color: tk.s1 }
-            group { move: 36, 92; Bubble(3) { figure Kit.i_bluetooth_off { at: 0, 0; size: 20, 20; color: tk.red } } }
-            text "Bluetooth is off" { family: "Geist"; at: 86, 102; anchor: left center; size: 15; weight: 600; color: tk.ink }
-            text pick(if(bt.blocked, 1, 0), "Turn it on to find your headphones, keyboard or phone.", "Blocked by the system switch (rfkill). Etta lifts it and powers the radio on, no password needed.") { family: "Geist"; at: 86, 132; anchor: left center; size: 14; width: 480; lines: 2; line_height: 1.35; color: tk.ink2 }
-            group { move: 86, 164; Btn(pick(if(bt.turning, 1, 0), "Turn on", "Turning on…"), tap_bt, w: 140, kind: 1, live: not bt.turning) }
+            box { from: 20, 68; size: 580, 140; corner: 16; color: tk.s1 }
+            group { move: 36, 86; Bubble(3) { figure Kit.i_bluetooth_off { at: 0, 0; size: 20, 20; color: tk.red } } }
+            text "Bluetooth is off" { family: "Geist"; at: 86, 96; anchor: left center; size: 15; weight: 600; color: tk.ink }
+            text pick(if(bt.blocked, 1, 0), "Turn it on to find your headphones, keyboard or phone.", "Blocked by the system switch (rfkill). Etta lifts it and powers the radio on, no password needed.") { family: "Geist"; at: 86, 112; anchor: left top; size: 14; weight: 400; width: 480; lines: 2; line_height: 1.35; color: tk.ink2 }
+            group { move: 86, 156; Btn(pick(if(bt.turning, 1, 0), "Turn on", "Turning on…"), tap_bt, w: 140, kind: 1, live: not bt.turning) }
         }
         group {
             show: switched_on.2
-            box { from: 20, 76; size: 580, 64; corner: 16; color: tk.s1 }
-            group { move: 34, 90; Bubble(1) { figure Kit.i_bluetooth { at: 0, 0; size: 20, 20; color: tk.mint_ink } } }
-            text "Bluetooth on" { family: "Geist"; at: 84, 98; anchor: left center; size: 15; weight: 600; color: tk.ink }
-            text "Visible to nearby devices while this page is open" { family: "Geist"; at: 84, 118; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
-            group { move: 544, 96; Toggle(switched_on.2, tap_bt) }
+            box { from: 20, 68; size: 580, 64; corner: 16; color: tk.s1 }
+            group { move: 34, 82; Bubble(1) { figure Kit.i_bluetooth { at: 0, 0; size: 20, 20; color: tk.mint_ink } } }
+            text "Bluetooth on" { family: "Geist"; at: 84, 90; anchor: left center; size: 15; weight: 600; color: tk.ink }
+            text "Visible to nearby devices while this page is open" { family: "Geist"; at: 84, 110; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
+            group { move: 546, 88; Toggle(switched_on.2, tap_bt) }
 
-            group { move: 16, 156; Over("DEVICES") }
+            //  Mine: the paired ones, the connected first.
+            group { move: 16, 148; Over("MY DEVICES") }
+            box { from: 20, 176; size: 580, 12 + 62 * max(bt.paired.n, 1); corner: 16; color: tk.s1 }
+            text "No paired devices yet" { family: "Geist"; at: 310, 213; anchor: center; size: 13; weight: 500; color: tk.ink3; show: bt.paired.n < 1 }
+
+            //  Around: the ones just found, while it looks.
+            let ny = 204 + 62 * max(bt.paired.n, 1)
+            group { move: 16, ny; Over("NEARBY") }
             group {
                 show: bt_scanning
-                arc { at: 520, 168; radius: 6; span: 270deg; width: 2; rotate: radar.t * 360deg; color: tk.mint }
-                text "Looking for devices…" { family: "Geist"; at: 532, 168; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
+                arc { at: 470, ny + 12; radius: 6; span: 270deg; width: 2; rotate: radar.t * 360deg; color: tk.mint }
+                text "Looking for devices…" { family: "Geist"; at: 484, ny + 12; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
             }
-            box { from: 20, 184; size: 580, 12 + 58 * max(gadgets.count, 1); corner: 16; color: tk.s1 }
-            column {
-                at: 28, 190
-                gap: 2
-                for r in gadgets { BtRow(r) }
+            group { move: 520, ny - 4; show: not bt_scanning; Btn("Search", bt_scan, w: 80, kind: 3, h: 32) }
+            box { from: 20, ny + 32; size: 580, 12 + 62 * max(bt.near.n, 1); corner: 16; color: tk.s1 }
+            //  One list, mine first (the logic sorts it): each row goes to its
+            //  section by what it is.
+            for r in gadgets {
+                group {
+                    show: r.index < gadgets.count
+                    move: 28, if(r.paired, 182 + r.index * 62, ny + 38 + (r.index - bt.paired.n) * 62)
+                    BtRow(r)
+                }
             }
-            text pick(if(bt_scanning, 1, 0), "No devices yet · press Search", "Looking around…") { family: "Geist"; at: 310, 218; anchor: center; size: 13; weight: 500; color: tk.ink3; show: gadgets.count < 1 }
+            text pick(if(bt_scanning, 1, 0), "Nothing nearby yet · press Search", "Looking around…") { family: "Geist"; at: 310, ny + 69; anchor: center; size: 13; weight: 500; color: tk.ink3; show: bt.near.n < 1 }
         }
     }
 

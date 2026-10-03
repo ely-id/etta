@@ -166,6 +166,7 @@ end)
 --  breathes until the system says it is the one in use.
 local joining_name, joining_since = nil, 0
 
+local last_networks = nil
 local function paint_networks()
     local v = {}
     for _, n in ipairs(net_state.networks or {}) do
@@ -177,7 +178,17 @@ local function paint_networks()
         return a.signal > b.signal
     end)
     while #v > 8 do table.remove(v) end
-    model.networks = v
+    --  Only when what it shows has changed: a scan reports every flicker of
+    --  signal, and each new list is a new layout.
+    local parts = {}
+    for _, n in ipairs(v) do
+        parts[#parts + 1] = table.concat({ tostring(n.name), string.format("%.1f", n.signal), tostring(n.current), tostring(n.secure), tostring(n.known) }, "|")
+    end
+    local fingerprint = table.concat(parts, ";")
+    if fingerprint ~= last_networks then
+        last_networks = fingerprint
+        model.networks = v
+    end
     fact["switched_on.1"] = net_state.wifi == true
     --  The one being joined, by its place now (the list moves as it is joined).
     fact.joining = -1
@@ -242,13 +253,43 @@ end)
 
 --  Bluetooth: the paired ones first —the connected at the top— and, while
 --  looking, the ones just found, to be paired with a press.
+local last_gadgets = nil
 local function paint_gadgets()
     local v = {}
     for _, d in ipairs(bt_state.devices or {}) do
-        v[#v + 1] = { name = d.name, current = d.connected == true, paired = d.paired == true, battery = d.battery or -1, address = d.address }
+        --  The battery as 0..1 (some report a percentage), −1 when it is not said.
+        local b = tonumber(d.battery) or -1
+        if b > 1 then b = b / 100 end
+        --  What it is, by its BlueZ icon or its name: 1 audio, 2 phone, 3 input.
+        local hint = string.lower((d.icon or "") .. " " .. (d.name or ""))
+        local kind = 0
+        if hint:find("audio") or hint:find("head") or hint:find("bud") or hint:find("speaker") or hint:find("pods") then kind = 1
+        elseif hint:find("phone") then kind = 2
+        elseif hint:find("input") or hint:find("keyboard") or hint:find("mouse") then kind = 3 end
+        v[#v + 1] = { name = d.name, current = d.connected == true, paired = d.paired == true, battery = b, address = d.address, kind = kind }
     end
+    --  Mine first —the connected at the top—, then the ones around.
+    table.sort(v, function(a, b)
+        if a.paired ~= b.paired then return a.paired end
+        if a.current ~= b.current then return a.current end
+        return tostring(a.name) < tostring(b.name)
+    end)
     while #v > 8 do table.remove(v) end
-    model.gadgets = v
+    local paired_n, near_n = 0, 0
+    for _, g in ipairs(v) do if g.paired then paired_n = paired_n + 1 else near_n = near_n + 1 end end
+    fact["bt.paired.n"] = paired_n
+    fact["bt.near.n"] = near_n
+    --  While it looks, BlueZ reports every change of signal, several times a
+    --  second: the list is only handed over when what it shows has changed.
+    local parts = {}
+    for _, g in ipairs(v) do
+        parts[#parts + 1] = table.concat({ tostring(g.name), tostring(g.current), tostring(g.paired), string.format("%.2f", g.battery), tostring(g.kind) }, "|")
+    end
+    local fingerprint = table.concat(parts, ";")
+    if fingerprint ~= last_gadgets then
+        last_gadgets = fingerprint
+        model.gadgets = v
+    end
     fact["switched_on.2"] = bt_state.powered == true
     fact.bt_scanning = bt_state.discovering == true
     local first = v[1]
@@ -691,6 +732,15 @@ local function shown(f, s)
     return s
 end
 
+--  How long ago it came, said the short way.
+local function age_of(t)
+    local d = os.time() - (t or os.time())
+    if d < 60 then return tr("now") end
+    if d < 3600 then return string.format("%d min", d // 60) end
+    if d < 86400 then return string.format("%d h", d // 3600) end
+    return tr("yesterday")
+end
+
 local function render()
     for k = 1, 5 do
         local f = rows[k]
@@ -699,7 +749,7 @@ local function render()
             text["row." .. k .. ".app"] = shown(f, f.app)
             text["row." .. k .. ".title"] = shown(f, f.title)
             text["row." .. k .. ".detail"] = shown(f, f.detail)
-            text["row." .. k .. ".age"] = tr(AGES[k])
+            text["row." .. k .. ".age"] = f.time and age_of(f.time) or tr(AGES[k])
             fact["row_cat." .. k] = f.cat
             fact["row_urgent." .. k] = f.urgent == true
         end
@@ -735,6 +785,7 @@ local arriving_actions = {}
 --  the one that arrives, and again for the next one of the pile when the one
 --  in front is done.
 local function show_front(n)
+    text["notice.app"] = shown(n, n.app or "")
     text.who = shown(n, n.title)
     text.line = shown(n, n.detail)
     model.notice_face = { { icon = n.icon or "" } }
@@ -760,6 +811,7 @@ end
 
 local function arrive(n)
     n.cat = CATEGORY_OF[n.app] or classify(n.app)
+    n.time = n.time or os.time()
     table.insert(rows, 1, n)
     while #rows > 5 do table.remove(rows) end
     render()
@@ -1112,12 +1164,13 @@ end
 --  after the notice came —she was asleep and the drop had to fall—: by then
 --  it may already be closed.
 for k = 1, 4 do on("fact:n." .. k, cap_counts) end
+every(60000, function() render() end)
 
 --  A row made from one of the service's notices, without arriving again.
 local function row_of(n)
     local app = string.upper(n.app ~= "" and n.app or tr("notice"))
     return { id = n.id, app = app, title = n.title, detail = n.body, urgent = (n.urgency or 1) >= 2,
-             actions = n.actions, icon = n.icon, cat = CATEGORY_OF[app] or classify(app) }
+             actions = n.actions, icon = n.icon, cat = CATEGORY_OF[app] or classify(app), time = n.time or os.time() }
 end
 
 --  What hovering over her shows: the newest one still pending. Not while a
@@ -1422,6 +1475,25 @@ on("dismiss", function(k)
     f.done = true
     remember(f)
     if f.id then sys.call("notifications.dismiss", f.id) end
+end)
+--  «Clear all»: every one pending, in a row or still waiting for one, goes
+--  to the history and away. The counts beside her go to zero with them.
+on("clear_all", function()
+    local cleared = {}
+    for _, f in ipairs(rows) do
+        if not f.done then
+            f.done = true
+            remember(f)
+            if f.id then cleared[f.id] = true; sys.call("notifications.dismiss", f.id) end
+        end
+    end
+    for _, n in ipairs(live or {}) do
+        if not cleared[n.id] then
+            remember(row_of(n))
+            pcall(sys.call, "notifications.dismiss", n.id)
+        end
+    end
+    for k = 1, 4 do fact["n." .. k] = 0 end
 end)
 --  A tap opens it where it lives: its default action, if it brings one. If it
 --  brings none, tapping it can do no more than mark it as seen.
@@ -2936,4 +3008,46 @@ end)
 text["wall.dir"] = "~/Pictures · ~/Wallpapers · /usr/share/wallpapers"
 text["wall.source"] = "Pictures"
 on("walls_rescan", function() emit("walls_open") end)
+
+--  What is playing, for the control center: whether there is anything (a
+--  paused song is still there to resume), the player's name, and its cover.
+--  A cover is a file (browsers write one) or an address, which is fetched once.
+local art_seen, art_n = nil, 0
+local ART_DIR = (sys.ask("env", "HOME") or ".") .. "/.cache/etta"
+run("mkdir", { "-p", ART_DIR }, function() end)
+local function url_decode(s)
+    return (tostring(s):gsub("%%(%x%x)", function(h) return string.char(tonumber(h, 16)) end))
+end
+sys.watch("media", function(m)
+    m = m or {}
+    fact["media.has"] = tostring(m.title or "") ~= ""
+    local who = tostring(m.player or "")
+    text["media.player"] = who ~= "" and (who:sub(1, 1):upper() .. who:sub(2)) or ""
+    local art = tostring(m.art or "")
+    if art == art_seen then return end
+    art_seen = art
+    --  Square, cut from its centre: a video's 16:9 frame squeezed into the
+    --  square looked squashed.
+    local function square(from)
+        art_n = art_n + 1
+        local path = ART_DIR .. "/cover-" .. art_n % 2 .. ".jpg"
+        run("magick", { from .. "[0]", "-resize", "144x144^", "-gravity", "center", "-extent", "144x144", "-quality", "88", path }, function(_, code)
+            if code == 0 and art == art_seen then
+                model.cover = { { pic = path .. "?" .. art_n } }
+                fact["media.art"] = true
+            end
+        end)
+    end
+    if art:match("^file://") then
+        square(url_decode(art:sub(8)))
+    elseif art:match("^https?://") then
+        local raw = ART_DIR .. "/cover-download"
+        run("curl", { "-s", "--max-time", "8", "-o", raw, art }, function(_, code)
+            if code == 0 and art == art_seen then square(raw) end
+        end)
+    else
+        model.cover = {}
+        fact["media.art"] = false
+    end
+end)
 end

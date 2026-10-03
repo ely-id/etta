@@ -97,6 +97,7 @@ library Kit {
         zone box touch { from: 0, 0; size: d, d; corner: 10; cursor: pointer; active: live }
         box { from: 0, 0; size: d, d; corner: 10; color: tk.s2; opacity: touch.hover * (1 - 0.3 * touch.pressed) }
         children { move: d / 2, d / 2 }
+        on press touch { emit press }
     }
 
     //  The switch.
