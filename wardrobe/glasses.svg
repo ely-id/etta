@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="44" height="24" viewBox="0 0 44 24">
+  <!-- Measurements of HER face, not of just any pair of glasses: her eyes measure
+       5 × 13 and are 13 px apart between centres, so the lenses sit at ±6.5 from
+       the centre of the canvas (22, 12) and are tall ovals that hold them with room
+       to spare. Drawn 1:1 with the pixels it is painted at: `size: 44, 24`. -->
+  <g id="arms">
+    <path d="M9.6 10.6 L3.5 8.4" fill="none" stroke="#f0ece4" stroke-width="1.7"/>
+    <path d="M34.4 10.6 L40.5 8.4" fill="none" stroke="#f0ece4" stroke-width="1.7"/>
+  </g>
+  <g id="bridge">
+    <path d="M19.8 9.2 C21 8 23 8 24.2 9.2" fill="none" stroke="#f0ece4" stroke-width="1.7"/>
+  </g>
+  <g id="lenses">
+    <ellipse cx="15.5" cy="12" rx="4.7" ry="8.3" fill="none" stroke="#f0ece4" stroke-width="1.9"/>
+    <ellipse cx="28.5" cy="12" rx="4.7" ry="8.3" fill="none" stroke="#f0ece4" stroke-width="1.9"/>
+  </g>
+</svg>

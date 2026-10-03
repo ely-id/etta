@@ -1,0 +1,837 @@
+// Marea: the ball, written with pleamar.
+//
+// The measurements come from the life-size sheet (`design/concepts/
+// 2026-09-12-reposo-vivo/referencia-real-limpia.png`): a 46 px body, 5 × 13
+// eyes with rounded ends, 13 apart between centres and 2.5 px below the centre
+// of the body.
+//
+// The timings come from the contract (`docs/ANIMACIONES.md`), and they are not
+// up for negotiation: a short blink every 5.2 s, a glance every 11 s, and every
+// 12–24 s «Marea's breath» of 1.3 s —the eyes look first, the body rises 2 px,
+// blinks all the way, settles and goes back exactly to neutral—.
+//
+// Everything in this file is run by the renderer. There is no logic here at all.
+
+import "common/palette.plm"
+
+scene Marea {
+    permissions { services: "audio", "clock" }
+    service clock as now { time: text = "--:--"; date: text }
+    service audio as sound { volume: number; muted: bool }
+
+    surface {
+        //  The surface has to stretch far enough for the card **and its
+        //  shadow**: 18 px of offset plus 44 of spread, below and on the sides.
+        //  Otherwise the shadow is cut dead against the edge and the cut shows.
+        size: 820, 580
+        anchor: top
+        margin: 0
+        screens: "HDMI-A-1"
+    }
+
+    // ── where she lives ──────────────────────────────────────────
+    //  At rest she lives at the top and centred; when opening she moves aside
+    //  to the left to present the card, which is how it is on the control
+    //  centre's sheet.
+    let cx = 120 + (1 - card) * 240
+    //  Open, she comes down to the height of the card's header, as on the sheet.
+    let cy = 46 + card * 46
+    let r = 23                        // half of the sheet's 46 px
+
+    // ── what moves her ───────────────────────────────────────────
+    //  `pose` is what a gesture leads by the hand: when it ends it goes back to
+    //  its base on its own, and that is what makes the breath «return exactly
+    //  to neutral».
+    pose body.y = 0                   // how much the body rises
+    pose lid = 1                      // the eyelids: 1 open, 0 closed
+    pose eyes = 13                    // how tall the eyes are
+    pose look.y = 0                   // the gaze inside the face
+    pose tilt = 0                     // the body's tilt
+    pose sx = 1                       // how much it stretches: in width
+    pose sy = 1                       // and in height
+    pose shut = 0                     // the shutter: 1 closed
+
+    prop gaze.x = 0 ~gentle           // where they look, following the mouse
+    prop gaze.y = 0 ~gentle
+    prop press = 0 ~quick             // the squash under the click
+
+    //  The trip out of the edge and back: 620 ms, which is what the contract
+    //  says. A drop that leaves in 200 ms is a drop nobody saw leave.
+    fact hidden = true                // «tuck into the edge», on
+    fact needed = false               // something calls for her: a notice, the pointer…
+    prop out = 0 ~620ms               // 0 sunk, 1 fully separated
+
+    //  The card. Two things that travel separately, and that is the trick: when
+    //  opening the geometry leads and the content follows it; when closing the
+    //  content fades first and **then** the geometry folds up.
+    fact open = false
+    // ── the notices ──────────────────────────────────────────────
+    //  «Everything arrives, you decide»: arriving opens nothing. A small card
+    //  comes in beside her, she startles and looks at it, it stays as long as
+    //  it takes to read it and then it narrows until it is a drop of its
+    //  category's colour, which flies along a curve to her shoulder. On
+    //  arriving, a gulp.
+    event notice                       // one arrives: `cat`, `who` and `line` are said first
+    event landed
+    event tray ->                      // pressing the card: the logic opens the tray
+    fact cat = 1                       // 1 messages · 2 work · 3 calendar · 4 system
+    fact reading_cat = 1               // the one being read's: `cat` may change meanwhile
+    fact arrival_seq = 0               // and its turn of arrival: it lands late, but it arrived earlier
+    event direct                       // one that arrives with another on screen
+    text who = ""
+    text line = ""
+    fact phase = 0                     // 0 nothing · 1 being read · 2 flying
+    fact hovered = false               // the pointer on top: it stops the reading
+    fact mark = 0                      // every time the reading starts again
+    fact seq = 0                       // to know which is the most recent
+    prop arrive = 0 ~220ms             // the card, coming in
+    prop mine = 0 ~220ms               // 0 card, 1 drop in its place
+    prop attentive = 0 ~gentle         // looking at the card
+    follow attentive = if(phase == 1, 1, 0)
+
+    let blue = #6fb1e6
+    let lilac = #a68be4
+    let green = #8fd1ae
+    let amber = #e3a35c
+    //  How many there are of each, and when the last one arrived: they are
+    //  declared before the drops because each drop looks at the other three.
+    repeat k in 1..5 {
+        fact n.$k = 0
+        fact last.$k = 0
+    }
+
+    //  The time note.
+    fact note = false
+    event calendar ->                  // a click on it: the logic opens the calendar
+    prop notecard = 0 ~190ms
+    follow notecard = if(note and not open and face == eye and out > 0.9 and phase == 0, 1, 0)
+    let notecard.x = cx + (23 + 14 + 52) * notecard
+
+    prop card = 0 ~290ms
+    prop content = 0 ~200ms
+
+    //  The level on the face. The volume is brought by the system: not one line
+    //  of logic, and that is why the panel's slider and the keyboard key look
+    //  exactly the same from here —which is just what the contract asks for—.
+    prop meter = 0 ~180ms             // 0 face, 1 bar
+    prop vol_level = 0 ~quick         // what the bar shows
+
+    //  ── what the face can be ────────────────────────────────────
+    //  A typed fact: the compiler checks what it is compared against, so
+    //  `face == magnifier` does not get past the first reading.
+    fact face: eye | count | camera | rec = eye
+    fact left = 0                     // what is left of the countdown
+    fact taping = false               // the recorder REALLY running
+
+    prop num = 0 ~260ms               // 0 face, 1 number
+    prop cam = 0 ~220ms               // 0 face, 1 camera
+    prop dot = 0 ~260ms               // 0 face, 1 disc
+    prop red = 0 ~200ms               // the red, which is something other than the disc
+    prop pop = 0 ~lively              // the countdown's bounce
+
+    //  Each state is a spring that follows its fact. That is why one can
+    //  interrupt another halfway and all that happens is that the shape bends:
+    //  there are no two animations fighting over the same eyes.
+    follow num = if(face == count, 1, 0)
+    follow cam = if(face == camera, 1, 0)
+    follow dot = if(face == rec, 1, 0)
+    follow red = if(taping, 1, 0)
+
+    // ── living rest ──────────────────────────────────────────────
+    //  A short blink, every 5.2 s. And the gaze, which follows the mouse closely.
+    blink lid every 5.2s for 120ms
+    look gaze.x, gaze.y at cx, cy reach 6, 3.5 within 260
+
+    //  Marea's breath. Ambient: any other gesture cuts it off.
+    gesture breathe ambient {
+        //  First the eyes look: it is what makes it seem hers and not a tic.
+        220ms in_out_sine        { look.y: -1.2 }
+        //  The body rises two pixels, not one more.
+        320ms out_quad           { body.y: -2; look.y: -0.6 }
+        //  And it blinks all the way while it is up.
+        180ms in_out_sine        { lid: 0; body.y: -2 }
+        200ms in_out_sine        { lid: 1; body.y: -1.4 }
+        //  It settles with a tiny asymmetry, and goes back to neutral.
+        380ms out_back           { tilt: 0.012 }
+    }
+    every 12s..24s { play breathe }
+
+    //  The startle: it jumps 8 px without anticipation, with its eyes wide
+    //  open, lands elastic and bounces short. Marea's numbers, times 46/56.
+    gesture startle reflex {
+        75ms out_cubic            { eyes: 16.4; sx: 0.90; sy: 1.13; body.y: -2.5 }
+        105ms out_quad hold 90ms  { eyes: 16.4; sx: 0.98; sy: 1.04; body.y: -6.6 }
+        145ms in_quad             { eyes: 14.8; sx: 0.96; sy: 1.06 }
+        100ms out_quad            { eyes: 14.8; sx: 1.10; sy: 0.82; body.y: 3.3 }
+        130ms out_quad            { eyes: 14; sx: 0.98; sy: 1.04; body.y: -2.5; tilt: 0.07 }
+        120ms                     { eyes: 14; sx: 1.02; sy: 0.96; body.y: 0.8; tilt: 0.05 }
+        160ms hold 100ms          { eyes: 14; tilt: 0.05 }
+        200ms
+    }
+    //  The gulp, when the drop reaches her shoulder.
+    gesture gulp reflex {
+        90ms out_quad   { sx: 1.06; sy: 0.94; body.y: 1 }
+        180ms out_back
+    }
+
+    follow out = if(hidden and not needed, 0, 1)
+
+    // ── the photograph ───────────────────────────────────────────
+    //  She does not switch off all at once before the screen freezes: she
+    //  anticipates for 70 ms, stretches and LEAVES through the top edge in 150.
+    //  The numbers are Marea's, times 46/56; the last one rises more than there
+    //  because this surface does not hide: here it is she who has to end up
+    //  completely outside.
+    event snap                         // someone asks for a photo
+    event gone                         // she is no longer in the frame
+    prop away = 0 ~quick               // 1 while she waits up there, out of sight
+
+    gesture retire state {
+        70ms out_quad           { eyes: 14.8; sx: 0.94; sy: 1.12; body.y: -3.3 }
+        150ms in_cubic          { eyes: 13.1; sx: 0.78; sy: 1.30; body.y: -84 }
+        //  `emit` sounds at the START of its frame, so it goes in one of its
+        //  own: the «I am no longer here» notice has to arrive when she is no
+        //  longer there.
+        30ms emit gone          { eyes: 13.1; sx: 0.78; sy: 1.30; body.y: -84 }
+    }
+    //  She leaves the same way for two things, and on reaching the top does one or the other.
+    fact purpose: shot | nook = shot
+    on snap { purpose = shot; play retire }
+
+    //  The shot. The shutter is a pose and the click a gesture: it closes in 80,
+    //  holds, opens in 170 —Marea's timings— and gives the face back. And a
+    //  tiny recoil of the body on closing, which is not there: a camera that
+    //  fires without moving is an icon, not a camera.
+    event shoot
+    event taken
+    gesture click state {
+        80ms out_quad hold 10ms  { shut: 1; sx: 1.05; sy: 0.95 }
+        170ms out_back           { shut: 0 }
+        120ms
+        10ms emit taken
+    }
+    on shoot while face == camera { play click }
+    on taken { face = eye }
+    //  Once out, she stays out —the gesture gives the pose back to its base,
+    //  and without this she would fall back in the same frame— and changes
+    //  face where nobody sees her. 200 ms of margin, which is what the
+    //  compositor takes to remove the layer: they are measured in Marea, with
+    //  90 a ghost of her came out in the photo. And she comes back falling with
+    //  a lively spring, which bounces a hair on landing: she does not «appear»
+    //  with the camera on, she returns.
+    on gone while purpose == shot {
+        away: 1 ~16ms
+        face = camera
+        away: 0 ~lively after 220ms
+    }
+
+    //  Sunk, a little less than half of her peeks out; separated, she hangs at her own height.
+    let rise = if(hidden, (1 - out) * 49, 0)
+    let cy_actual = cy + body.y - rise - away * 84
+
+    //  The neck: minimal at rest and maximal halfway through the separation,
+    //  which is a bell. At the end there is nothing left and the thread breaks
+    //  by itself.
+    let neck = 30 * 4 * out * (1 - out) * if(hidden, 1, 0)
+
+    // ── the body ─────────────────────────────────────────────────
+    //  The water of the edge and the ball are a single silhouette: the neck is
+    //  not drawn, it comes from melting them together. That is why it thins and
+    //  breaks without anyone computing it, and why it is concave.
+    body {
+        color: coal
+        rim: 6%
+        shadow: 0, 7, 16, 34%
+        box water { from: cx - 70, -70; size: 140, 70 * if(hidden, 1, 0) }
+        ellipse body_shape {
+            at: cx, cy_actual
+            radius: r
+            rotate: tilt
+            scale: sx + press * 0.04, sy - press * 0.05
+            blend: neck
+        }
+        //  The time note, which comes out from BEHIND her: it is born at her
+        //  centre with zero width and slides to the right until it sits 14 px
+        //  away, with its neck halfway. It is part of the same body, so the
+        //  shadow is a single one and so is the edge.
+        box notecard_box {
+            at: notecard.x, cy_actual
+            size: 104 * clamp(notecard * 1.6, 0, 1), 56 * clamp(notecard * 2.4, 0, 1)
+            corner: 13
+            blend: 18 * 4 * notecard * (1 - notecard)
+        }
+    }
+
+    //  What it has written on it. The time is brought by the system; there is no logic here.
+    group {
+        opacity: clamp(notecard * 4 - 3, 0, 1)
+        move: (1 - notecard) * -12, 0
+        text now.time { at: notecard.x - 39, cy_actual - 9; anchor: left center; size: 21; weight: 600; color: #f6f6f5 }
+        text "{upper(now.date)}" { at: notecard.x - 39, cy_actual + 13; anchor: left center; size: 10; color: #8b8f95 }
+    }
+
+    // ── the face ─────────────────────────────────────────────────
+    //  Clipped to the body: whatever sticks out of the ball does not exist. It
+    //  is what lets the eyes turn into something else without leaving her.
+    //
+    //  Everything that follows is ONE chain: the usual eye, and each state
+    //  pulling on it. It is written like this and not with loose weights
+    //  because each line says what that state does, and because two springs
+    //  halfway never add up to one. The face is not swapped for another: it
+    //  bends until it is something else.
+    //
+    //  The measurements come from Marea's sheet, which draws the face in a
+    //  space of 56; here the ball measures 46, so everything goes times 46/56.
+
+    //  It is a component because she can be in two places: at the top, and
+    //  tucked into the corner while recording. The same face, the same
+    //  springs; the only thing that changes is where she is and where she can
+    //  look.
+    component Face(x: number, y: number, gx: number, gy: number) {
+        //  When something else is in charge, the eyelid stops counting: a
+        //  camera does not blink and neither does a number.
+        let override = clamp(meter + num + cam + dot, 0, 1)
+        let eyelid = lid + (1 - lid) * override
+
+        //  1. The eye, and the level laying it down. (Measured in «The level on the face».)
+        let o.w = 5 + 8 * meter
+        let o.h = eyes * eyelid * (1 - meter) + 5 * meter
+        let o.sep = 6.5 - 4 * meter
+
+        //  2. The countdown. Both eyes go to the centre and round off until
+        //  they are ONE drop —they really melt together, that is what being a
+        //  body is for—, and then the drop **opens like an aperture**: it grows
+        //  while its centre is eaten away, becomes a ring, and inside was the
+        //  number. It is not that the eyes hide and a number appears on top; it
+        //  is that the number was behind them and the eyes open to show it.
+        let merge = clamp(num * 2, 0, 1)
+        let aperture = clamp(num * 2 - 1, 0, 1)
+        let c.w = o.w + (9 - o.w) * merge
+        let c.h = o.h + (9 - o.h) * merge
+        let c.sep = o.sep * (1 - merge)
+        //  18 and not 30: the ring stays at a bit more than half the ball. With
+        //  30 it almost filled it, and in 260 ms that is not an aperture, it is
+        //  a flash.
+        let g.w = c.w + 18 * aperture
+        let g.h = c.h + 18 * aperture
+
+        //  3. The camera. The left one opens into the lens and the right one
+        //  stretches around it until it is the body; both to the centre of the
+        //  face. The lens measures 13 on the sheet, and 5 with the shutter closed.
+        let eye.l = 10.7 - 5.4 * shut
+        let l.w = g.w + (eye.l - g.w) * cam
+        let l.h = g.h + (eye.l - g.h) * cam
+        let r.w = g.w + (24.6 - g.w) * cam
+        let r.h = g.h + (17.3 - g.h) * cam
+        let sep = c.sep * (1 - cam)
+
+        //  4. The record disc: the left eye, and only it. The right one is
+        //  still an eye and still follows the pointer, which is what keeps her
+        //  alive while it lasts. The disc stays where the eye was, it does not
+        //  centre itself.
+        let d.w = l.w + (9 - l.w) * dot
+        let d.h = l.h + (9 - l.h) * dot
+
+        let eye.y = y + 2.5
+        let l.x = x - sep
+        let r.x = x + sep
+        //  Round when it is round: half the short side gives a standing pill, a
+        //  lying pill, a drop, a lens and a disc without saying it five times.
+        //  The camera's body is the only one that departs from it, because it
+        //  has a corner of its own.
+        let l.corner = min(d.w, d.h) / 2
+        let r.corner = min(r.w, r.h) / 2 + (4.9 - min(r.w, r.h) / 2) * cam
+        //  And the bridge between the two: a bell, like the meniscus one.
+        //  Maximal just when they touch —halfway through the level's trip, and
+        //  on joining into the drop— and nothing at the ends.
+        let eye.fusion = 6 * 4 * meter * (1 - meter) + 7 * merge * (1 - cam)
+
+        group {
+            clip inset 1 ellipse { at: x, y; radius: 23 }
+            move: gx, gy + look.y
+
+            //  The eyes, which here are everything: the level's track, the
+            //  countdown's drop, the camera's lens and body, and the red disc's
+            //  place. They darken when laid down because a white track with
+            //  mint on top does not read as a level; and they go when the drop
+            //  opens.
+            body {
+                color: mix(ink, #34373a, meter)
+                box { at: l.x, eye.y; size: d.w, d.h; corner: l.corner; blend: eye.fusion }
+                box { at: r.x, eye.y; size: r.w, r.h; corner: r.corner; blend: eye.fusion }
+            }
+
+            //  The level's fill is **the same track**, painted again and
+            //  clipped from the left. That way the mint has the exact shape of
+            //  the bar —with its ends— without drawing a single extra geometry.
+            //  In its own group: a clip reaches to the end of the group it lives in.
+            group {
+                clip inset 0 box { from: x - 9, eye.y - 4; size: 18 * vol_level, 8 }
+                body {
+                    color: mix(mint, #6b7280, sound.muted)
+                    opacity: meter
+                    box { at: l.x, eye.y; size: d.w, d.h; corner: l.corner; blend: eye.fusion }
+                    box { at: r.x, eye.y; size: r.w, r.h; corner: r.corner; blend: eye.fusion }
+                }
+            }
+
+            //  The aperture. The drop does not fade away: its centre is eaten
+            //  by a shape the colour of the ball, so what is left is a ring that
+            //  grows until there is no ring any more. A white number on a white
+            //  drop that melts comes out grey and murky; this comes out clean,
+            //  and besides it is the same sum as always: here everything is
+            //  distances, and a hole is one more shape.
+            body {
+                color: coal
+                ellipse { at: x, eye.y; radius: g.w / 2 * aperture * 1.25 }
+            }
+
+            //  The camera's hollow. The body is not drawn with a border: its
+            //  centre is eaten by a shape the colour of the ball, which is how
+            //  a hole is made when everything is distances. It grows from
+            //  nothing, so the eye empties instead of being swapped for a frame.
+            body {
+                color: coal
+                box { at: x, eye.y; size: 21.3 * cam, 14 * cam; corner: 3.3 }
+            }
+
+            //  And the lens on top of the hollow, which is the only thing the
+            //  hollow took away with it. Same shape and same place as the eye
+            //  underneath, so no crossing is seen: what is seen is an eye
+            //  emptying around itself.
+            body {
+                color: ink
+                opacity: cam
+                ellipse { at: x, eye.y; radius: eye.l / 2 }
+            }
+
+            //  The viewfinder. This one cannot be an eye —both have been used
+            //  already— so it is a separate mark, kept off the outline so they
+            //  do not join into a seam, and it comes in and out with the rest.
+            box {
+                at: x - 6.2, eye.y - 11.6
+                size: 5.7 * cam, 2.9 * cam
+                corner: 1.2
+                color: ink
+            }
+
+            //  The record disc, right on top of the left eye and its size: it
+            //  is not a shape that arrives, it is the eye turning red. And the
+            //  red lights up with `taping`, not with the press: the disc says
+            //  the recorder IS running, not that it has been asked to.
+            body {
+                color: mix(#34373a, #fc6753, red)
+                opacity: dot
+                ellipse { at: l.x, eye.y; radius: d.w / 2 }
+            }
+
+            //  The level's percentage, on the forehead. It rises the last three
+            //  pixels while appearing: it comes in with the bar instead of
+            //  lighting up on top.
+            text number(sound.volume * 100, 0, " %") {
+                at: x, y - 9 + (1 - meter) * 3
+                anchor: center
+                size: 9
+                weight: 600
+                color: ink
+                opacity: meter
+            }
+
+            //  The countdown's number, where her eyes were. Big enough to be
+            //  read from the other side of the desk, which is the whole reason
+            //  for it being here and not in a separate label: what is about to
+            //  start, she does.
+            group {
+                pivot: x, eye.y
+                scale: 1 + pop, 1 + pop
+                text number(max(left, 1), 0) {
+                    at: x, eye.y
+                    anchor: center
+                    size: 24.6
+                    weight: 300
+                    color: ink
+                    //  It comes in before the ring is completely gone: by the
+                    //  time the hole shows it, it is already there. If it came
+                    //  in afterwards, the aperture would open onto nothing.
+                    opacity: clamp(aperture * 1.7, 0, 1)
+                }
+            }
+        }
+    }
+
+    Face(cx, cy_actual, gaze.x * (1 - attentive) + 4 * attentive, gaze.y * (1 - attentive))
+
+    // ── the drops ────────────────────────────────────────────────
+    //  Up to four, one per category and **the most recent first**, going down
+    //  her right side from the shoulder. Nothing sticks out above her head:
+    //  up there is the edge of the screen. Each one's place is how many more
+    //  recent ones there are than it, and it travels to it with a spring
+    //  ALONG THE ARC —the angle is what is animated, not the x and the y—, so
+    //  when a new one arrives the others slide down the shoulder without
+    //  cutting through her.
+    repeat k in 1..5 {
+        prop slot.$k = 0 ~calm
+        prop shown.$k = 0 ~240ms
+        prop beat.$k = 0 ~lively
+        follow slot.$k = if(n.1 > 0 and last.1 > last.$k, 1, 0) + if(n.2 > 0 and last.2 > last.$k, 1, 0) + if(n.3 > 0 and last.3 > last.$k, 1, 0) + if(n.4 > 0 and last.4 > last.$k, 1, 0)
+        follow shown.$k = if(n.$k > 0 and not open, 1, 0)
+        let ang.$k = -24 + 26 * slot.$k
+        let gx.$k = cx + 31.7 * cos(ang.$k)
+        let gy.$k = cy_actual + 31.7 * sin(ang.$k)
+        group {
+            pivot: gx.$k, gy.$k
+            scale: shown.$k * (1 + beat.$k), shown.$k * (1 + beat.$k)
+            opacity: shown.$k
+            ellipse { at: gx.$k, gy.$k; radius: 7; color: mix(mix(mix(blue, lilac, k > 1.5), green, k > 2.5), amber, k > 3.5) }
+            text number(n.$k, 0) { at: gx.$k, gy.$k + 0.5; anchor: center; size: 8.5; weight: 700; color: #0a0c10; opacity: if(n.$k < 10, 1, 0) }
+            text "9+" { at: gx.$k, gy.$k + 0.5; anchor: center; size: 7.5; weight: 700; color: #0a0c10; opacity: if(n.$k < 10, 0, 1) }
+        }
+        //  The drop where something falls beats once, and its number with it. Nothing in a loop.
+        on landed while reading_cat == k { n.$k = n.$k + 1; last.$k = max(last.$k, arrival_seq); impulse beat.$k 5 }
+        on direct while cat == k { n.$k = n.$k + 1; last.$k = seq; impulse beat.$k 5 }
+    }
+
+    // ── the notice that arrives ──────────────────────────────────
+    //  From the centre of the card to the shoulder along two different curves:
+    //  sideways at a constant pace, and upwards fast. The path bends.
+    let arrival.w = 250 + (8.3 - 250) * mine
+    let arrival.h = 44 + (8.3 - 44) * mine
+    let arrival.x0 = cx + 23 + 14 + 125
+    let arrival.x = arrival.x0 + (cx + 31.7 * cos(-24) - arrival.x0) * mine + (1 - arrive) * 30
+    let arrival.y = cy_actual + (31.7 * sin(-24)) * (1 - (1 - mine) * (1 - mine))
+    body {
+        color: mix(#0c0f12, mix(mix(mix(blue, lilac, reading_cat > 1.5), green, reading_cat > 2.5), amber, reading_cat > 3.5), mine)
+        opacity: arrive
+        shadow: 0, 6, 14, 30%
+        box { at: arrival.x, arrival.y; size: arrival.w, arrival.h; corner: min(arrival.h / 2, 14 + (arrival.h / 2 - 14) * mine) }
+    }
+    group {
+        opacity: arrive * (1 - clamp(mine * 5, 0, 1))
+        box { at: arrival.x - 125 + 5, arrival.y; size: 3, 28; corner: 1.5; color: mix(mix(mix(blue, lilac, reading_cat > 1.5), green, reading_cat > 2.5), amber, reading_cat > 3.5) }
+        text who { at: arrival.x - 110, arrival.y - 8; anchor: left center; size: 11.5; weight: 600; color: #f6f6f5 }
+        text line { at: arrival.x - 110, arrival.y + 8; anchor: left center; size: 10.5; width: 190; lines: 1; color: #a9adb3 }
+        text "now" { at: arrival.x + 113, arrival.y - 8; anchor: right center; size: 9.5; color: #8b8f95 }
+    }
+
+    // ── the card ─────────────────────────────────────────────────
+    //  It grows from the ball: it is born in her place and stretches to its size.
+    let card.w = 560 * card
+    let card.h = 404 * card
+    let card.x = cx + 40 + card.w / 2
+    let card.y = cy_actual + card.h / 2 - 8
+
+    body {
+        color: #16181a
+        rim: 5%
+        shadow: 0, 18, 44, 46%
+        box card_box { at: card.x, card.y; size: card.w, card.h; corner: 22 * card }
+    }
+
+    //  What is inside, clipped to the card while it opens.
+    clip inset 2 box { at: card.x, card.y; size: card.w, card.h; corner: 22 * card }
+    group {
+        opacity: content
+        move: 0, (1 - content) * 10
+
+        let x0 = card.x - 248
+        let y0 = card.y - 172
+        text "MAREA" { at: x0, y0; anchor: left center; size: 9.5; weight: 600; color: ink; opacity: 35% }
+        text "Control center" { at: x0, y0 + 24; anchor: left center; size: 19; weight: 500; color: ink }
+
+        //  The sheet's two sliders: brightness and volume.
+        box { at: card.x - 176, card.y - 6; size: 192, 200; corner: 16; color: #1d2022 }
+        repeat k in 0..2 {
+            let sx = card.x - 224 + k * 96
+            box { at: sx, card.y - 26; size: 26, 140; corner: 13; color: #2a2e30 }
+            box { from: sx - 13, card.y - 6 - k * 24; size: 26, 50 + k * 24; corner: 13; color: mint }
+            ellipse { at: sx, card.y - 8 - k * 24; radius: 11; color: #eef3f0 }
+            text "{if(k == 0, 68, 35)} %" { at: sx, card.y + 68; anchor: center; size: 11; color: ink; opacity: 60% }
+        }
+
+        //  And the column of rows, as on the sheet: icon, title, what is going
+        //  on underneath, and the switch on the right.
+        text setting.1 = "Wi-Fi"
+        text setting.2 = "Bluetooth"
+        text setting.3 = "Focus"
+        text detail.1 = "Home"
+        text detail.2 = "Headphones"
+        text detail.3 = "25 min"
+        column rows { at: card.x + 24, card.y - 106; gap: 10
+            repeat k in 1..4 {
+                group {
+                    size: 232, 58
+                    prop glow = 0 ~140ms
+                    zone box row.$k { from: 0, 0; size: 232, 58; corner: 14; cursor: pointer }
+                    box { from: 0, 0; size: 232, 58; corner: 14; color: mix(#1d2022, #272c2e, glow) }
+                    ellipse { at: 28, 29; radius: 9; color: mint; opacity: 55% + glow * 25% }
+                    text setting.$k { at: 50, 22; anchor: left center; size: 12.5; color: ink }
+                    text detail.$k { at: 50, 38; anchor: left center; size: 10.5; color: ink; opacity: 42% }
+                    box { at: 202, 29; size: 34, 18; corner: 9; color: mix(#2f3436, mint, if(k < 3, 1, 0)) }
+                    ellipse { at: 202 + if(k < 3, 7, -7), 29; radius: 7; color: #eef3f0 }
+                    on enter row.$k { glow: 1 }
+                    on leave row.$k { glow: 0 }
+                }
+            }
+        }
+
+        //  At the bottom, what is playing.
+        box { at: card.x, card.y + 148; size: 512, 76; corner: 16; color: #1d2022 }
+        body {
+            gradient: radial card.x - 218, card.y + 148 radius 46, #7e9c8b, #2f4a3e
+            box { at: card.x - 218, card.y + 148; size: 56, 56; corner: 12 }
+        }
+        text "No Hurry" { at: card.x - 178, card.y + 140; anchor: left center; size: 12.5; color: ink }
+        text "Afternoon session" { at: card.x - 178, card.y + 158; anchor: left center; size: 10.5; color: ink; opacity: 42% }
+        //  Previous, pause and next. The triangles are paths: three points.
+        let by = card.y + 148
+        let bx1 = card.x + 120
+        let bx3 = card.x + 212
+        path { at: bx1 - 7, by - 7; color: ink; move 12, 0; line 12, 14; line 0, 7; close }
+        box { at: bx1 - 9, by; size: 3, 14; corner: 1.5; color: ink }
+        ellipse { at: card.x + 166, by; radius: 17; color: ink; opacity: 92% }
+        box { at: card.x + 162, by; size: 3.5, 13; corner: 1.75; color: #16181a }
+        box { at: card.x + 170, by; size: 3.5, 13; corner: 1.75; color: #16181a }
+        path { at: bx3 - 5, by - 7; color: ink; move 0, 0; line 12, 7; line 0, 14; close }
+        box { at: bx3 + 9, by; size: 3, 14; corner: 1.5; color: ink }
+    }
+
+    // ── opening and closing ──────────────────────────────────────
+    //  When opening the geometry leads and the content comes in behind. When
+    //  closing, the other way round: 50 ms of fade and then 210 of folding up,
+    //  which is what makes it look as if she swallows it and not as if it
+    //  switches off.
+    on change open while open {
+        card: 1 ~290ms
+        content: 1 ~200ms after 90ms
+    }
+    on change open while not open {
+        content: 0 ~50ms
+        card: 0 ~210ms after 50ms
+    }
+
+    // ── the level ────────────────────────────────────────────────
+    //  It fires with whatever changes the volume, wherever it comes from. And
+    //  it does not happen while sunk: the volume key is not aimed at her.
+    follow vol_level = sound.volume
+    on change sound.volume while out > 0.9 { meter: 1 }
+    //  It holds 1.1 s after the LAST change, not after each one: a burst of
+    //  key presses is one continuous reading and not a blink per step. This is
+    //  what pleamar could not say and now says: `on still`.
+    on still sound.volume for 1.1s { meter: 0 }
+
+    // ── the life of a notice ─────────────────────────────────────
+    //  A notice brings her out if she is sunk, and then the card waits for her
+    //  to have come out: separating and presenting at the same time buried one
+    //  thing in the other.
+    on notice while phase == 0 and out > 0.9 { reading_cat = cat; phase = 1; seq = seq + 1; arrival_seq = seq; mark = mark + 1; needed = true; wanted = true; play startle; arrive: 1 ~220ms }
+    on notice while phase == 0 and out <= 0.9 { reading_cat = cat; phase = 1; seq = seq + 1; arrival_seq = seq; needed = true; wanted = true; play startle; arrive: 1 ~220ms after 560ms }
+    on change out > 0.9 while phase == 1 { mark = mark + 1 }
+    //  With one already on screen, the one arriving goes straight to its drop.
+    //  (The stacked burst —three in view and «+N more»— is still to be done.)
+    on notice while phase != 0 { seq = seq + 1; emit direct }
+
+    //  3.2 s to read it, which the pointer on top stops: when it leaves, it
+    //  counts again. It is `on still` again: «when it has gone that long
+    //  without anything starting the reading over».
+    zone box notice_zone { at: arrival.x0, cy_actual; size: 250, 44; corner: 14; cursor: pointer; active: phase == 1 }
+    on enter notice_zone { hovered = true }
+    on leave notice_zone { hovered = false; mark = mark + 1 }
+    on press notice_zone { emit tray }
+    on still mark for 3.2s while phase == 1 and not hovered { phase = 2; mine: 1 ~220ms }
+    on change mine > 0.97 while phase == 2 and mine > 0.97 { emit landed }
+    on landed {
+        phase = 0
+        wanted = false
+        arrive: 0 ~16ms
+        mine: 0 ~16ms after 40ms
+        play gulp
+    }
+
+    // ── the countdown ────────────────────────────────────────────
+    //  It happens INSIDE the ball and BEFORE starting the recorder, so it does
+    //  not come out in the video. And the number never gets to show zero: zero
+    //  is not a count, it is the moment to start.
+    //  On leaving it goes back to zero, and so coming in is ALWAYS a change
+    //  from 0 to 3: the three gets its bounce like the two and the one, without
+    //  a separate rule that later fires twice.
+    on change face while face != count { left = 0 }
+    on change face while face == count { left = 3 }
+    every 1s while face == count { left = left - 1 }
+    //  The bounce DECREASES with the count: three knocks, each smaller, so
+    //  that the last one lands silently just as the recorder starts. A push to
+    //  the spring's speed, not an animation to a size: that is why each knock
+    //  starts from where the previous one was instead of cutting it off, and
+    //  why the amount can depend on the count —which is what pleamar could not
+    //  do: `impulse` only accepted a written number—.
+    on change left while left > 0 { impulse pop left * 2.5 }
+    //  Only if it really was counting: on leaving the countdown `left` goes
+    //  back to zero, and without this stopping halfway through the countdown
+    //  sent her off to record.
+    on change left while left == 0 and face == count { face = rec }
+
+    // ── recording: the corner ────────────────────────────────────
+    //  She travels along the edges: she leaves through the top with the same
+    //  gesture as the photo and comes in through the corner, on another
+    //  surface. Marea hides one window and shows another; here she really
+    //  leaves and really arrives, and in between there is no frame where she
+    //  is in both places or in neither while you watch her.
+    event record
+    event stop
+    fact corner = false
+    //  Which of the four. The contract says the one that falls OUTSIDE what is
+    //  recorded is chosen; who knows what is being recorded is the logic, so
+    //  here it only obeys. Recording the whole screen there is none left and
+    //  she will come out in the video, which is the deal of this mode.
+    fact nook: top_right | top_left | bottom_right | bottom_left = top_right
+    //  0 off the screen, 1 tucked into the corner. Lively: she comes in with a
+    //  small bounce against the angle, which is what makes her «click into
+    //  place».
+    prop tuck = 0 ~lively
+    follow tuck = if(corner, 1, 0)
+
+    on record { purpose = nook; play retire }
+    //  «She already counts from the corner she is going to take».
+    on gone while purpose == nook {
+        away: 1 ~16ms
+        corner = true
+        face = count
+    }
+    //  The recorder is started by the logic, and it is the logic that says
+    //  `taping`. Here there is no recorder, so a wait plays its part: 300 ms
+    //  with the recording face on. What matters is that they are TWO facts:
+    //  the disc comes with the face, and the red with the recorder.
+    on still face for 300ms while face == rec { taping = true }
+    on stop {
+        taping = false
+        corner = false
+        face = eye
+        away: 0 ~lively after 300ms
+    }
+
+    // ── what responds to the mouse ───────────────────────────────
+    //  Underneath her: the press belongs to the topmost zone.
+    zone box notecard_area { from: cx - 30, cy_actual - 40; size: 200, 80; active: note }
+    zone box body_zone { at: cx, cy_actual; size: 2 * r, 2 * r + 30; corner: r; cursor: pointer }
+    //  Anything that needs her brings her out; and she sinks back after 2.6 s
+    //  of grace, which is what the contract calls grace and here is said as it is.
+    on enter body_zone { needed = true; wanted = true }
+    //  180 ms of waiting before coming out: passing over her is not asking the
+    //  time. And 300 of grace on leaving, because the gap between her and the
+    //  note is real and must not be lost while crossing it. It goes if the
+    //  panel opens.
+    zone box notecard_zone { at: notecard.x, cy_actual; size: 104, 56; corner: 13; cursor: pointer; active: notecard > 0.8 }
+    on hover body_zone for 180ms while not open { note = true }
+    on away notecard_area for 300ms { note = false }
+    on change open while open { note = false }
+    on press notecard_zone { emit calendar }
+    //  A single grace clock for everything that needs her —the pointer, the
+    //  note, the card—: 2.6 s from when the LAST one stops needing her. With
+    //  one `away` per zone, leaving her towards the note already counted, and
+    //  she sank with the time in her hand.
+    fact wanted = false
+    on leave body_zone while not note and not open { wanted = false }
+    on change note while not note { wanted = false }
+    on change open while not open { wanted = false }
+    on still wanted for 2.6s while not wanted and not note and not open { needed = false }
+    //  It closes on leaving the whole set, with 320 ms of grace for a detour.
+    zone box card_area { at: cx + card * 300, cy_actual + card.h / 2 - 8; size: 200 + card.w + 80, 2 * r + 30 + card.h; corner: 30; active: open }
+    on away card_area for 320ms { open = false }
+    //  The click opens; brushing past does not. Before, 450 ms of brushing were
+    //  enough for a whole panel to cover what you were reading.
+    on press body_zone { press: 1; toggle open }
+    on release body_zone { press: 0 }
+    // ── the corner ───────────────────────────────────────────────
+    //  82 % of her peeks out: with a bit more than half the red eye spent its
+    //  time behind the edge, which is exactly the only thing this mode is for.
+    //  46 × 0.82 − 23 = 14.7: that far from the angle is where her centre sits.
+    surface nook {
+        //  Wide for the panel that comes out of her when you get close, with its shadow.
+        size: 260, 120
+        //  The edge is decided by a fact, and it changes while running:
+        //  layer-shell lets a live surface move corner without being created
+        //  again. Before, this needed four surfaces —it was pleamar's
+        //  limitation S13—.
+        anchor: nook
+        level: overlay
+        screens: "HDMI-A-1"
+        //  Open while any of her is left inside: that way she slides out
+        //  instead of vanishing with the window.
+        open: tuck > 0.01
+
+        //  Where she falls inside her surface, depending on which angle she is
+        //  stuck to. She leaves through the same angle she came in by: what
+        //  hides her is the nook, not a fixed direction.
+        let wing.r = if(nook == top_right or nook == bottom_right, 1, 0)
+        let wing.b = if(nook == bottom_right or nook == bottom_left, 1, 0)
+        let rx = 14.7 + wing.r * (260 - 29.4) + (1 - tuck) * 44 * (wing.r * 2 - 1)
+        let ry = 14.7 + wing.b * (120 - 29.4) + (1 - tuck) * 44 * (wing.b * 2 - 1)
+
+        //  The gaze, folded over her visible side: looking towards her own
+        //  hidden half is looking nowhere. Stuck to the right she only looks
+        //  inwards, and at the top only downwards.
+        prop rgaze.x = 0 ~gentle
+        prop rgaze.y = 0 ~gentle
+        look rgaze.x, rgaze.y at rx, ry reach 6, 3.5 within 260
+        let aim.x = if(wing.r, min(rgaze.x, 0), max(rgaze.x, 0))
+        let aim.y = if(wing.b, min(rgaze.y, 0), max(rgaze.y, 0))
+
+        //  The clock and «Stop», which come out OF her when you get close. It
+        //  is not a panel that appears beside her: it is the same body, which
+        //  stretches into the screen like a drop and separates —with its neck
+        //  halfway— until it sits 8 px away. Marea fades it in in 150 ms; here
+        //  it is born.
+        fact nearby = false
+        prop near = 0 ~lively
+        follow near = if(nearby and tuck > 0.9, 1, 0)
+        let p.w = 124 * near
+        //  And the panel comes out on the inner side of the screen, not always
+        //  towards the left.
+        let p.x = rx + (23 + 8 + 62) * near * (1 - wing.r * 2)
+        let p.y = ry
+        //  How long it has been going. The renderer counts it: a second is a
+        //  second even if the logic is busy starting a recorder.
+        fact secs = 0
+        on change taping while taping { secs = 0 }
+        every 1s while taping { secs = secs + 1 }
+
+        //  The grace zone goes UNDER everything else: the press belongs to the
+        //  topmost zone, and declared at the end it kept the click on «Stop»
+        //  and the one on her.
+        zone box around { at: (p.x + rx) / 2, ry; size: abs(rx - p.x) + 140, 100; active: nearby }
+
+        body {
+            color: coal
+            rim: 6%
+            shadow: 0, 7, 16, 34%
+            box { at: p.x, p.y; size: p.w, 42 * clamp(near * 3, 0, 1); corner: 13 }
+            ellipse her { at: rx, ry; radius: 23; scale: sx + press * 0.04, sy - press * 0.05; blend: 16 * 4 * near * (1 - near) }
+        }
+        group {
+            //  It comes in late: until the panel has come away from her, the
+            //  button would sit under her face.
+            opacity: clamp(near * 5 - 4, 0, 1)
+            move: (1 - near) * 14, 0
+            text "{secs, time}" { at: p.x - 46, p.y; anchor: left center; size: 13; weight: 600; color: ink }
+            prop hot = 0 ~140ms
+            box { at: p.x + 22, p.y; size: 64, 26; corner: 8; color: mix(#e0655a, #f0796a, hot) }
+            text "Stop" { at: p.x + 22, p.y; anchor: center; size: 12; weight: 600; color: #060000 }
+            zone box stop_btn { at: p.x + 22, p.y; size: 64, 26; corner: 8; cursor: pointer; active: near > 0.8 }
+            on enter stop_btn { hot: 1 }
+            on leave stop_btn { hot: 0 }
+            on press stop_btn { emit stop }
+        }
+        //  The face goes a little inwards, so that the disc stays in view.
+        Face(rx - 5 * (wing.r * 2 - 1), ry + 4 * (1 - wing.b * 2), aim.x, aim.y)
+
+        //  Pressing her stops it.
+        zone box her_zone { at: rx, ry; size: 46, 46; corner: 23; cursor: pointer }
+        on press her_zone { press: 1; emit stop }
+        on release her_zone { press: 0 }
+        //  Getting close brings it out; and it folds away with 320 ms of grace,
+        //  because the gap between her and the panel is real and must not be
+        //  lost while crossing it.
+        on enter her_zone { nearby = true }
+        on away around for 320ms { nearby = false }
+        on stop { nearby = false }
+    }
+}

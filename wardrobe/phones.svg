@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Streamer headphones for a 46 px ball, its centre at 32,32. Each layer a
+       group with its id: the scene tints the led (mint; coral while the
+       screen is shared) and draws the rest as it is. -->
+  <g id="band">
+    <path d="M4.5 33 A27.5 27.5 0 0 1 59.5 33 L55.2 33 A23.2 23.2 0 0 0 8.8 33 Z" fill="#2a2e33"/>
+    <path d="M9.6 24 A24.4 24.4 0 0 1 54.4 24" fill="none" stroke="#3a4046" stroke-width="1.2" stroke-linecap="round"/>
+  </g>
+  <g id="cups">
+    <rect x="1.5" y="24" width="10.5" height="21" rx="5" fill="#1d2024"/>
+    <rect x="52" y="24" width="10.5" height="21" rx="5" fill="#1d2024"/>
+    <rect x="9.5" y="26.5" width="3.2" height="16" rx="1.6" fill="#34393f"/>
+    <rect x="51.3" y="26.5" width="3.2" height="16" rx="1.6" fill="#34393f"/>
+  </g>
+  <g id="accent">
+    <rect x="3.2" y="29" width="2.2" height="11" rx="1.1" fill="#9ed6bd"/>
+    <rect x="58.6" y="29" width="2.2" height="11" rx="1.1" fill="#9ed6bd"/>
+  </g>
+  <g id="boom">
+    <path d="M5.5 43 C5.2 51.5 12.5 55.8 21.5 54.2 L21.2 52.1 C13.6 53.3 7.9 50 8.1 43 Z" fill="#2a2e33"/>
+    <rect x="19.6" y="50.6" width="6.8" height="5.2" rx="2.6" fill="#1d2024"/>
+  </g>
+  <g id="led">
+    <circle cx="25.2" cy="53.2" r="1.35" fill="#9ed6bd"/>
+  </g>
+</svg>

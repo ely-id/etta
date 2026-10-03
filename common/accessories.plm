@@ -1,0 +1,113 @@
+// The ball's accessories: the PHYSICS, which is the only thing that is shared.
+//
+// An accessory is not a drawing stuck on top. It is a separate piece, and what
+// makes it what it is is not where it sits: it is **how it chases**. A hat rests,
+// glasses are stuck on, a mug keeps her company, and those three things do not
+// differ in the height they are drawn at but in the way they arrive.
+//
+// Everything else comes free from that: the «aha!» is not a special case of
+// anything, it is a spring's overshoot crossing a threshold; «in the air» is not
+// asked, it is the piece not being where the body is; and the angle is not
+// animated, it **is** the lag. Two numbers —stiffness and damping— give the lag,
+// the overshoot and the settling all at once, and behave the same at 60 as at
+// 144 Hz.
+//
+// The piece goes inside the copy, so this does not know what she is wearing: it
+// works the same for a hat, for a crown or for whatever you draw this afternoon.
+
+library Accessories {
+    //  Little braking: it arrives late and overshoots. That is a hat's character.
+    spring perch = 420, 26
+    //  Softer still: what keeps her company floats even if she does not move.
+    spring float = 62, 9
+
+    // ── on top: it rests ─────────────────────────────────────────
+    //  «The ball follows the cursor; the hat follows the ball.» And if what she
+    //  does to follow you is to LOOK —this ball does not turn its head, it turns
+    //  by looking—, that is what the hat has to follow: the gaze enters the
+    //  target with its own factor, or the hat stays still exactly when it is
+    //  most expected to move.
+    component Perched(x: number, y: number, aim: number, worn: number, lift: number = 30, side: number = 3.4) {
+        size: 0, 0
+        //  Where it should be.
+        let mx = x + aim * side
+        let my = y - lift
+        //  And where the spring goes, which is something else: it arrives late,
+        //  overshoots and settles. The two numbers are the piece's character.
+        prop px = 0 ~perch
+        prop py = 0 ~perch
+        follow px = mx
+        follow py = my
+        //  The lag is what gives it life, but with a cap: a hat drags a little
+        //  over her head, it does not stay a hundred pixels away from it when
+        //  she crosses half the screen. The spring is still the spring; what is
+        //  bounded is how much it shows.
+        let dx = clamp(mx - px, -16, 16)
+        let dy = clamp(my - py, -12, 12)
+        //  Where it is painted. It is a computation and not a spring: a one-frame
+        //  spring here cost 33 px of lag at 1 200 px/s and spoiled the measurement.
+        //  That it keeps up and that it arrives late are checked with `px` and
+        //  `x`, which are the two things that really have to be watched.
+        //  When not worn, it waits 44 px higher: putting it on is letting it drop.
+        let gx = mx - dx
+        let gy = my - dy + (1 - worn) * 44
+        //  And the «aha!» is not a special case either: it is the OVERSHOOT
+        //  crossing a threshold. When the spring goes past its place by more than
+        //  7 px —it only happens if it came flying—, the piece gives a start.
+        //  Nothing to program: it was already there, it only had to be looked at.
+        prop aha = 0 ~lively
+        on change dx > 7 while dx > 7 { impulse aha 7 }
+        group {
+            opacity: worn
+            pivot: gx, gy
+            //  And the angle is not animated: it **is** the lag. If it does not
+            //  arrive late, it does not tilt, and that is exactly what is wanted.
+            rotate: clamp(dx, -9, 9) * 1.5deg
+            scale: 1 + aha * 0.05, 1 + aha * 0.05
+            children { move: gx, gy }
+        }
+    }
+
+    // ── on the face: stuck on ────────────────────────────────────
+    //  It chases nothing, and that is why it goes here: hanging from her body,
+    //  the turn, the squash and the jump reach it for free. The lag, which is
+    //  what gives a hat life, on glasses would mean they are slipping off.
+    component Pinned(x: number, y: number, turn: number, ex: number, ey: number, worn: number) {
+        size: 0, 0
+        group {
+            opacity: worn
+            pivot: x, y
+            rotate: turn
+            scale: ex, ey
+            children { move: x, y }
+        }
+    }
+
+    // ── beside her: it keeps her company ─────────────────────────
+    //  It neither rests nor is stuck on: it **keeps her company**, which is
+    //  staying behind. It chases the height with a soft spring, it takes its
+    //  angle from the lag —like the hat, because it is the same idea— and it
+    //  floats even if she does not move, which is what separates «keeping
+    //  company» from «being beside».
+    component Tagalong(x: number, y: number, worn: number, sway: number, apart: number = 44) {
+        size: 0, 0
+        let mx = x + apart
+        let my = y + 6 + sway * 3
+        prop px = 0 ~float
+        prop py = 0 ~float
+        follow px = mx
+        follow py = my
+        //  It keeps company with more leeway than a hat: what goes beside her can
+        //  stay further behind without looking broken.
+        let dx = clamp(mx - px, -26, 26)
+        let dy = clamp(my - py, -20, 20)
+        let gx = mx - dx
+        let gy = my - dy + (1 - worn) * 18
+        group {
+            opacity: worn
+            pivot: gx, gy
+            rotate: clamp(dy, -7, 7) * 1.2deg
+            children { move: gx, gy }
+        }
+    }
+}

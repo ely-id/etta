@@ -1,0 +1,368 @@
+#!/usr/bin/env node
+//  Lo que te queda en cada cupo de agente.
+//
+//  Claude Code y Codex te cortan por ventanas de tiempo y cada uno lo cuenta en
+//  su rincón del disco. Esto los lee a los dos y los deja en la misma forma.
+//
+//  De dónde sale cada uno:
+//
+//    · Claude → se le pregunta al servidor con el token que Claude Code ya
+//      tiene en disco. Es una lectura de tu propia cuenta, la misma que hace su
+//      `/usage`, y no gasta cupo. Si no se puede —sin red, sin token, caducado—
+//      se cae a lo último que la herramienta dejó escrito en `~/.claude.json`.
+//    · Codex  → el último `rate_limits` de los rollouts de `~/.codex/sessions`,
+//      que se reescribe en cada turno. Eso es local, y se dice que lo es.
+//
+//  Tres reglas que vienen de haber leído el lector de k4 y ver dónde se rompe:
+//
+//    · Un número que no está NO es un cero. `used_percent` ausente, nulo, no
+//      finito o fuera de 0..100 sale como desconocido, y quien pinte decidirá
+//      qué enseñar. Un cupo lleno y un cupo del que no sabemos nada no se
+//      parecen en nada, y convertirlos en el mismo 0 % es mentir con confianza.
+//    · Cada agente dice POR DÓNDE llegó su cifra y CUÁNDO la observó el
+//      proveedor. No cuándo la leímos nosotros: refrescar un fichero local no
+//      es preguntarle a nadie, y presentar un dato de hace dos horas como si
+//      acabara de llegar es el error que hace inútil un módulo de límites.
+//    · Pasada la hora de renovación, la ventana queda «pendiente». No se llena
+//      sola al 100 %: eso sería inventarse una observación que nadie ha hecho.
+//
+//  Imprime una línea de JSON, siempre.
+
+import { readFileSync, writeFileSync, mkdirSync, openSync, readSync, closeSync,
+         statSync, readdirSync, existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { join, dirname } from "node:path";
+
+const CLAUDE_USO = "https://api.anthropic.com/api/oauth/usage";
+const CLAUDE_ESPERA = 6000;
+//  La barra sondea cada 20 s con el panel abierto; al servidor se va una vez
+//  por minuto como mucho.
+const CLAUDE_CACHE_S = 60;
+const CODEX_ROLLOUTS = 8;
+const CODEX_COLA = 256 * 1024;
+
+const ahora = () => Date.now() / 1000;
+
+function salir(objeto, codigo = 0) {
+    process.stdout.write(JSON.stringify(objeto) + "\n");
+    process.exit(codigo);
+}
+
+function estado() {
+    const base = process.env.XDG_STATE_HOME?.startsWith("/")
+        ? process.env.XDG_STATE_HOME : join(homedir(), ".local", "state");
+    return join(base, "proyecto-marea");
+}
+
+function primero(rutas, comprueba = existsSync) {
+    for (const r of rutas) if (r && comprueba(r)) return r;
+    return null;
+}
+
+function leerJson(ruta) {
+    try { return JSON.parse(readFileSync(ruta, "utf8")); } catch (e) { return null; }
+}
+
+//  Un porcentaje, o desconocido. Nunca un cero de consolación.
+function pct(v) {
+    const n = typeof v === "string" ? Number(v) : v;
+    if (typeof n !== "number" || !Number.isFinite(n)) return null;
+    if (n < 0 || n > 100) return null;
+    return n;
+}
+
+//  Un instante ISO-8601 en segundos, o null.
+function epoca(iso) {
+    if (typeof iso === "number" && Number.isFinite(iso)) return iso;
+    if (typeof iso !== "string" || iso.length === 0) return null;
+    const t = Date.parse(iso);
+    return Number.isNaN(t) ? null : t / 1000;
+}
+
+function enElCamino(binario) {
+    const rutas = (process.env.PATH || "").split(":");
+    return rutas.some((d) => d && existsSync(join(d, binario)));
+}
+
+// ── Claude Code ──────────────────────────────────────────────────
+
+const CLAUDE_JSONS = [
+    process.env.CLAUDE_CONFIG_DIR ? join(process.env.CLAUDE_CONFIG_DIR, ".claude.json") : null,
+    join(homedir(), ".claude.json"),
+];
+const CLAUDE_CREDENCIALES = [
+    process.env.CLAUDE_CONFIG_DIR ? join(process.env.CLAUDE_CONFIG_DIR, ".credentials.json") : null,
+    join(homedir(), ".claude", ".credentials.json"),
+];
+const PLANES = {
+    default_claude_pro: "Pro",
+    default_claude_max_5x: "Max 5×",
+    default_claude_max_20x: "Max 20×",
+};
+const NOMBRES = {
+    session: ["sesion", "5 horas", 300],
+    weekly_all: ["semanal", "Semanal", 10080],
+};
+
+function limitesClaude(uso) {
+    const fuera = [];
+    for (const lim of (uso && uso.limits) || []) {
+        if (!lim || typeof lim !== "object") continue;
+        let id, nombre, minutos = null;
+        if (NOMBRES[lim.kind]) [id, nombre, minutos] = NOMBRES[lim.kind];
+        else {
+            //  Un cupo con dueño: el de un modelo concreto. Se llama como lo
+            //  llama quien lo gasta.
+            const ambito = lim.scope || {};
+            const modelo = ambito.modelo || ambito.model || {};
+            const titulo = modelo.display_name || modelo.id;
+            if (!titulo) continue;
+            id = String(titulo).toLowerCase().replace(/\s+/g, "-");
+            nombre = String(titulo);
+        }
+        fuera.push({
+            id, nombre, duracionMin: minutos,
+            usadoPct: pct(lim.percent),
+            renuevaEn: epoca(lim.resets_at),
+            activo: lim.is_active === true,
+        });
+    }
+    return fuera;
+}
+
+function tokenClaude() {
+    //  No se refresca aquí ni de lejos: refrescarlo ROTA el token, y el
+    //  siguiente que lo intente —la propia herramienta, a mitad de una sesión
+    //  tuya— se encuentra con que el suyo ya no vale.
+    const ruta = primero(CLAUDE_CREDENCIALES);
+    if (!ruta) return null;
+    const oauth = (leerJson(ruta) || {}).claudeAiOauth || {};
+    const caduca = oauth.expiresAt;
+    if (typeof caduca === "number" && caduca / 1000 <= ahora()) return null;
+    return oauth.accessToken || null;
+}
+
+async function usoEnVivo() {
+    const cache = join(estado(), "reservas-claude.json");
+    const guardado = leerJson(cache);
+    if (guardado && ahora() - (guardado.cuando || 0) < CLAUDE_CACHE_S)
+        return { uso: guardado.uso, cuando: guardado.cuando };
+
+    const tok = tokenClaude();
+    if (!tok) return null;
+
+    let uso = null;
+    try {
+        const corte = AbortSignal.timeout(CLAUDE_ESPERA);
+        const r = await fetch(CLAUDE_USO, {
+            headers: {
+                Authorization: "Bearer " + tok,
+                "anthropic-beta": "oauth-2025-04-20",
+                "User-Agent": "marea-reservas/1.0",
+            },
+            signal: corte,
+        });
+        if (!r.ok) return null;
+        uso = await r.json();
+    } catch (e) { return null; }
+
+    if (!uso || typeof uso !== "object" || !("limits" in uso)) return null;
+
+    const cuando = ahora();
+    try {
+        mkdirSync(dirname(cache), { recursive: true });
+        //  Se guarda la RESPUESTA, nunca el token.
+        writeFileSync(cache, JSON.stringify({ cuando, uso }));
+    } catch (e) { /* sin caché se sigue funcionando, solo se pregunta más */ }
+    return { uso, cuando };
+}
+
+async function leeClaude(conRed) {
+    const ruta = primero(CLAUDE_JSONS);
+    if (!ruta) return null;
+    const datos = leerJson(ruta);
+    if (!datos) return null;
+
+    const cuenta = datos.oauthAccount || {};
+    const tier = cuenta.userRateLimitTier || cuenta.organizationRateLimitTier;
+    const plan = PLANES[tier] || tier || "";
+
+    if (conRed) {
+        const vivo = await usoEnVivo();
+        if (vivo) return { plan, origen: "servidor", observadoEn: vivo.cuando,
+                           limites: limitesClaude(vivo.uso) };
+    }
+
+    //  El respaldo. Se refresca de tarde en tarde —medido en k4: decía 6 %
+    //  cuando el servidor decía 24 %, con dos horas de retraso— así que aquí
+    //  importa más que nunca decir de cuándo es.
+    const cache = datos.cachedUsageUtilization;
+    if (!cache || typeof cache !== "object")
+        return { plan, origen: null, observadoEn: null, limites: [],
+                 razon: "sin-datos" };
+    const fetched = cache.fetchedAtMs;
+    return {
+        plan, origen: "cache",
+        observadoEn: typeof fetched === "number" ? fetched / 1000 : null,
+        limites: limitesClaude(cache.utilization || {}),
+    };
+}
+
+// ── Codex ────────────────────────────────────────────────────────
+
+const CODEX_SESIONES = [
+    process.env.CODEX_HOME ? join(process.env.CODEX_HOME, "sessions") : null,
+    join(homedir(), ".codex", "sessions"),
+];
+
+function rollouts(carpeta) {
+    const fuera = [];
+    const anda = (dir) => {
+        let entradas = [];
+        try { entradas = readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
+        for (const e of entradas) {
+            const r = join(dir, e.name);
+            if (e.isDirectory()) anda(r);
+            else if (e.name.startsWith("rollout-") && e.name.endsWith(".jsonl")) {
+                try { fuera.push([statSync(r).mtimeMs, r]); } catch (err) { /* se fue */ }
+            }
+        }
+    };
+    anda(carpeta);
+    fuera.sort((a, b) => b[0] - a[0]);
+    return fuera.slice(0, CODEX_ROLLOUTS).map(([, r]) => r);
+}
+
+function ultimoLimite(ruta) {
+    //  El final del fichero basta: el `rate_limits` que vale es el último, y un
+    //  rollout largo son megas que no hace falta parsear enteros.
+    let trozo = "";
+    try {
+        const est = statSync(ruta);
+        const desde = Math.max(0, est.size - CODEX_COLA);
+        const fd = openSync(ruta, "r");
+        const buf = Buffer.alloc(Math.min(CODEX_COLA, est.size));
+        const leidos = readSync(fd, buf, 0, buf.length, desde);
+        closeSync(fd);
+        trozo = buf.subarray(0, leidos).toString("utf8");
+    } catch (e) { return null; }
+
+    let lineas = trozo.split("\n");
+    //  Si se ha cortado por el medio, la primera línea del trozo está mutilada.
+    if (lineas.length > 1 && !trozo.startsWith("{")) lineas = lineas.slice(1);
+
+    for (let i = lineas.length - 1; i >= 0; i--) {
+        if (!lineas[i].includes('"rate_limits"')) continue;
+        let reg = null;
+        try { reg = JSON.parse(lineas[i]); } catch (e) { continue; }
+        const info = (reg && reg.payload && reg.payload.rate_limits) || null;
+        if (info && typeof info === "object") return { info, cuando: epoca(reg.timestamp) };
+    }
+    return null;
+}
+
+//  El nombre lo pone la duración, que es lo que uno entiende: Codex dice
+//  «10080 minutos» donde piensas «la semana».
+function nombraVentana(minutos) {
+    if (!Number.isFinite(minutos) || minutos <= 0) return null;
+    if (minutos >= 10080) return "Semanal";
+    if (minutos >= 1440) return Math.round(minutos / 1440) + " días";
+    if (minutos >= 60) return Math.round(minutos / 60) + " horas";
+    return Math.round(minutos) + " min";
+}
+
+function ventanaCodex(datos, id, observadoEn) {
+    if (!datos || typeof datos !== "object") return null;
+    const minutos = Number(datos.window_minutes);
+    const nombre = nombraVentana(minutos) || id;
+    //  Codex da los segundos que faltan, no el instante. Se convierte contra el
+    //  momento de la observación y no contra ahora: si el dato es de hace media
+    //  hora, la renovación también es media hora más cerca.
+    const faltan = Number(datos.resets_in_seconds);
+    const renueva = Number.isFinite(faltan) && observadoEn ? observadoEn + faltan
+        : epoca(datos.resets_at);
+    return {
+        id, nombre,
+        duracionMin: Number.isFinite(minutos) && minutos > 0 ? minutos : null,
+        usadoPct: pct(datos.used_percent),
+        renuevaEn: renueva,
+        //  Codex no dice cuál está en curso.
+        activo: true,
+    };
+}
+
+function leeCodex() {
+    const carpeta = primero(CODEX_SESIONES, (r) => {
+        try { return statSync(r).isDirectory(); } catch (e) { return false; }
+    });
+    if (!carpeta) return null;
+
+    let hallazgo = null;
+    for (const r of rollouts(carpeta)) {
+        hallazgo = ultimoLimite(r);
+        if (hallazgo) break;
+    }
+    //  Local, y se dice. El lector de k4 no lo marcaba y su procedencia se
+    //  perdía por el camino.
+    if (!hallazgo) return { origen: "local", observadoEn: null, limites: [],
+                            razon: "sin-datos" };
+
+    const { info, cuando } = hallazgo;
+    const limites = [ventanaCodex(info.primary, "primaria", cuando),
+                     ventanaCodex(info.secondary, "secundaria", cuando)].filter(Boolean);
+    const creditos = info.credits || {};
+    const agente = {
+        plan: info.plan_type ? String(info.plan_type).replace(/^./, (c) => c.toUpperCase()) : "",
+        origen: "local", observadoEn: cuando, limites,
+    };
+    //  Los créditos aparte, y solo si los hay: nunca mezclados con el
+    //  porcentaje incluido.
+    if (creditos.unlimited === true) agente.creditos = "sin-limite";
+    else if (creditos.has_credits === true && creditos.balance !== undefined)
+        agente.creditos = String(creditos.balance);
+    return agente;
+}
+
+// ── el registro ──────────────────────────────────────────────────
+
+const AGENTES = [
+    { id: "claude", nombre: "Claude Code", binario: "claude", lee: leeClaude, red: true },
+    { id: "codex", nombre: "Codex", binario: "codex", lee: leeCodex, red: false },
+];
+
+const conRed = !process.argv.includes("--sin-red");
+const fuera = [];
+for (const a of AGENTES) {
+    //  Sin el programa no hay tarjeta: un agente que no está instalado no
+    //  merece una tarjeta vacía diciendo que no tiene datos.
+    if (!enElCamino(a.binario)) continue;
+    let datos = null;
+    try { datos = a.red ? await a.lee(conRed) : a.lee(); }
+    catch (e) { datos = { origen: null, observadoEn: null, limites: [], razon: "error" }; }
+    if (datos === null) continue;
+    //  Pasada la hora, la ventana queda pendiente de confirmar. No se llena
+    //  sola: eso sería inventarse una observación que nadie ha hecho.
+    for (const l of datos.limites || [])
+        l.pendiente = Number.isFinite(l.renuevaEn) && l.renuevaEn <= ahora();
+    fuera.push({ id: a.id, nombre: a.nombre, ...datos });
+}
+
+//  `--lines`: the same, one record per line and fields split by a tab, for
+//  whoever reads it without a JSON parser (marea-plm's Luau logic).
+//    now <tab> seconds
+//    agent <tab> id <tab> name <tab> plan <tab> origin <tab> observedAt
+//    limit <tab> agent id <tab> name <tab> minutes <tab> used % <tab> renewsAt <tab> active <tab> pending
+//  An unknown number is an empty field, never a zero.
+if (process.argv.includes("--lines")) {
+    const campo = (v) => v === null || v === undefined || (typeof v === "number" && !Number.isFinite(v))
+        ? "" : String(v).replace(/[\t\n]/g, " ");
+    const lineas = [["now", Math.round(ahora())]];
+    for (const a of fuera) {
+        lineas.push(["agent", a.id, a.nombre, a.plan, a.origen, a.observadoEn]);
+        for (const l of a.limites || [])
+            lineas.push(["limit", a.id, l.nombre, l.duracionMin, l.usadoPct, l.renuevaEn, l.activo === false ? 0 : 1, l.pendiente ? 1 : 0]);
+    }
+    process.stdout.write(lineas.map((l) => l.map(campo).join("\t")).join("\n") + "\n");
+    process.exit(0);
+}
+salir({ ok: true, consultadoEn: Math.round(ahora()), agentes: fuera });

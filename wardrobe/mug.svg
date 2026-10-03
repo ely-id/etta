@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44">
+  <!-- A mug, for the spot that ACCOMPANIES: it neither rests on her nor is stuck to her. -->
+  <g id="handle">
+    <path d="M31 20 C39 20 39 30 31 30" fill="none" stroke="#c8d3cd" stroke-width="3"/>
+  </g>
+  <g id="cup">
+    <path d="M8 16 h24 v14 a6 6 0 0 1 -6 6 h-12 a6 6 0 0 1 -6 -6 z" fill="#e9eeeb"/>
+  </g>
+  <g id="coffee">
+    <path d="M11 19 h18 v3 h-18 z" fill="#5b4638"/>
+  </g>
+</svg>

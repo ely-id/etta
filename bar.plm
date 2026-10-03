@@ -1,0 +1,218 @@
+// Marea, with pleamar: the ball that hangs from the edge, and the card that
+// comes out of her body when you call her.
+//
+// Everything that moves here is moved by the renderer, on its own, at 60 Hz:
+// breathing, looking, blinking, growing as you come near, opening, coming in
+// piece by piece. The logic paints nothing; in fact the whole card has no logic
+// at all, because the time, the volume and the window in front are asked for by
+// name and arrive on their own.
+
+import "common/palette.plm"
+
+scene Marea {
+    surface {
+        size: 560, 360
+        anchor: top
+        margin: 0
+        screens: "HDMI-A-1"
+    }
+
+    //  What it may touch of the system. Listening is not commanding: with this
+    //  the volume is known, but it cannot be changed.
+    permissions { services: "clock", "audio", "window", "workspaces", "workspaces.focus" }
+
+    // ── what the system tells, without a line of logic ───────────
+    service clock as now { time: text = "--:--"; date: text; minute: number }
+    service audio { volume: number; muted: bool }
+    service window as win { title: text }
+
+    // ── the border with the logic ────────────────────────────────
+    fact pending = 0                  // how many notices are waiting
+    fact awake = false                // she wakes up on load, and comes in falling
+    fact open = false                 // the card
+
+    //  The workspaces: which one is active and which ones have windows.
+    fact ws.active = 1
+    repeat i in 1..10 {
+        fact ws.$i.there = false
+        fact ws.$i.busy = false
+    }
+    event go ->                       // `emit go(3)`: take me to 3
+
+    // ── what moves ───────────────────────────────────────────────
+    prop orb.y    = -74 ~calm
+    prop orb.r    = 32 ~lively
+    prop breath   = 0
+    prop lid      = 1
+    prop gaze.x   = 0 ~gentle
+    prop gaze.y   = 0 ~gentle
+    prop hot      = 0 ~quick
+    prop halo     = 0 ~calm
+    prop drop     = 0 ~lively
+    prop card     = 0 ~calm           // the card, from 0 to 1
+    prop f1       = 0 ~lively         // and what is inside, one after another
+    prop f2       = 0 ~lively
+    prop f3       = 0 ~lively
+    prop pill     = 0 ~calm           // the active workspace's pill, travelling
+    prop timelabel.y = 0 ~lively      // the time, when the minute changes
+    repeat i in 1..10 { prop glow.$i = 0 ~quick }   // each workspace's highlight
+
+    let cx = 250
+    let cy = orb.y
+
+    wave breath = 1 at 0.9
+    let bulge = breath * (1 + hot) * 0.9
+    blink lid every 2.6s..7s for 150ms
+    look gaze.x, gaze.y at cx, cy + 14 reach 7, 4 within 300
+
+    follow orb.y = if(awake, -6 + hot * 26 + card * 10, -74)
+    follow orb.r = 32 + hot * 3
+    //  The pill does not jump from one workspace to another: it travels, with
+    //  its spring. This is one line here and a `NumberAnimation` with its
+    //  `Behavior` in QtQuick.
+    follow pill = ws.active
+    //  And while it travels it stretches, as everything that goes fast
+    //  stretches. Only the renderer knows the spring's speed: the logic never
+    //  finds out.
+    let stretch = clamp(abs(vel(pill)) * 0.025, 0, 0.34)
+    follow halo = if(pending > 0, 1, 0)
+    follow drop = if(pending > 0 and card < 0.5, 1, 0)
+
+    //  The card: where it is and how big it is. It grows from the ball.
+    let card.w = 372 * card
+    let card.h = 196 * card
+    let card.y = cy + 44 + card * 116
+
+    // ── the aura: it beats only when something is waiting ───────
+    ellipse {
+        at: cx, cy + bulge
+        radius: orb.r + 16 + breath * 4
+        color: mint
+        opacity: halo * (18% + breath * 10%) * (1 - card)
+    }
+
+    // ── the body and the card, in a single silhouette ────────────
+    //  This is what QtQuick does not do without tricks: the ball, the neck and
+    //  the card are three shapes that **melt** together by distance, so when it
+    //  opens there are not two things stuck together, there is one that stretches.
+    body {
+        color: coal
+        rim: 7%
+        light: 4%, -20, 120
+        shadow: 0, 12, 30, 42%
+        ellipse body_shape { at: cx, cy + bulge; radius: orb.r; scale: 1 + hot * 0.04, 1 - hot * 0.02 }
+        ellipse neck { at: cx, cy + 30 + card * 26; radius: 22 * card; blend: 26 }
+        box card_box { at: cx, card.y; size: card.w, card.h; corner: 26; blend: 26 }
+    }
+
+    // ── the face ─────────────────────────────────────────────────
+    let eyes.y = cy + 14 + bulge
+    group {
+        move: gaze.x, gaze.y
+        body {
+            color: #2a2f2e
+            border: 1.6, ink
+            box { at: cx - 11, eyes.y; size: 17, 13.5; corner: 4.5 }
+            box { at: cx + 11, eyes.y; size: 17, 13.5; corner: 4.5 }
+        }
+        box { at: cx - 11, eyes.y; size: 7, 9 * lid; corner: 3; color: ink }
+        box { at: cx + 11, eyes.y; size: 7, 9 * lid; corner: 3; color: ink }
+    }
+
+    // ── the drop: how many notices are waiting ───────────────────
+    group {
+        move: 0, drop * 6
+        opacity: drop
+        body {
+            color: rose
+            rim: 10%
+            shadow: 0, 4, 10, 30%
+            ellipse { at: cx + 30, cy + 18 + bulge; radius: 10.5 + breath * 0.6 }
+        }
+        text pending_label { at: cx + 30, cy + 18 + bulge; anchor: center; size: 10; weight: 700; color: #21151a }
+    }
+    text pending_label = ""
+
+    // ── what the card carries inside ─────────────────────────────
+    //  Each thing comes in rising and with its delay: the time, the volume,
+    //  the footer. Clipped to the card, so nothing peeks out while it opens.
+    clip inset 2 box { at: cx, card.y; size: card.w, card.h; corner: 26 }
+
+    group {
+        opacity: f1
+        move: 0, (1 - f1) * 14
+        //  When the minute changes, the number comes in from above: a push to
+        //  the spring and it comes back on its own, with its bounce.
+        text now.time { at: cx - 158, card.y - 56 + timelabel.y; anchor: left center; size: 40; weight: 300; color: ink }
+        text now.date { at: cx - 156, card.y - 22; anchor: left center; size: 12.5; color: ink; opacity: 45% }
+    }
+
+    group {
+        opacity: f2
+        move: 0, (1 - f2) * 14
+        //  The volume, with its little bar.
+        box { at: cx + 96, card.y - 56; size: 110, 5; corner: 3; color: ink; opacity: 14% }
+        box { from: cx + 41, card.y - 58.5; size: 110 * audio.volume, 5; corner: 3; color: mint; opacity: if(audio.muted, 25%, 100%) }
+        text number(audio.volume * 100, 0, " %") { at: cx + 152, card.y - 76; anchor: right center; size: 11; color: ink; opacity: 40% }
+    }
+
+    group {
+        opacity: f3
+        move: 0, (1 - f3) * 14
+        box { at: cx, card.y + 2; size: 340, 1; color: ink; opacity: 10% }
+
+        //  The workspaces, with the pill that travels to the active one.
+        let ws.x = cx - 150
+        let ws.step = 30
+        box {
+            at: ws.x + pill * ws.step - ws.step, card.y + 30
+            size: 26 * (1 + stretch), 26 * (1 - stretch * 0.55)
+            corner: 9
+            color: mint
+            opacity: 22%
+        }
+        repeat i in 1..10 {
+            group {
+                size: 26, 26
+                zone box jump.$i { at: ws.x + i * ws.step - ws.step, card.y + 30; size: 26, 26; corner: 9; cursor: pointer }
+                //  The highlight on hover, each one with its spring.
+                box { at: ws.x + i * ws.step - ws.step, card.y + 30; size: 26, 26; corner: 9; color: ink; opacity: glow.$i * 12% }
+                text "{i}" {
+                    at: ws.x + i * ws.step - ws.step, card.y + 30
+                    anchor: center
+                    size: 12
+                    weight: 500
+                    color: ink
+                    opacity: if(ws.$i.there, if(ws.active == i, 100%, 55%), 18%)
+                }
+                //  A dot underneath if it has windows and you are not on it.
+                ellipse { at: ws.x + i * ws.step - ws.step, card.y + 44; radius: 1.8 * ws.$i.busy * (1 - if(ws.active == i, 1, 0)); color: mint }
+            }
+            on press jump.$i { emit go(i) }
+            on enter jump.$i { glow.$i: 1 }
+            on leave jump.$i { glow.$i: 0 }
+        }
+
+        text win.title { at: cx - 158, card.y + 66; anchor: left center; size: 12; width: 300; lines: 1; color: ink; opacity: 60% }
+    }
+
+    // ── where the mouse comes in ─────────────────────────────────
+    zone box nearby { at: cx, cy + 20; size: 160, 96; corner: 48; cursor: pointer }
+    zone box inside { at: cx, card.y; size: card.w, card.h; corner: 26; active: open }
+
+    on enter nearby { hot: 1 }
+    on leave nearby { hot: 0 }
+    on press nearby { toggle open }
+
+    //  Opening and closing: the card goes first and what is inside follows it,
+    //  each one a little later.
+    //  The minute has changed: let it show.
+    on change now.minute { impulse timelabel.y -520 }
+
+    on change open {
+        card: open ~calm
+        f1: open ~lively after 70ms
+        f2: open ~lively after 120ms
+        f3: open ~lively after 170ms
+    }
+}

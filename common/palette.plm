@@ -1,0 +1,16 @@
+// Marea's colours, just as the real one uses them.
+library Palette {
+    let ink    = #f5f7f5        // what is read
+    let mint   = #9ed6bd        // the house accent
+    let sand   = #e8c07a        // the second accent
+    let rose   = #e86a9a        // what demands attention
+    let coal   = #151616        // the ball's body
+    let slate  = #232727        // the panels inside
+    //  No more glass goes on glass —Apple: «never stack glass on glass»—:
+    //  what is inside the card are veils, a white you can barely see that lets
+    //  through what the glass shows.
+    let veil        = 8%          // a plate
+    let veil.glow   = 6%          // what rises with the mouse over it
+    let sunken      = #101316     // what sits sunk into a plate: a slider's track
+    let faint       = #c2c7cc     // what is read in the background, on glass
+}

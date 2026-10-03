@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="48" viewBox="0 0 64 48">
+  <!-- A wool hat for a 46 px ball. Each layer, a group with its id:
+       that is how the scene names them and how they are animated separately. -->
+  <g id="crown">
+    <path d="M14 36 C14 12 50 12 50 36 Z" fill="#3f7d6a"/>
+  </g>
+  <g id="brim">
+    <path d="M9 32 h46 a6 6 0 0 1 0 12 h-46 a6 6 0 0 1 0 -12 z" fill="#2f5d50"/>
+  </g>
+  <g id="pompom">
+    <circle cx="32" cy="11" r="7" fill="#e8c07a"/>
+  </g>
+</svg>
