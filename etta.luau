@@ -2000,6 +2000,11 @@ on("gone", function()
         monitor_info(function(mons)
             local target = nil
             for _, m in ipairs(mons) do if m.focused then target = m end end
+            --  No window focused: the monitor she lives on.
+            if target == nil then
+                local home_name = text["screen." .. math.floor(tonumber(fact.home) or 0) .. ".name"]
+                for _, m in ipairs(mons) do if m.name == home_name then target = m end end
+            end
             target = target or mons[1]
             if target == nil then
                 log("photo · no monitor to photograph")
@@ -2071,9 +2076,9 @@ end)
 --  · Stopping is SIGINT and never killing: an MP4 writes its index at the end,
 --    and without an index nobody can open it. That is why the recording is not
 --    considered finished when «Stop» is pressed, but when the recorder HAS EXITED.
-local VIDEOS = home_dir .. "/Vídeos/Marea"
+local VIDEOS = home_dir .. "/Videos/Recordings"
 run("xdg-user-dir", { "VIDEOS" }, function(d)
-    if d and d ~= "" then VIDEOS = d .. "/Marea" end
+    if d and d ~= "" then VIDEOS = d:gsub("%s+$", "") .. "/Recordings" end
     run("mkdir", { "-p", VIDEOS })
 end)
 local nvenc = false
@@ -2100,18 +2105,34 @@ on("fact:face", function(face)
             if output.focused then monitor = output.name end
         end
         if monitor == nil and on_halley and #mons == 1 then monitor = mons[1].name end
+        --  No window focused (the focus can be hers): the monitor she lives on.
+        if monitor == nil and on_halley then
+            local home_name = text["screen." .. math.floor(tonumber(fact.home) or 0) .. ".name"]
+            for _, output in ipairs(mons) do if output.name == home_name then monitor = output.name end end
+            monitor = monitor or (mons[1] and mons[1].name)
+        end
         if on_halley and monitor == nil then
             log("Halley · no focused output is available for recording")
             emit("stop")
             return
         end
-        video = VIDEOS .. "/marea-" .. os.date("%Y%m%d-%H%M%S") .. ".mp4"
+        video = VIDEOS .. "/" .. os.date("Recording_%Y-%m-%d_%H-%M-%S") .. ".mp4"
         local args = { "-f", video }
         local codec = nvenc and { "-c", "h264_nvenc", "-p", "preset=p5", "-p", "rc=vbr", "-p", "cq=23" }
                             or { "-c", "libx264", "-p", "preset=veryfast", "-p", "crf=23" }
         for _, a in ipairs(codec) do args[#args + 1] = a end
         for _, a in ipairs({ "-r", "60", "-D" }) do args[#args + 1] = a end
         if monitor then args[#args + 1] = "-o"; args[#args + 1] = monitor end
+        --  Halley's screencopy turns a monitor at 180° over twice, as in the
+        --  photos. wf-recorder's filters do not reach those frames, so the video
+        --  is recorded as it comes and, once closed, marked to be shown turned
+        --  (a display rotation: no re-encoding, instant).
+        local upside_down = false
+        for _, output in ipairs(mons) do
+            if on_halley and output.name == monitor and tonumber(output.transform) == 180 then upside_down = true end
+        end
+        if upside_down then video = video:gsub("%.mp4$", ".raw.mp4") end
+        args[2] = video
         --  `--audio=DEVICE` with the value attached: that is how `wf-recorder`
         --  documents it, and separated it silently takes it as «the default
         --  device», which is the microphone.
@@ -2135,6 +2156,27 @@ on("fact:face", function(face)
             --  cleanly— deserves a party. Once she is back from her corner: she
             --  comes down 300 ms after `stop`, and the fireworks are hers.
             --  And the card that comes out of her: watch it, its folder, or its path.
+            local function finish(path)
+                last_video = path
+                text["reel.name"] = path:match("[^/]+$") or path
+                after(700, function()
+                    emit("celebrate")
+                    emit("recorded")
+                end)
+            end
+            if recorded and (code == nil or code == 0) and upside_down then
+                local final = this_video:gsub("%.raw%.mp4$", ".mp4")
+                run("ffmpeg", { "-loglevel", "error", "-y", "-display_rotation", "180", "-i", this_video, "-c", "copy", final }, function(_, c2)
+                    if c2 == 0 then
+                        run("rm", { "-f", this_video }, function() end)
+                        finish(final)
+                    else
+                        log("recording · could not mark the rotation; kept as recorded")
+                        finish(this_video)
+                    end
+                end)
+                return
+            end
             if recorded and (code == nil or code == 0) then
                 last_video = this_video
                 text["reel.name"] = this_video:match("[^/]+$") or this_video

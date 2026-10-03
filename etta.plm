@@ -33,7 +33,7 @@ scene Etta {
         //  The network and the headphones are pleamar's own services now
         //  (NetworkManager and BlueZ, spoken to directly): listing, joining
         //  with a password, pairing. And `fd` finds the files and the folders.
-        run: "curl", "timedatectl", "node", "notify-send", "fd", "deriva-worker", "kill", "xdg-open", "grim", "slurp", "hyprctl", "magick", "wl-copy", "mkdir", "wf-recorder", "xdg-user-dir", "test", "pgrep", "swaybg", "pactl", "pleamar-wm", "etta-halley", "cat", "ls", "rfkill", "systemd-inhibit", "powerprofilesctl", "wlsunset", "etta-shader-thumb"
+        run: "curl", "timedatectl", "node", "notify-send", "fd", "deriva-worker", "kill", "xdg-open", "grim", "slurp", "hyprctl", "magick", "wl-copy", "mkdir", "wf-recorder", "xdg-user-dir", "test", "pgrep", "swaybg", "pactl", "pleamar-wm", "etta-halley", "cat", "ls", "rfkill", "systemd-inhibit", "powerprofilesctl", "wlsunset", "etta-shader-thumb", "ffmpeg", "rm"
     }
     service clock as now { time: text = "--:--"; date: text; hour: number; minute: number; day: number; month: number; weekday: number }
     service audio as sound { volume: number; muted: bool; input: number; input_muted: bool }
@@ -4576,7 +4576,7 @@ scene Etta {
     //  you watch her.
     event record
     event stop ->                      // and the logic asks the recorder to finish
-    event record_toggle                // SUPER+SHIFT+C: starts, or stops whatever there is
+    event record_toggle                // SUPER+SHIFT+V: starts, or stops whatever there is
     fact corner = false
     fact nook_screen = 0               // which monitor's copy holds the corner
     //  Which of the four. The contract says the one that falls OUTSIDE what is
