@@ -1,0 +1,73 @@
+// The kit, laid out: every piece once, to look at them together.
+// pleamar --scene ui/showcase.plm
+import "tokens.plm"
+import "kit.plm"
+
+scene Showcase {
+    surface { size: 760, 420; anchor: top; margin: 330 }
+    fact sw = true
+    fact seg = 1
+    fact lvl = 0.6
+    fact chip = 0
+    event noop
+    event flip
+    event pickseg
+    event setlvl
+    event pickchip
+    on flip { toggle sw }
+    on pickseg(i) { seg = i }
+    on setlvl(v) { lvl = v }
+    on pickchip { chip = 1 - chip }
+
+    box { from: 0, 0; size: 760, 420; corner: 24; color: k.body }
+    text "Etta kit" { at: 24, 32; anchor: left center; size: 20; weight: 600; family: "Geist"; color: k.ink }
+    row { at: 24, 64; gap: 10; align: center
+        Btn("Turn on", noop, w: 110, kind: 1)
+        Btn("Pair", noop, w: 80)
+        Btn("Cancel", noop, w: 90, kind: 3)
+        Btn("Power off", noop, w: 110, kind: 2)
+        Btn("End now", noop, w: 100, kind: 4)
+        Ib(noop) { figure Kit.i_settings { at: 0, 0; size: 20, 20; color: k.ink2 } }
+        Ib(noop) { figure Kit.i_close { at: 0, 0; size: 20, 20; color: k.ink2 } }
+    }
+    row { at: 24, 122; gap: 16; align: center
+        Toggle(sw, flip)
+        Seg(seg, "25 min", "45 min", pickseg, c: "1 hour", d: "Until off", count: 4, w: 360)
+        Kbd("Super Shift S", w: 112)
+    }
+    row { at: 24, 176; gap: 8; align: center
+        Chip("Messages", pickchip, w: 112, on: chip, dot: k.blue, hasdot: 1)
+        Chip("Work", pickchip, w: 84, dot: k.violet, hasdot: 1)
+        Tag("Connected", w: 90, tone: 1)
+        Tag("Urgent", w: 66, tone: 2)
+        Tag("Muted", w: 60, tone: 3)
+        Tag("New", w: 46, tone: 4)
+        Tag("Saved", w: 56)
+    }
+    group { move: 24, 226; Slider(lvl, setlvl, w: 300) }
+    text "{lvl * 100, 0}%" { at: 344, 238; anchor: left center; size: 15; weight: 600; family: "Geist"; color: k.ink }
+    row { at: 24, 270; gap: 12; align: center
+        Bubble(1) { figure Kit.i_bluetooth { at: 0, 0; size: 20, 20; color: k.mint_ink } }
+        Bubble(0) { figure Kit.i_wifi { at: 0, 0; size: 20, 20; color: k.ink2 } }
+        Bubble(2) { figure Kit.i_alert { at: 0, 0; size: 20, 20; color: k.sand } }
+        Bubble(3) { figure Kit.i_bluetooth_off { at: 0, 0; size: 20, 20; color: k.red } }
+    }
+    group { move: 24, 320
+        box { from: 0, 0; size: 420, 64; corner: 16; color: k.s1 }
+        Row(420, noop, h: 52) {
+            figure Kit.i_ethernet { at: 26, 26; size: 20, 20; color: k.ink2 }
+            text "Wired connection 1" { at: 52, 18; anchor: left center; size: 15; weight: 600; family: "Geist"; color: k.ink }
+            text "Connected" { at: 52, 36; anchor: left center; size: 12; weight: 500; family: "Geist"; color: k.ink3 }
+        }
+    }
+    grid { at: 470, 270; columns: 8; gap: 6; width: 266; row: 30
+        figure Kit.i_moon { at: 12, 12; size: 20, 20; color: k.ink2 }
+        figure Kit.i_sun { at: 12, 12; size: 20, 20; color: k.ink2 }
+        figure Kit.i_mic { at: 12, 12; size: 20, 20; color: k.ink2 }
+        figure Kit.i_speaker { at: 12, 12; size: 20, 20; color: k.ink2 }
+        figure Kit.i_calendar { at: 12, 12; size: 20, 20; color: k.ink2 }
+        figure Kit.i_flask { at: 12, 12; size: 20, 20; color: k.ink2 }
+        figure Kit.i_inbox { at: 12, 12; size: 20, 20; color: k.ink2 }
+        figure Kit.i_shirt { at: 12, 12; size: 20, 20; color: k.ink2 }
+    }
+}

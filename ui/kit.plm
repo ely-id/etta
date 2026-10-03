@@ -1,0 +1,189 @@
+// The pieces every panel is built from. Each one is drawn from its own corner
+// —so it goes in a row, a column, a grid cell or a moved group— and answers
+// the mouse by itself; what it does is said by the event it is given.
+
+import "tokens.plm"
+
+library Kit {
+    //  The icons: stroke drawings on a 24 grid, read as geometry so they can
+    //  be tinted (`color:`) and sized (`size:`). `at` is their centre.
+    figure i_alert = file "icons/alert.svg"
+    figure i_battery = file "icons/battery.svg"
+    figure i_bell = file "icons/bell.svg"
+    figure i_bell_off = file "icons/bell_off.svg"
+    figure i_bluetooth = file "icons/bluetooth.svg"
+    figure i_bluetooth_off = file "icons/bluetooth_off.svg"
+    figure i_bolt = file "icons/bolt.svg"
+    figure i_calc = file "icons/calc.svg"
+    figure i_calendar = file "icons/calendar.svg"
+    figure i_capture = file "icons/capture.svg"
+    figure i_chat = file "icons/chat.svg"
+    figure i_check = file "icons/check.svg"
+    figure i_chev_l = file "icons/chev_l.svg"
+    figure i_chev_r = file "icons/chev_r.svg"
+    figure i_close = file "icons/close.svg"
+    figure i_cloud = file "icons/cloud.svg"
+    figure i_coffee = file "icons/coffee.svg"
+    figure i_copy = file "icons/copy.svg"
+    figure i_ethernet = file "icons/ethernet.svg"
+    figure i_eye = file "icons/eye.svg"
+    figure i_file = file "icons/file.svg"
+    figure i_flask = file "icons/flask.svg"
+    figure i_fog = file "icons/fog.svg"
+    figure i_folder = file "icons/folder.svg"
+    figure i_game = file "icons/game.svg"
+    figure i_gauge = file "icons/gauge.svg"
+    figure i_globe = file "icons/globe.svg"
+    figure i_grid = file "icons/grid.svg"
+    figure i_headphones = file "icons/headphones.svg"
+    figure i_history = file "icons/history.svg"
+    figure i_image = file "icons/image.svg"
+    figure i_inbox = file "icons/inbox.svg"
+    figure i_keyboard = file "icons/keyboard.svg"
+    figure i_link = file "icons/link.svg"
+    figure i_lock = file "icons/lock.svg"
+    figure i_logout = file "icons/logout.svg"
+    figure i_mail = file "icons/mail.svg"
+    figure i_mic = file "icons/mic.svg"
+    figure i_mic_off = file "icons/mic_off.svg"
+    figure i_monitor = file "icons/monitor.svg"
+    figure i_moon = file "icons/moon.svg"
+    figure i_next = file "icons/next.svg"
+    figure i_pause = file "icons/pause.svg"
+    figure i_phone = file "icons/phone.svg"
+    figure i_pin = file "icons/pin.svg"
+    figure i_play = file "icons/play.svg"
+    figure i_plus = file "icons/plus.svg"
+    figure i_power = file "icons/power.svg"
+    figure i_prev = file "icons/prev.svg"
+    figure i_rain = file "icons/rain.svg"
+    figure i_record = file "icons/record.svg"
+    figure i_refresh = file "icons/refresh.svg"
+    figure i_restart = file "icons/restart.svg"
+    figure i_search = file "icons/search.svg"
+    figure i_settings = file "icons/settings.svg"
+    figure i_shirt = file "icons/shirt.svg"
+    figure i_sleep = file "icons/sleep.svg"
+    figure i_snow = file "icons/snow.svg"
+    figure i_sparkle = file "icons/sparkle.svg"
+    figure i_speaker = file "icons/speaker.svg"
+    figure i_speaker_off = file "icons/speaker_off.svg"
+    figure i_stop = file "icons/stop.svg"
+    figure i_storm = file "icons/storm.svg"
+    figure i_sun = file "icons/sun.svg"
+    figure i_sunset = file "icons/sunset.svg"
+    figure i_sync = file "icons/sync.svg"
+    figure i_terminal = file "icons/terminal.svg"
+    figure i_text = file "icons/text.svg"
+    figure i_trash = file "icons/trash.svg"
+    figure i_wifi = file "icons/wifi.svg"
+    figure i_window = file "icons/window.svg"
+
+    //  A button. kind: 0 plain · 1 primary · 2 danger · 3 ghost · 4 soft danger.
+    component Btn(label: text, press: event, w: number = 120, kind: number = 0, h: number = 40, live: bool = true) {
+        size: w, h
+        zone box touch { from: 0, 0; size: w, h; corner: min(12, h / 2); cursor: pointer; active: live }
+        box { from: 0, 0; size: w, h; corner: min(12, h / 2)
+              color: mix(pick(kind, k.s2, k.mint, k.red, k.s2, k.red_soft), pick(kind, k.s3, k.mint_hi, #f2867b, k.s2, #42282a), touch.hover)
+              opacity: if(kind == 3, touch.hover, 1) * (1 - 0.12 * touch.pressed) * if(live, 1, 0.5) }
+        text label { at: w / 2, h / 2; anchor: center; size: 14; weight: 600; family: "Geist"; width: w - 16; lines: 1; align: center
+                     color: pick(kind, k.ink, k.mint_ink, k.red_ink, mix(k.ink2, k.ink, touch.hover), #ffb3aa) }
+        on press touch { emit press }
+    }
+
+    //  A button with only an icon: the icon goes inside, centred on 0, 0.
+    component Ib(press: event, d: number = 36, live: bool = true) {
+        size: d, d
+        zone box touch { from: 0, 0; size: d, d; corner: 10; cursor: pointer; active: live }
+        box { from: 0, 0; size: d, d; corner: 10; color: k.s2; opacity: touch.hover * (1 - 0.3 * touch.pressed) }
+        children { move: d / 2, d / 2 }
+    }
+
+    //  The switch.
+    component Toggle(on: bool, press: event, live: bool = true) {
+        size: 40, 24
+        prop pos = 0 ~200ms
+        follow pos = if(on, 1, 0)
+        zone box touch { from: -6, -6; size: 52, 36; corner: 18; cursor: pointer; active: live }
+        box { from: 0, 0; size: 40, 24; corner: 12; color: mix(mix(k.s3, #3b4043, touch.hover), k.mint, pos) }
+        ellipse { at: 12 + 16 * pos, 12; radius: 9; color: #f4f4f2 }
+        on press touch { emit press }
+    }
+
+    //  A level: the track, its fill and the handle. Pressing or dragging says
+    //  where, from 0 to 1.
+    component Slider(v: number, set: event, w: number = 240, muted: number = 0, tone: color = k.mint, live: bool = true) {
+        size: w, 24
+        let vv = clamp(v, 0, 1)
+        box { from: 0, 9; size: w, 6; corner: 3; color: k.s3 }
+        box { from: 0, 9; size: max(6, w * vv), 6; corner: 3; color: mix(tone, #5d6461, muted) }
+        ellipse { at: w * vv, 12; radius: 9 + 1.5 * touch.hover; color: #f4f2ec }
+        zone box touch { from: -10, -4; size: w + 20, 32; corner: 16; cursor: pointer; active: live }
+        on press touch { emit set(clamp((local.x - 10) / w, 0, 1)) }
+        on drag touch { emit set(clamp((local.x - 10) / w, 0, 1)) }
+    }
+
+    //  Two to four choices in one pill; the chosen one's plate slides to it.
+    component Seg(value: number, a: text, b: text, press: event, c: text = "", d: text = "", count: number = 2, w: number = 280, live: bool = true) {
+        size: w, 38
+        let seg = (w - 6) / count
+        prop pos = 0 ~220ms
+        follow pos = value
+        box { from: 0, 0; size: w, 38; corner: 12; color: k.s1 }
+        box { from: 0, 0; size: w, 38; corner: 12; stroke: 1; color: k.line; opacity: 7% }
+        box { from: 3 + pos * seg, 3; size: seg, 32; corner: 9; color: k.s3 }
+        repeat i in 0..4 {
+            group {
+                show: i < count
+                text pick(i, a, b, c, d) { at: 3 + seg * (i + 0.5), 19; anchor: center; size: 13; weight: 500; family: "Geist"
+                                           width: seg - 8; lines: 1; align: center
+                                           color: mix(k.ink2, k.ink, max(if(value == i, 1, 0), opt.$i.hover)) }
+                zone box opt.$i { from: 3 + seg * i, 3; size: seg, 32; corner: 9; cursor: pointer; active: live }
+                on press opt.$i { emit press(i) }
+            }
+        }
+    }
+
+    //  A chip: a choice that filters. `on` lights it.
+    component Chip(label: text, press: event, w: number = 96, on: number = 0, dot: color = k.ink3, hasdot: number = 0) {
+        size: w, 30
+        zone box touch { from: 0, 0; size: w, 30; corner: 15; cursor: pointer }
+        box { from: 0, 0; size: w, 30; corner: 15; color: mix(mix(k.s1, k.s2, touch.hover), k.mint_soft, on) }
+        box { from: 0, 0; size: w, 30; corner: 15; stroke: 1; color: mix(k.line, k.mint, on); opacity: 7% + 30% * on }
+        ellipse { at: 15, 15; radius: 4; color: dot; opacity: hasdot }
+        text label { at: w / 2 + 6 * hasdot, 15; anchor: center; size: 13; weight: 500; family: "Geist"; width: w - 16 - 12 * hasdot; lines: 1; align: center
+                     color: mix(mix(k.ink2, k.ink, touch.hover), k.mint, on) }
+        on press touch { emit press }
+    }
+
+    //  A tag: a word that says a state. tone: 0 plain · 1 mint · 2 sand · 3 red · 4 new.
+    component Tag(label: text, w: number = 64, tone: number = 0) {
+        size: w, 22
+        box { from: 0, 0; size: w, 22; corner: 11; color: pick(tone, k.s2, k.mint_soft, k.sand_soft, k.red_soft, #1f2733) }
+        text label { at: w / 2, 11; anchor: center; size: 12; weight: 600; family: "Geist"; width: w - 10; lines: 1; align: center
+                     color: pick(tone, k.ink2, k.mint, k.sand, k.red, k.blue) }
+    }
+
+    //  A key, as it is written on the keyboard.
+    component Kbd(label: text, w: number = 40) {
+        size: w, 22
+        box { from: 0, 0; size: w, 22; corner: 6; color: k.s2 }
+        box { from: 0, 20; size: w, 2; corner: 1; color: #000000; opacity: 30% }
+        text label { at: w / 2, 11; anchor: center; size: 12; weight: 500; family: "Geist Mono"; color: k.ink2 }
+    }
+
+    //  A row that answers the mouse; what it holds goes inside.
+    component Row(w: number, press: event, h: number = 52, live: bool = true) {
+        size: w, h
+        zone box touch { from: 0, 0; size: w, h; corner: 12; cursor: pointer; active: live }
+        box { from: 0, 0; size: w, h; corner: 12; color: k.s2; opacity: touch.hover * (1 - 0.3 * touch.pressed) }
+        children
+    }
+
+    //  The round badge an icon sits in. tone: 0 off · 1 on (mint) · 2 warn · 3 bad.
+    component Bubble(tone: number = 0, d: number = 36) {
+        size: d, d
+        ellipse { at: d / 2, d / 2; radius: d / 2; color: pick(tone, k.s2, k.mint, k.sand_soft, k.red_soft) }
+        children { move: d / 2, d / 2 }
+    }
+}

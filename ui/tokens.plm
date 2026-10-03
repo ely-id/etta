@@ -1,0 +1,53 @@
+// Etta's design tokens: every colour, size and radius a panel uses has a name
+// here, so no panel writes a literal. The ball's own colours stay in
+// common/palette.plm (ink, mint, coal…): those are hers, and these are what
+// surrounds her.
+//
+// Type: Geist, in four weights (400, 500, 600 and 300 for the big time). The
+// family is written on every text —pleamar takes it as a literal only—; what
+// is shared here is the scale.
+
+library Tokens {
+    //  Surfaces, from her body up: a plate on a panel, what lifts under the
+    //  pointer, and a track or a pressed thing.
+    let k.body = #151616
+    let k.s1 = #1d1f20
+    let k.s2 = #26292b
+    let k.s3 = #313537
+    let k.line = #ffffff               // drawn at 7 %
+
+    //  Ink: what is read, what is secondary, what is a caption. All three
+    //  pass 4.5:1 on k.s1.
+    let k.ink = #f3f5f4
+    let k.ink2 = #b9bfbc
+    let k.ink3 = #8d9491
+
+    //  The accents, and what each one means.
+    let k.mint = #9ed6bd               // on, focus: the house
+    let k.mint_hi = #b2e0cb
+    let k.mint_ink = #0e2a1f           // text on mint
+    let k.mint_soft = #1f2c27          // a mint-tinted plate
+    let k.sand = #e8c07a               // warning, low, urgent
+    let k.sand_soft = #2c261c
+    let k.red = #ef6b5e                // error, danger, wrong password
+    let k.red_soft = #33201e
+    let k.red_ink = #2a0b07
+    let k.blue = #86b6f2               // messages
+    let k.violet = #b5a0f2             // work, mail
+
+    //  The type scale. Nothing smaller than 12.
+    let k.t.display = 96
+    let k.t.time = 44
+    let k.t.num = 28
+    let k.t.title = 20
+    let k.t.head = 15
+    let k.t.body = 14
+    let k.t.label = 13
+    let k.t.cap = 12
+
+    //  Radii.
+    let k.r.panel = 24
+    let k.r.card = 16
+    let k.r.ctl = 12
+    let k.r.chip = 8
+}
