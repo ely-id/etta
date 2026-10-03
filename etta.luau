@@ -1933,85 +1933,132 @@ local function monitor_info(done)
 end
 
 --  In the pictures folder the session names —`~/Pictures` in English,
---  `~/Imágenes` in Spanish—, as the videos do.
-local PHOTOS = home_dir .. "/Imágenes/Marea"
-local FRAME = (sys.ask("env", "XDG_RUNTIME_DIR") or "/tmp") .. "/etta-frame.png"
+--  `~/Imágenes` in Spanish—, under Screenshots, with the name every desktop uses.
+local PHOTOS = home_dir .. "/Pictures/Screenshots"
+local RUNTIME = sys.ask("env", "XDG_RUNTIME_DIR") or "/tmp"
 run("xdg-user-dir", { "PICTURES" }, function(d)
-    if d and d ~= "" then PHOTOS = d .. "/Marea" end
+    if d and d ~= "" then PHOTOS = d:gsub("%s+$", "") .. "/Screenshots" end
     run("mkdir", { "-p", PHOTOS })
 end)
 
---  The monitors: where the plane starts —`grim` photographs it whole and its
---  corner is the one of the monitor furthest up and to the left— and which one
---  has the focus.
-local function parse_monitors(list)
-    local minx, miny, focused = 0, 0, nil
-    for k, monitor in ipairs(list) do
-        if k == 1 and on_halley then minx, miny = monitor.x, monitor.y end
-        minx, miny = math.min(minx, monitor.x), math.min(miny, monitor.y)
-        if monitor.focused then focused = monitor end
-    end
-    if focused == nil and on_halley and #list == 1 then focused = list[1] end
-    return minx, miny, focused
+--  The frozen monitor: its name, its file, its scale and its size.
+local frozen = nil
+local last_photo = nil
+
+--  A monitor photographed alone, the right way up. Halley's screencopy turns
+--  a monitor with `transform 180` over twice and the picture comes out upside
+--  down; it is put back here (and reported to Halley).
+local function freeze(monitor, done)
+    local file = RUNTIME .. "/etta-frame-" .. tostring(monitor.name or "0"):gsub("%W", "") .. ".png"
+    run("grim", { "-o", monitor.name, file }, function(_, code)
+        if code ~= 0 then done(nil) return end
+        if on_halley and tonumber(monitor.transform) == 180 then
+            run("magick", { file, "-rotate", "180", file }, function(_, c2) done(c2 == 0 and file or nil) end)
+        else
+            done(file)
+        end
+    end)
 end
 
+local function stamp()
+    return os.date("Screenshot_%Y-%m-%d_%H-%M-%S.png")
+end
+
+--  Cropped from the frozen frame, saved, copied, and said.
 local function save(x, y, w, h)
-    if w == nil or w < 2 or h < 2 then emit("shot_cancelled"); return end
-    local dest = PHOTOS .. "/marea-" .. os.date("%Y%m%d-%H%M%S") .. ".png"
-    run("magick", { FRAME, "-crop", string.format("%dx%d+%d+%d", w, h, x, y), "+repage", dest }, function(_, code)
+    if frozen == nil or w == nil or w < 2 or h < 2 then
+        fact.shooting = false
+        emit("shot_cancelled")
+        return
+    end
+    local k = tonumber(frozen.scale) or 1
+    local dest = PHOTOS .. "/" .. stamp()
+    run("magick", { frozen.file, "-crop", string.format("%dx%d+%d+%d", math.floor(w * k + 0.5), math.floor(h * k + 0.5), math.floor(x * k + 0.5), math.floor(y * k + 0.5)), "+repage", dest }, function(_, code)
+        fact.shooting = false
         if code ~= 0 then log("photo · could not be cropped"); emit("shot_cancelled"); return end
         emit("shoot")
         --  To the clipboard too. `wl-copy` stays in the background serving what
         --  was copied, so there is no waiting for what it writes.
         run("wl-copy", { "--type", "image/png" }, nil, { stdin = dest, output = false })
+        last_photo = dest
+        text["photo.name"] = dest:match("([^/]+)$") or dest
+        text["photo.size"] = string.format("%d × %d", math.floor(w * k + 0.5), math.floor(h * k + 0.5))
+        model.photonow = { { pic = dest } }
+        emit("photographed")
         log("photo ·", dest)
     end)
 end
 
+on("photo_open", function() if last_photo then run("xdg-open", { last_photo }, function() end) end end)
+on("photo_folder", function() run("xdg-open", { PHOTOS }, function() end) end)
+
 on("gone", function()
     if fact.purpose ~= "shot" then return end
     local scope = fact.scope
-    if on_halley and scope == "active_window" then
-        -- SDK node geometry is not the presented rectangle. Guessing from it
-        -- would capture the wrong region after camera motion or fullscreen.
-        log("Halley · focused-window capture needs presented geometry, which API v1 does not expose")
-        emit("shot_cancelled")
-        return
-    end
     --  A breather so the compositor can take away whatever was closing.
     after(140, function()
-        --  The active window is asked BEFORE freezing: it is the one that was there.
-        local function capture(window)
-            monitor_info(function(mons)
-                local minx, miny, focused = parse_monitors(mons)
-                if on_halley and (#mons == 0 or (scope == "display" and not focused)) then
-                    log("Halley · no focused output is available for capture")
-                    emit("shot_cancelled")
+        monitor_info(function(mons)
+            local target = nil
+            for _, m in ipairs(mons) do if m.focused then target = m end end
+            target = target or mons[1]
+            if target == nil then
+                log("photo · no monitor to photograph")
+                emit("shot_cancelled")
+                return
+            end
+            freeze(target, function(file)
+                if file == nil then log("photo · grim could not freeze the screen"); emit("shot_cancelled"); return end
+                frozen = { name = target.name, file = file, scale = target.scale or 1, w = target.w, h = target.h }
+                emit("frozen")
+                if scope == "display" then
+                    save(0, 0, target.w, target.h)
                     return
                 end
-                run("grim", { FRAME }, function(_, code)
-                    if code ~= 0 then log("photo · grim could not freeze the screen"); emit("shot_cancelled"); return end
-                    emit("frozen")
-                    if scope == "display" and focused then
-                        save(focused.x - minx, focused.y - miny, focused.w, focused.h)
-                    elseif scope == "active_window" then
-                        local ax, ay = (window or ""):match("at: (%-?%d+),(%-?%d+)")
-                        local aw, ah = (window or ""):match("size: (%d+),(%d+)")
-                        if ax then save(tonumber(ax) - minx, tonumber(ay) - miny, tonumber(aw), tonumber(ah))
-                        else emit("shot_cancelled") end
-                    else
-                        --  `slurp` gives «X,Y WxH» on the whole plane; Esc leaves with nothing.
-                        run("slurp", {}, function(sel, c2)
-                            local x, y, w, h = (sel or ""):match("(%-?%d+),(%-?%d+) (%d+)x(%d+)")
-                            if c2 ~= 0 or x == nil then emit("shot_cancelled"); return end
-                            save(tonumber(x) - minx, tonumber(y) - miny, tonumber(w), tonumber(h))
-                        end)
-                    end
-                end)
+                --  The overlay goes on the copy of the scene that lives on that
+                --  monitor, with its frozen frame in its slot.
+                local slot = 0
+                for k = 0, 1 do
+                    if text["screen." .. k .. ".name"] == target.name then slot = k end
+                end
+                local frames = { { pic = "" }, { pic = "" } }
+                frames[slot + 1] = { pic = file .. "?" .. os.time() }
+                model.frames = frames
+                fact["shot.scr"] = slot
+                if scope == "active_window" then fact["shot.mode"] = "sm_window" else fact["shot.mode"] = "sm_region" end
+                fact.shooting = true
             end)
-        end
-        if on_halley then capture(nil) else hyprctl("activewindow", capture) end
+        end)
     end)
+end)
+
+on("shot_commit", function()
+    local w, h = tonumber(fact["sel.w"]) or 0, tonumber(fact["sel.h"]) or 0
+    if w < 0 then
+        --  The window under the pointer: Hyprland says where the active one is.
+        --  Halley's API does not tell the presented geometry yet.
+        if on_halley then
+            log("Halley · window capture needs presented geometry, which API v1 does not expose")
+            fact.shooting = false
+            emit("shot_cancelled")
+            return
+        end
+        hyprctl("activewindow", function(window)
+            local ax, ay = (window or ""):match("at: (%-?%d+),(%-?%d+)")
+            local aw, ah = (window or ""):match("size: (%d+),(%d+)")
+            monitor_info(function(mons)
+                local mx, my = 0, 0
+                for _, m in ipairs(mons) do if m.name == (frozen and frozen.name) then mx, my = m.x, m.y end end
+                if ax then save(tonumber(ax) - mx, tonumber(ay) - my, tonumber(aw), tonumber(ah))
+                else fact.shooting = false; emit("shot_cancelled") end
+            end)
+        end)
+        return
+    end
+    save(tonumber(fact["sel.x"]) or 0, tonumber(fact["sel.y"]) or 0, w, h)
+end)
+on("shot_escape", function()
+    fact.shooting = false
+    emit("shot_cancelled")
 end)
 
 -- ── the recording ──────────────────────────────────────────────────
@@ -2751,7 +2798,9 @@ for _, spot in ipairs(SPOTS) do
 end
 
 
-do
+--  In functions of their own: each has its own 200 locals, and the main
+--  chunk is near its limit.
+;(function()
 -- ── Etta: the clock's card, the OSD's words, the battery ─────────────
 --  What the scene shows beside her and does not know by itself: how long
 --  the battery lasts, what comes next today, a device or a network that has
@@ -2891,9 +2940,9 @@ every(300, function()
         if fact["caps.on"] ~= on then fact["caps.on"] = on end
     end)
 end)
-end
+end)()
 
-do
+;(function()
 -- ── the control center's new pieces ───────────────────────────────
 --  Who is signed in, for the session page.
 text["session.user"] = sys.ask("env", "USER") or ""
@@ -3074,7 +3123,7 @@ sys.watch("media", function(m)
         fact["media.art"] = false
     end
 end)
-end
+end)()
 
 -- ── the wallpaper, on Halley: its field shaders ────────────────────
 --  Halley paints its own wallpaper with a fragment shader: its bundled

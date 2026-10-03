@@ -914,14 +914,24 @@ scene Etta {
     event reel_copy ->
     prop reel = 0 ~200ms
     follow reel = if(reel_open and out > 0.9, 1, 0)
-    let reel.x = cx + (23 + 11 + 150) * reel
+    let reel.x = cx + (r + 14 + 210) * reel
     //  Its time is a step, not a slow spring: a 10 s spring kicked back to 0
     //  in 16 ms swung past it and, depending on where it came from, crossed
     //  «ten seconds» less than one second after the card had come out. The step
     //  jumps when its moment comes, and its destination is worked out then: if
     //  the pointer is on the card, it does not jump.
     prop reel_clock = 0 ~16ms
-    on recorded { reel_open = true; reel_clock: 0; reel_clock: if(reel_hovered, 0, 1) after 10s }
+    //  The same card says a saved screenshot: what it shows and offers changes.
+    fact reel.kind: rk_video | rk_photo = rk_video
+    text photo.name = ""
+    measure reel.title
+    text photo.size = ""
+    model photonow max 1 { pic: image 224, 140 }
+    event photographed
+    event photo_open ->
+    event photo_folder ->
+    on recorded { reel.kind = rk_video; reel_open = true; reel_clock: 0; reel_clock: if(reel_hovered, 0, 1) after 10s }
+    on photographed { reel.kind = rk_photo; reel_open = true; reel_clock: 0; reel_clock: if(reel_hovered, 0, 1) after 8s }
     on change reel_clock > 0.5 while reel_clock > 0.5 { reel_open = false }
 
     //  The Haven's capsule and the summary take the same place as the note, and
@@ -1270,7 +1280,136 @@ scene Etta {
         face = camera
     }
     on frozen { away: 0 ~lively }
-    on shot_cancelled { away: 0 ~lively; face = eye }
+    on shot_cancelled { away: 0 ~lively; face = eye; shooting = false; sel.on = false }
+
+    // ── choosing what: the capture overlay ───────────────────────
+    //  Over the frozen frame of one monitor: dimmed, with guides through the
+    //  pointer and its coordinates. Pressing anchors a corner, dragging draws
+    //  the selection with its measures, and she follows as the size HUD —her
+    //  camera face, W × H px beside her—. Releasing takes it at once; Esc
+    //  leaves with nothing. Screen takes the whole monitor with a click.
+    fact shooting = false
+    fact shot.scr = 0                  // which monitor's copy shows it
+    fact shot.mode: sm_region | sm_window | sm_screen = sm_region
+    fact sel.on = false
+    fact sel.ax = 0
+    fact sel.ay = 0
+    fact sel.x = 0
+    fact sel.y = 0
+    fact sel.w = 0
+    fact sel.h = 0
+    event shot_commit ->
+    event shot_escape ->
+    event pick_shot_mode
+    model frames max 2 { pic: image 1920, 1080 }
+    prop shot.in = 0 ~140ms
+    follow shot.in = if(shooting, 1, 0)
+    prop shot.flash = 0 ~350ms
+    on shoot { shot.flash: 0.85 ~16ms; shot.flash: 0 ~350ms after 30ms }
+    on pick_shot_mode(i) { shot.mode = pick(i, sm_region, sm_window, sm_screen); sel.on = false }
+    on change shooting while not shooting { sel.on = false }
+
+    surface shotlayer {
+        size: full, full
+        anchor: top_left
+        level: overlay
+        screens: each max 2
+        open: shot.in > 0.01 and screen.index == shot.scr
+        keyboard: exclusive while shooting
+        let W = shotlayer.width
+        let H = shotlayer.height
+        let px = clamp(pointer.x, 0, W)
+        let py = clamp(pointer.y, 0, H)
+        let sx0 = min(sel.ax, px)
+        let sy0 = min(sel.ay, py)
+        let sw = abs(px - sel.ax)
+        let sh = abs(py - sel.ay)
+        let dragging = sel.on and (sw > 1 or sh > 1)
+        group {
+            opacity: shot.in
+            //  The frozen frame of this monitor: what you choose from.
+            for f in frames { image f.pic { at: 0, 0; size: W, H; show: f.index == screen.index } }
+            //  Dimmed, and clear inside the selection.
+            box { from: 0, 0; size: W, H; color: #04060a; opacity: if(dragging, 0, 0.42) }
+            group {
+                show: dragging
+                box { from: 0, 0; size: W, sy0; color: #04060a; opacity: 0.46 }
+                box { from: 0, sy0 + sh; size: W, H - sy0 - sh; color: #04060a; opacity: 0.46 }
+                box { from: 0, sy0; size: sx0, sh; color: #04060a; opacity: 0.46 }
+                box { from: sx0 + sw, sy0; size: W - sx0 - sw, sh; color: #04060a; opacity: 0.46 }
+                box { from: sx0, sy0; size: sw, sh; stroke: 1.5; color: tk.mint }
+                //  Its corners, and its measures on its edges.
+                box { from: sx0 - 5, sy0 - 5; size: 10, 2; color: #ffffff }
+                box { from: sx0 - 5, sy0 - 5; size: 2, 10; color: #ffffff }
+                box { from: sx0 + sw - 5, sy0 + sh + 3; size: 10, 2; color: #ffffff }
+                box { from: sx0 + sw + 3, sy0 + sh - 5; size: 2, 10; color: #ffffff }
+                box { at: sx0 + sw / 2, max(14, sy0 - 16); size: 52, 22; corner: 6; color: tk.mint }
+                text "{sw, 0}" { family: "Geist Mono"; at: sx0 + sw / 2, max(14, sy0 - 16); anchor: center; size: 12; weight: 600; color: tk.mint_ink }
+                box { at: max(28, sx0 - 32), sy0 + sh / 2; size: 52, 22; corner: 6; color: tk.mint }
+                text "{sh, 0}" { family: "Geist Mono"; at: max(28, sx0 - 32), sy0 + sh / 2; anchor: center; size: 12; weight: 600; color: tk.mint_ink }
+            }
+            //  The guides through the pointer, and where it is.
+            group {
+                show: shot.mode == sm_region
+                box { from: px, 0; size: 1, H; color: #ffffff; opacity: 32% }
+                box { from: 0, py; size: W, 1; color: #ffffff; opacity: 32% }
+                group {
+                    show: not dragging
+                    box { from: px + 12, py - 34; size: 96, 22; corner: 6; color: #151616; opacity: 85% }
+                    text "{px, 0}, {py, 0}" { family: "Geist Mono"; at: px + 18, py - 23; anchor: left center; size: 12; weight: 500; color: tk.ink }
+                }
+            }
+            //  Her, as the size HUD: beside the corner being dragged.
+            let right = px >= sel.ax or not sel.on
+            let below = py >= sel.ay or not sel.on
+            let hx = clamp(px + if(right, 50, -50), 34, W - 34)
+            let hy = clamp(py + if(below, 46, -46), 34, H - 34)
+            let cap.right = hx + 34 + 168 < W
+            group {
+                show: shooting
+                body {
+                    color: skin
+                    rim: 14%
+                    shadow: 0, 8, 20, 40%
+                    ellipse { at: hx, hy; radius: 23 * pk }
+                }
+                group { pivot: hx, hy; scale: pk, pk; Face(hx, hy, 0, 0) }
+                let capx = if(cap.right, hx + 34 + 8, hx - 34 - 8 - 150)
+                box { from: capx, hy - 18; size: 150, 36; corner: 18; color: #151616 }
+                box { from: capx, hy - 18; size: 150, 36; corner: 18; stroke: 1; color: #ffffff; opacity: 9% }
+                text pick(if(shot.mode == sm_screen, 1, 0), "{sw, 0} × {sh, 0}", "{W, 0} × {H, 0}") { family: "Geist Mono"; at: capx + 16, hy; anchor: left center; size: 15; weight: 600; color: tk.ink }
+                text "px" { family: "Geist"; at: capx + 134, hy; anchor: right center; size: 12; weight: 500; color: tk.ink3 }
+            }
+            //  The modes, at the bottom.
+            group {
+                move: W / 2 - 260, H - 80
+                box { from: 0, 0; size: 520, 54; corner: 18; color: #151616; opacity: 94% }
+                box { from: 0, 0; size: 520, 54; corner: 18; stroke: 1; color: #ffffff; opacity: 9% }
+                group { move: 8, 8; Seg(if(shot.mode == sm_region, 0, if(shot.mode == sm_window, 1, 2)), "Region  R", "Window  W", pick_shot_mode, c: "Screen  S", count: 3, w: 300) }
+                text pick(if(shot.mode == sm_region, if(sel.on, 1, 0), if(shot.mode == sm_window, 2, 3)), "Drag to select", "Release to capture", "Click a window", "Click to capture") { family: "Geist"; at: 320, 27; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
+                text "Esc cancels" { family: "Geist"; at: 506, 27; anchor: right center; size: 12; weight: 500; color: tk.ink3 }
+            }
+            box { from: 0, 0; size: W, H; color: #ffffff; opacity: shot.flash }
+        }
+        zone box shot_zone { from: 0, 0; size: W, H - 100; active: shooting }
+        on press shot_zone while shot.mode == sm_region { sel.on = true; sel.ax = px; sel.ay = py }
+        on release shot_zone while sel.on and abs(px - sel.ax) > 3 and abs(py - sel.ay) > 3 {
+            sel.x = min(sel.ax, px)
+            sel.y = min(sel.ay, py)
+            sel.w = abs(px - sel.ax)
+            sel.h = abs(py - sel.ay)
+            sel.on = false
+            emit shot_commit
+        }
+        on release shot_zone while sel.on and (abs(px - sel.ax) <= 3 or abs(py - sel.ay) <= 3) { sel.on = false }
+        on press shot_zone while shot.mode == sm_screen { sel.x = 0; sel.y = 0; sel.w = W; sel.h = H; emit shot_commit }
+        on press shot_zone while shot.mode == sm_window { sel.w = -1; sel.h = -1; emit shot_commit }
+        on key Escape while shooting { emit shot_escape }
+        on key r while shooting { shot.mode = sm_region; sel.on = false }
+        on key w while shooting { shot.mode = sm_window; sel.on = false }
+        on key s while shooting { shot.mode = sm_screen; sel.on = false }
+    }
+
     //  Riding a window, in pleamar-wm's session: she leaves by the top edge the
     //  same way, and the window manager, which knows where every window is on
     //  every frame, draws her on the title bar of the one with the keyboard.
@@ -1408,7 +1547,7 @@ scene Etta {
     //  her centre, it stuck out through the top edge.
     let capsule.y = cy_actual + 12
     //  And the saved recording's card, a little lower still.
-    let reel.y = cy_actual + 16
+    let reel.y = cy_actual + 20
     //  The menu: 163 wide —the sheet's 248 times 46/70— and as tall as whatever
     //  there is asks. Each entry measures 23 and the first of each group takes
     //  16 more for the name of whoever brings it.
@@ -1576,7 +1715,7 @@ scene Etta {
         //  And the saved recording's card, the same way.
         box reel_box {
             at: reel.x, reel.y
-            size: 300 * clamp(reel * 1.6, 0, 1), 96 * clamp(reel * 2.4, 0, 1)
+            size: 420 * clamp(reel * 1.6, 0, 1), 102 * clamp(reel * 2.4, 0, 1)
             corner: 16
             blend: 18 * 4 * reel * (1 - reel)
         }
@@ -2144,45 +2283,52 @@ scene Etta {
         on press end_haven { emit leave_haven }
         on press rules { emit view_rules }
     }
-    // ── the saved recording's card ───────────────────────────────
+    // ── the saved card: a recording, or a screenshot ─────────────
     //  Its grace zone first, below what it holds: the press belongs to the
     //  zone declared last.
-    zone box reel_area { at: reel.x - 20, reel.y; size: 350, 120; corner: 24; active: reel > 0.01 }
+    zone box reel_area { at: reel.x - 20, reel.y; size: 470, 130; corner: 24; active: reel > 0.01 }
     on enter reel_area { reel_hovered = true }
     on leave reel_area { reel_hovered = false; reel_clock: if(reel_hovered, 0, 1) after 6s }
     let reel.reveal = clamp(reel * 2.2 - 1.2, 0, 1)
+    let rl = reel.x - 210
+    let rt = reel.y - 51
     group {
         opacity: reel.reveal
         move: (1 - reel.reveal) * -8, 0
-        //  A mint tick: done, and kept.
-        ellipse { at: reel.x - 130, reel.y - 26; radius: 8; color: mint; opacity: 18% }
-        path { at: reel.x - 134, reel.y - 27; color: mint; stroke: 1.8
-               move 0, 0; line 3, 3; line 8, -3 }
-        text "Recording saved" { family: "Geist"; at: reel.x - 116, reel.y - 29; anchor: left center; size: 12; weight: 500; color: ink }
-        text reel.name { family: "Geist"; at: reel.x - 116, reel.y - 13; anchor: left center; size: 10.5; width: 230; lines: 1; color: #8b8f95 }
+        //  What it holds: the picture itself, or a film with its play.
+        group {
+            clip box { from: rl + 14, rt + 16; size: 112, 70; corner: 10 }
+            box { from: rl + 14, rt + 16; size: 112, 70; color: tk.s2 }
+            for p in photonow { image p.pic { at: rl + 14, rt + 16; size: 112, 70; show: reel.kind == rk_photo } }
+            figure Kit.i_play { at: rl + 70, rt + 51; size: 22, 22; color: tk.ink2; show: reel.kind == rk_video }
+        }
+        box { from: rl + 14, rt + 16; size: 112, 70; corner: 10; stroke: 1; color: #ffffff; opacity: 8% }
+        text pick(if(reel.kind == rk_photo, 1, 0), "Recording saved", "Screenshot saved") { family: "Geist"; at: rl + 140, rt + 26; anchor: left center; size: 15; weight: 600; color: tk.ink; measure: reel.title }
+        group { move: rl + 148 + reel.title.width, rt + 15; show: reel.kind == rk_photo; Tag("Copied", w: 62, tone: 1) }
+        text pick(if(reel.kind == rk_photo, 1, 0), "{reel.name}", "{photo.name} · {photo.size}") { family: "Geist Mono"; at: rl + 140, rt + 46; anchor: left center; size: 11; weight: 500; width: 266; lines: 1; color: tk.ink3 }
         prop reel_x.glow = 0 ~140ms
-        line { from: reel.x + 126, reel.y - 33; to: reel.x + 134, reel.y - 25; width: 1.6; color: ink; opacity: 45% + reel_x.glow * 55% }
-        line { from: reel.x + 134, reel.y - 33; to: reel.x + 126, reel.y - 25; width: 1.6; color: ink; opacity: 45% + reel_x.glow * 55% }
-        zone box reel_close { at: reel.x + 130, reel.y - 29; size: 26, 26; corner: 13; cursor: pointer; active: reel > 0.8 }
+        figure Kit.i_close { at: rl + 404, rt + 18; size: 14, 14; color: mix(tk.ink3, tk.ink, reel_x.glow) }
+        zone box reel_close { at: rl + 404, rt + 18; size: 26, 26; corner: 13; cursor: pointer; active: reel > 0.8 }
         on enter reel_close { reel_x.glow: 1 }
         on leave reel_close { reel_x.glow: 0 }
         on press reel_close { reel_open = false }
-        //  Three choices, the first one lit: watching it is what one wants most.
+        //  Three choices, the first one lit.
         repeat b in 0..3 {
-            let bx = reel.x - 94 + b * 94
+            let bx = rl + 140 + b * 90
             prop reel_b.glow.$b = 0 ~140ms
-            box { at: bx, reel.y + 22; size: 88, 30; corner: 10
-                  color: mix(mix(#1b1b1c, #242526, reel_b.glow.$b), mix(#1f3a34, #25483f, reel_b.glow.$b), b == 0) }
-            text "Watch" { family: "Geist"; at: bx, reel.y + 22; anchor: center; size: 11.5; weight: 500; color: mint; show: b == 0 }
-            text "Folder" { family: "Geist"; at: bx, reel.y + 22; anchor: center; size: 11.5; color: ink; show: b == 1 }
-            text "Copy path" { family: "Geist"; at: bx, reel.y + 22; anchor: center; size: 11.5; color: ink; show: b == 2 }
-            zone box reel_b.$b { at: bx, reel.y + 22; size: 88, 30; corner: 10; cursor: pointer; active: reel > 0.8 }
+            box { from: bx, rt + 62; size: 84, 30; corner: 10
+                  color: if(b == 0, mix(tk.mint, tk.mint_hi, reel_b.glow.$b), mix(tk.s2, tk.s3, reel_b.glow.$b)) }
+            text pick(if(reel.kind == rk_photo, 3, 0) + b, "Watch", "Folder", "Copy path", "Open", "Show folder", "Take another") { family: "Geist"; at: bx + 42, rt + 77; anchor: center; size: 12; weight: 600; color: if(b == 0, tk.mint_ink, tk.ink) }
+            zone box reel_b.$b { from: bx, rt + 62; size: 84, 30; corner: 10; cursor: pointer; active: reel > 0.8 }
             on enter reel_b.$b { reel_b.glow.$b: 1 }
             on leave reel_b.$b { reel_b.glow.$b: 0 }
         }
-        on press reel_b.0 { emit reel_watch; reel_open = false }
-        on press reel_b.1 { emit reel_folder; reel_open = false }
-        on press reel_b.2 { emit reel_copy; reel_open = false }
+        on press reel_b.0 while reel.kind == rk_video { emit reel_watch; reel_open = false }
+        on press reel_b.1 while reel.kind == rk_video { emit reel_folder; reel_open = false }
+        on press reel_b.2 while reel.kind == rk_video { emit reel_copy; reel_open = false }
+        on press reel_b.0 while reel.kind == rk_photo { emit photo_open; reel_open = false }
+        on press reel_b.1 while reel.kind == rk_photo { emit photo_folder; reel_open = false }
+        on press reel_b.2 while reel.kind == rk_photo { reel_open = false; emit shot_region }
     }
 
     //  On coming back, a single summary. The normal drops stay hidden while it is

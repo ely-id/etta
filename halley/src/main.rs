@@ -21,6 +21,9 @@ struct Output {
     size: (i32, i32),
     scale: i32,
     rotated: bool,
+    /// The output's transform in degrees (0, 90, 180, 270), and whether it is flipped.
+    turn: u32,
+    flipped: bool,
     logical_size: Option<(i32, i32)>,
 }
 
@@ -55,6 +58,18 @@ impl Dispatch<wl_output::WlOutput, ()> for Outputs {
                 x, y, transform, ..
             } => {
                 entry.position = (x, y);
+                if let wayland_client::WEnum::Value(t) = transform {
+                    (entry.turn, entry.flipped) = match t {
+                        wl_output::Transform::_90 => (90, false),
+                        wl_output::Transform::_180 => (180, false),
+                        wl_output::Transform::_270 => (270, false),
+                        wl_output::Transform::Flipped => (0, true),
+                        wl_output::Transform::Flipped90 => (90, true),
+                        wl_output::Transform::Flipped180 => (180, true),
+                        wl_output::Transform::Flipped270 => (270, true),
+                        _ => (0, false),
+                    };
+                }
                 entry.rotated = matches!(
                     transform,
                     wayland_client::WEnum::Value(
@@ -121,7 +136,8 @@ fn output_value(output: &Output, focused: &str) -> Value {
         }
     });
     json!({"name": output.name, "x": output.position.0, "y": output.position.1,
-        "w": width, "h": height, "focused": output.name == focused})
+        "w": width, "h": height, "scale": scale, "transform": output.turn, "flipped": output.flipped,
+        "focused": output.name == focused})
 }
 
 fn outputs(client: &Client) -> Result<Value, Box<dyn std::error::Error>> {
@@ -253,7 +269,7 @@ mod tests {
         };
         assert_eq!(
             output_value(&output, "DP-1"),
-            json!({"name":"DP-1","x":-1280,"y":-720,"w":1280,"h":720,"focused":true})
+            json!({"name":"DP-1","x":-1280,"y":-720,"w":1280,"h":720,"scale":2,"transform":0,"flipped":false,"focused":true})
         );
         let rotated = Output {
             rotated: true,
@@ -265,6 +281,11 @@ mod tests {
             ..rotated
         };
         assert_eq!(output_value(&logical, "")["w"], 853);
+        let upside_down = Output {
+            turn: 180,
+            ..Default::default()
+        };
+        assert_eq!(output_value(&upside_down, "")["transform"], 180);
     }
 
     #[test]
