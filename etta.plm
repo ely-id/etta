@@ -15,6 +15,7 @@
 import "pleamar:ui"
 import "ui/tokens.plm"
 import "ui/kit.plm"
+import "ui/panels.plm"
 import "common/palette.plm"
 import "common/accessories.plm"
 
@@ -32,12 +33,12 @@ scene Etta {
         //  The network and the headphones are pleamar's own services now
         //  (NetworkManager and BlueZ, spoken to directly): listing, joining
         //  with a password, pairing. And `fd` finds the files and the folders.
-        run: "curl", "timedatectl", "node", "notify-send", "fd", "deriva-worker", "kill", "xdg-open", "grim", "slurp", "hyprctl", "magick", "wl-copy", "mkdir", "wf-recorder", "xdg-user-dir", "test", "pgrep", "swaybg", "pactl", "pleamar-wm", "etta-halley", "cat", "ls"
+        run: "curl", "timedatectl", "node", "notify-send", "fd", "deriva-worker", "kill", "xdg-open", "grim", "slurp", "hyprctl", "magick", "wl-copy", "mkdir", "wf-recorder", "xdg-user-dir", "test", "pgrep", "swaybg", "pactl", "pleamar-wm", "etta-halley", "cat", "ls", "rfkill", "systemd-inhibit", "powerprofilesctl", "wlsunset"
     }
     service clock as now { time: text = "--:--"; date: text; hour: number; minute: number; day: number; month: number; weekday: number }
     service audio as sound { volume: number; muted: bool; input: number; input_muted: bool }
-    service media as playback { playing: bool; title: text; artist: text }
-    service network as net { online: bool; name: text; kind: text; strength: number }
+    service media as playback { playing: bool; title: text; artist: text; length: number; position: number; rate: number }
+    service network as net { online: bool; name: text; kind: none | wired | wifi; strength: number }
     service brightness as display { present: bool; level: number }
 
     // ── the pages of the control center ──────────────────────────
@@ -71,7 +72,7 @@ scene Etta {
     fact joining = -1
     text wifi_pw = ""
     event join ->                      // the password is written: join
-    event forget_ask                   // not now
+    event forget_ask ->                // not now
     //  The Bluetooth radio looking for new gadgets: its radar turns meanwhile.
     fact bt_scanning = false
     event bt_scan ->
@@ -353,7 +354,7 @@ scene Etta {
     //  lands the new picture spreads as a ring of water with a shadow running
     //  ahead of it and a line of light on its crest; behind it the water
     //  ripples until it settles. Then `swaybg` takes the new one, unseen.
-    model walls max 9 { name: text; thumb: image 144, 81; ready: bool; current: bool }
+    model walls max 9 { name: text; thumb: image 212, 119; ready: bool; current: bool }
     model wallnow max 1 { name: text; thumb: image 160, 90; ready: bool }   // the one on now, in her wardrobe
     model tidepics max 1 { pic: image 1280, 720 }
     event show_walls
@@ -395,7 +396,7 @@ scene Etta {
     //  pool opens under her, with two more places to leave it; let it go and
     //  she swallows it. Her library (`deriva-worker`, on disk) keeps it, and its
     //  page finds it again: cards with their picture, the wheel to go on.
-    model drift max 4 { title: text; source: text; kind: text; date: text; preview: image 222, 92; has_preview: bool; link: text }
+    model drift max 4 { title: text; source: text; kind: text; k: number = 2; date: text; preview: image 284, 124; has_preview: bool; link: text }
     text drift_q = ""
     text drift.toast = ""
     fact drift.result = 0              // 0 none · 1 saved · 2 already there · 3 could not
@@ -838,7 +839,7 @@ scene Etta {
     fact agents.face: none | reading | verdict = none
     let ag.shown = if(ag.worst > 100, 0.5, ag.worst / 100)
     let ag.tone = mix(mix(mix(#ef7a66, #f0b85a, clamp((ag.worst - 12) / 8, 0, 1)), mint, clamp((ag.worst - 40) / 15, 0, 1)), #8b8f95, ag.worst > 100)
-    repeat a in 1..3 {
+    repeat a in 1..5 {
         fact ag.kind.$a = 0
         text ag.name.$a = ""
         text ag.sub.$a = ""
@@ -933,7 +934,7 @@ scene Etta {
     //  into Settings —or Wi-Fi, or half a confirmation— instead of her control
     //  center. Only once it has finished folding: done on closing, the content
     //  jumped to the front page while it was still shrinking.
-    on change card < 0.02 while card < 0.02 and not open { page = none; section = menu; confirming = none }
+    on change card < 0.02 while card < 0.02 and not open { page = none; confirming = none }
 
     //  The level on the face. The system brings the volume: not a single line of
     //  logic, and that is why the panel's slider and the keyboard's key look
@@ -2121,7 +2122,7 @@ scene Etta {
         opacity: capsule.reveal
         move: (1 - capsule.reveal) * -8, 0
         arc { at: capsule.x - 76, capsule.y - 22; radius: 7.5; span: 210deg; width: 5; rotate: 145deg; color: #8fa2e8 }
-        text "Do not disturb · {remaining, 0} min" { family: "Geist"; at: capsule.x - 60, capsule.y - 26; anchor: left center; size: 12; weight: 500; color: ink }
+        text pick(if(remaining > 9999, 1, 0), "Do not disturb · {remaining, 0} min", "Do not disturb") { family: "Geist"; at: capsule.x - 60, capsule.y - 26; anchor: left center; size: 12; weight: 500; color: ink }
         text "{pending, 0} notices kept" { family: "Geist"; at: capsule.x - 60, capsule.y - 9; anchor: left center; size: 10.5; color: #8b8f95 }
         prop end_haven.glow = 0 ~140ms
         prop rules.glow = 0 ~140ms
@@ -3534,31 +3535,30 @@ scene Etta {
     }
 
     // ── the card ─────────────────────────────────────────────────
-    //  The control center, measured on the sheet
-    //  (`design/concepts/2026-08-31-centro-y-apps/centro-de-control.png`): the
-    //  ball measures 70 there and 46 here, so everything goes times 46/70.
+    //  The control center and its pages. It still comes out of her and goes
+    //  back into her (see `card_box` in her body); what changed is what is
+    //  written on it, which lives in ui/panels.plm and is drawn from the card's
+    //  top left corner, and its size: every page has its own, and the card
+    //  grows or shrinks to it with a spring.
     //
-    //  Three cards, not six: Wi-Fi, Bluetooth and Focus. And the two levels are
-    //  **brightness and volume**, with their icon BELOW the track, the label and
-    //  the percentage in mint. The six and the orbit belong to the current
-    //  ControlCenter, which is no longer this sheet.
-    let card.w = 520 * card
-    let card.h = 510 * card
-    //  Stuck to her, not beside her: they overlap 17 px and with that the melting
-    //  makes a neck. It is the same as the tray, and for the same reason: the
-    //  card does not appear beside her, it comes out of her.
-    //  The card's corner: the sheet's as soon as there is a card, and fatter and
-    //  fatter in proportion as it goes, so that the last thing that goes into her
-    //  is a drop and not a little box with corners.
-    let card.corner = max(22 * card, min(card.w, card.h) / 2 * (1 - card))
+    //  Overview 620 × 700 · session 560 · settings 760 · agents 640 ·
+    //  wardrobe 600 · background apps 520 · wallpaper 700 × 760 · the rest 716.
+    let pg.size = if(page == none, 0, if(page == session, 2, if(page == settings, 3, if(page == agents, 4, if(page == wardrobe, 5, if(page == systray, 6, if(page == walls, 7, 1)))))))
+    prop card.W = 620 ~240ms
+    prop card.H = 700 ~240ms
+    follow card.W = if(page == walls, 700, 620)
+    follow card.H = pick(pg.size, 700, 716, 560, 760, 640, 600, 520, 760)
+    let card.w = card.W * card
+    let card.h = card.H * card
+    //  The corner: the panel's as soon as there is a card, and rounder and
+    //  rounder as it goes, so that the last thing that goes into her is a drop
+    //  and not a little box with corners.
+    let card.corner = max(24 * card, min(card.w, card.h) / 2 * (1 - card))
+    //  Stuck to her, not beside her: they overlap and the melting makes a neck.
     let card.x = cx + 6 + card.w / 2
     let card.y = cy_actual + card.h / 2 - 8
-    //  And its top edge, which is where EVERYTHING inside hangs from. Written from
-    //  the centre, adding a card moved the whole panel and the separator, the
-    //  audio section and the pages had to be rearranged by hand. From the top,
-    //  growing is growing downwards and the rest stays where it was.
     let card.top = card.y - card.h / 2
-
+    let card.left = card.x - card.w / 2
 
     // ── Deriva's pool: something carried over her ────────────────
     //  The water opens under her while something from another program is
@@ -3619,1677 +3619,311 @@ scene Etta {
         text drift.toast { family: "Geist"; at: cx + 6, cy_actual + 62; anchor: center; size: 11.5; weight: 500; color: ink; width: 160; lines: 1 }
     }
 
-    clip inset 2 box { at: card.x, card.y; size: card.w, card.h; corner: card.corner }
-    group {
-        opacity: content
-        move: 0, (1 - content) * 10
+    // ── what the card holds ──────────────────────────────────────
+    //  The pages ask for things with these. The ones with an arrow reach the
+    //  logic too; the rest are answered right here.
+    event go_back
+    event close_panel
+    event noop
+    event go_net
+    event go_bt
+    event go_dnd
+    event go_sound
+    event go_session
+    event go_settings
+    event go_calendar
+    event go_agents
+    event go_wardrobe
+    event tap_wifi
+    event tap_bt
+    event tap_dnd
+    event tap_awake ->
+    event tap_power ->
+    event tap_night ->
+    event scan_wifi
+    event pick_dur
+    event pick_snooze
+    event do_session
+    event stream_pick ->
+    event stream_set ->
+    event pick_size
+    event pick_look
+    event pick_home
+    event pick_idle
+    event flip_room
+    event flip_24
+    event flip_secs
+    event flip_batpct
+    event flip_locksusp
+    event flip_safety
+    event edit_city
+    event flip_ag1
+    event flip_ag2
+    event flip_ag3
+    event flip_ag4
+    event ask_clear
+    event cancel_clear
+    event do_clear
+    event pick_hcat0
+    event pick_hcat1
+    event pick_hcat2
+    event pick_hcat3
+    event pick_hcat4
+    event walls_rescan ->
+    event wear_hat
+    event wear_glasses
+    event wear_mug
+    event wear_phones
 
-        let x0 = card.x - 228
-        //  The overview goes away while the page grows: there are no two things
-        //  halfway, and what stays below is seen through the gap of the one rising.
-        let overview = 1 - clamp(paging * 1.6, 0, 1)
-        let y0 = card.top + 23
-
-        text "MAREA" { family: "Geist"; at: x0, y0; anchor: left center; size: 9; weight: 600; color: ink; opacity: 38% }
-        //  The big title says where you are: «Control center» on the front
-        //  page, and the page's own name —with its way back beside it— on the
-        //  others (see the page's header, below).
-        text "Control center" { family: "Geist"; at: x0 + 22 * paging, y0 + 22; anchor: left center; size: 18; weight: 500; color: ink; opacity: 1 - clamp(paging * 2, 0, 1) }
-        //  The gear and the cross, top right.
-        prop gear.glow = 0 ~140ms
-        prop cross.glow = 0 ~140ms
-        let gear.x = card.x + 168
-        let cross.x = card.x + 204
-        group {
-            //  Inside a page its place is the page's own buttons'.
-            opacity: (55% + gear.glow * 45%) * (1 - clamp(paging * 2, 0, 1))
-            arc { at: gear.x, y0 + 14; radius: 7; span: 300deg; width: 1.8; color: ink }
-            ellipse { at: gear.x, y0 + 14; radius: 2.6; color: ink }
-        }
-        group {
-            opacity: 55% + cross.glow * 45%
-            line { from: cross.x - 6, y0 + 8; to: cross.x + 6, y0 + 20; width: 1.8; color: ink }
-            line { from: cross.x + 6, y0 + 8; to: cross.x - 6, y0 + 20; width: 1.8; color: ink }
-        }
-        zone box gear { at: gear.x, y0 + 14; size: 30, 30; corner: 15; cursor: pointer; active: content > 0.9 and page == none }
-        zone box close_btn { at: cross.x, y0 + 14; size: 30, 30; corner: 15; cursor: pointer; active: content > 0.9 }
-        on enter gear { gear.glow: 1 }
-        on leave gear { gear.glow: 0 }
-        on enter close_btn { cross.glow: 1 }
-        on leave close_btn { cross.glow: 0 }
-        on press gear { page = settings }
-        on press close_btn { open = false }
-
-        //  The system tray lives where it does on any desktop: top right, in the
-        //  gap between the title and the gear. It does not cost a pixel of height,
-        //  and what is done most with it —a click to bring up somebody's window—
-        //  is still ONE click. Stuck to the right, so it grows towards the title
-        //  as people sign up.
-        component TrayIcon(i: record) {
-            size: 28, 28
-            prop rise = 0 ~140ms
-            box touch { from: 0, 0; size: 28, 28; corner: 8; color: ink; opacity: rise * 12%
-                       cursor: pointer; active: content > 0.9 and page == none }
-            image i.icon { at: 3, 3 - rise * 1.5; size: 22, 22 }
-            on enter touch { rise: 1 }
-            on leave touch { rise: 0 }
-            on press touch { emit systray_activate(i.index) }
-            on press right touch { emit systray_menu(i.index) }
-        }
-        //  The agents' reservoirs: a little tube beside the gear, as full as the
-        //  tightest window has left, and of its colour. It says «how am I doing»
-        //  without opening anything; pressing it opens the page.
-        prop agents.glow = 0 ~140ms
-        let agents.x = gear.x - 36
-        group {
-            opacity: (55% + agents.glow * 45%) * overview
-            box { at: agents.x, y0 + 14; size: 11, 18; corner: 4; stroke: 1.5; color: ink }
-            box { from: agents.x - 3.5, y0 + 21 - 12 * ag.shown; size: 7, 12 * ag.shown; corner: 2; color: ag.tone }
-        }
-        zone box agents_btn { at: agents.x, y0 + 14; size: 30, 30; corner: 15; cursor: pointer; active: content > 0.9 and page == none }
-        on enter agents_btn { agents.glow: 1 }
-        on leave agents_btn { agents.glow: 0 }
-        on press agents_btn { page = agents; emit agents_refresh }
-
-        row systray_row ~quick {
-            at: gear.x - 58, y0 + 14
-            anchor: right middle
-            gap: 4
-            opacity: overview
-            for i in icons { TrayIcon(i) }
-        }
-
-        group {
-            opacity: overview
-            // ── the two levels ───────────────────────────────────────
-            //  Dragging them really moves them: the scene says where the finger
-            //  goes and the logic asks the system for it. The value is not made up
-            //  here —the service keeps reading it—, so raising the volume with the
-            //  key moves this very track.
-            //  Everything below, measured on the sheet and written from the centre
-            //  of the card: the header ends at −150 and the content starts at −134.
-            //  Before, the right column started at −165 and climbed on top of the
-            //  cross.
-            let levels.x = card.x - 123
-            //  The levels' box reaches as far as the cards reach: with five, the
-            //  old one stopped at half height and the panel looked lopsided. And the
-            //  tracks grow with it, which is what the sheet asks: the sliders are
-            //  the protagonist.
-            let levels.y = card.top + 237
-            box { at: levels.x, levels.y; size: 210, 322; corner: 16; color: mix(#1b1b1c, ink, glassiness); opacity: mix(1, veil, glassiness) }
-            //  Three levels: brightness, volume and the microphone; and while it
-            //  rains on the windows, a fourth, the rain, which the others make
-            //  room for.
-            repeat k in 0..4 {
-                let step = 66 - 14 * four
-                let sx = levels.x - step * (1 + 0.5 * four) + k * step
-                let val = pick(k, bright_level, vol_level, mic_level, rain_level)
-                let silenced = pick(k, 0, if(sound.muted, 1, 0), if(sound.input_muted, 1, 0), 0)
-                let avail = if(k == 0, if(display.present, 1, 0), 1)
-                let track_top = levels.y - 137
-                let track_h = 200
-                let here = if(k == 3, four, 1)
-              group {
-                show: here > 0.01
-                opacity: here
-                group {
-                    opacity: 25% + avail * 75%
-                    //  The track, and the filled part from below.
-                    box { at: sx, track_top + track_h / 2; size: 14, track_h; corner: 7; color: mix(#2a2b2c, sunken, glassiness); opacity: mix(1, 70%, glassiness) }
-                    box { from: sx - 7, track_top + track_h * (1 - val); size: 14, track_h * val; corner: 7
-                          color: mix(mint, #6b7280, silenced) }
-                    //  And the handle, which is what says where you are.
-                    ellipse { at: sx, track_top + track_h * (1 - val); radius: 9; color: #f0ece4 }
-                }
-                //  The icon goes BELOW, and with it the label and the percentage.
-                let iy = levels.y + 93
-                group {
-                    opacity: (25% + avail * 75%) * (1 - silenced * 0.45)
-                    //  The brightness sun: a disc and eight rays.
-                    ellipse { at: sx, iy; radius: 4.5; color: ink; show: k == 0 }
-                    repeat r in 0..8 {
-                        line { from: sx + 7.5 * cos(r * 45), iy + 7.5 * sin(r * 45)
-                               to: sx + 10.5 * cos(r * 45), iy + 10.5 * sin(r * 45)
-                               width: 1.6; color: ink; show: k == 0 }
-                    }
-                    //  The volume speaker: body, horn and two waves.
-                    path { at: sx - 8, iy - 5; color: ink; show: k == 1
-                           move 0, 3; line 4, 3; line 9, 0; line 9, 11; line 4, 8; line 0, 8; close }
-                    arc { at: sx + 3, iy; radius: 6; span: 110deg; width: 1.5; rotate: 90deg; color: ink; show: k == 1 }
-                    arc { at: sx + 3, iy; radius: 9.5; span: 110deg; width: 1.5; rotate: 90deg; color: ink; show: k == 1 }
-                    //  The microphone: a capsule, its cradle and its foot.
-                    box { at: sx, iy - 3; size: 7, 12; corner: 3.5; color: ink; show: k == 2 }
-                    arc { at: sx, iy - 1; radius: 6.5; span: 180deg; width: 1.5; rotate: 90deg; color: ink; show: k == 2 }
-                    line { from: sx, iy + 5.5; to: sx, iy + 9; width: 1.5; color: ink; show: k == 2 }
-                    line { from: sx - 3.5, iy + 9; to: sx + 3.5, iy + 9; width: 1.5; color: ink; show: k == 2 }
-                    //  The rain: three streaks slanting down and a drop.
-                    line { from: sx - 5, iy - 8; to: sx - 7.5, iy - 1; width: 1.6; color: ink; show: k == 3 }
-                    line { from: sx + 1, iy - 10; to: sx - 1.5, iy - 3; width: 1.6; color: ink; show: k == 3 }
-                    line { from: sx + 7, iy - 8; to: sx + 4.5, iy - 1; width: 1.6; color: ink; show: k == 3 }
-                    ellipse { at: sx - 1.5, iy + 5.5; radius: 2.6; scale: 1, 1.25; color: ink; show: k == 3 }
-                }
-                line { from: sx - 9, iy - 9; to: sx + 9, iy + 9; width: 1.8; color: #e0655a; opacity: silenced }
-                //  (Four to a row, the names a little smaller, so they do not touch.)
-                group {
-                    pivot: sx, iy + 24
-                    scale: 1 - 0.14 * four
-                    text "Brightness" { family: "Geist"; at: sx, iy + 24; anchor: center; size: 11.5; color: ink; show: k == 0 }
-                    text "Volume" { family: "Geist"; at: sx, iy + 24; anchor: center; size: 11.5; color: ink; show: k == 1 }
-                    text "Microphone" { family: "Geist"; at: sx, iy + 24; anchor: center; size: 11.5; color: ink; show: k == 2 }
-                    text "Rain" { family: "Geist"; at: sx, iy + 24; anchor: center; size: 11.5; color: ink; show: k == 3 }
-                }
-                text "{val * 100, 0}%" { family: "Geist"; at: sx, iy + 42; anchor: center; size: 11.5; weight: 500; color: mint }
-              }
-                //  Drag the track, and press the icon to mute.
-                zone box track.$k { at: sx, track_top + track_h / 2; size: 34 - 6 * four, track_h + 18; corner: 17; cursor: pointer; active: content > 0.9 and (k < 3 or rain_on) }
-                zone box icon.$k { at: sx, iy; size: 30, 30; corner: 15; cursor: pointer; active: content > 0.9 and (k < 3 or rain_on) }
-
-            }
-            //  The track: wherever you release your finger, that is where it goes.
-            //  With `pointer.y`, which is over the surface, that is, the same
-            //  coordinates the track is drawn with: that way the sum reads next to
-            //  the drawing.
-            let finger.0 = 1 - clamp((pointer.y - (card.top + 100)) / 200, 0, 1)
-            on drag track.0 { emit set_brightness(finger.0) }
-            on press track.0 { emit set_brightness(finger.0) }
-            on drag track.1 { emit set_volume(finger.0) }
-            on press track.1 { emit set_volume(finger.0) }
-            on press icon.1 { emit mute_output }
-            on drag track.2 { emit set_mic(finger.0) }
-            on press track.2 { emit set_mic(finger.0) }
-            on press icon.2 { emit mute_mic }
-            on drag track.3 { emit set_rain(finger.0) }
-            on press track.3 { emit set_rain(finger.0) }
-
-            // ── the sheet's three ────────────────────────────────────
-            //  Each card is a `row` of three: the icon, what is read, and the
-            //  switch or the arrow. The middle one asks for the room left over
-            //  (`grow: 1`) and its texts take their width from it, so **there is
-            //  not a single width written by hand here** and what does not fit is
-            //  cut by itself. Before, I set it and that is why the network's name
-            //  slid under the switch.
-            text title.1 = "Wi-Fi"
-            text title.2 = "Bluetooth"
-            text title.3 = "Focus"
-            text title.4 = "Sound"
-            text title.5 = "Session"
-            text sub.1 = ""
-            text sub.2 = "Headphones"
-            text sub.3 = "25 min"
-            text sub.4 = "Output and input"
-            text sub.5 = "Lock or power off"
-            //  The springs and the zones go OUTSIDE the layout: inside a `column`
-            //  everything there is is a child, and a `prop` takes up no room.
-            repeat k in 1..6 {
-                prop glow.$k = 0 ~140ms
-                zone box row.$k { at: card.x + 111, card.top + 105 + (k - 1) * 66; size: 234, 58; corner: 14; cursor: pointer; active: content > 0.9 }
-                //  The switch has its own zone, ON TOP of the card's: pressing it
-                //  switches on or off, and pressing the rest opens the page.
-                //  Before, the body took both things and the switch did nothing,
-                //  so with the Wi-Fi off there was no way to turn it back on from
-                //  here.
-                zone box switch.$k { at: card.x + 196, card.top + 105 + (k - 1) * 66; size: 52, 44; corner: 20; cursor: pointer; active: content > 0.9 and k < 3 }
-                on enter row.$k { glow.$k: 1 }
-                on leave row.$k { glow.$k: 0 }
-                on press switch.$k { emit flip(k) }
-                //  Pressing the card opens its page. The Wi-Fi and Bluetooth
-            //  switch still belongs to the system; what opens here is the list.
-                on press row.$k { emit scan(k) }
-            }
-            //  And **which page opens is decided by the scene**, not the logic. The
-            //  logic did it —`fact.page = pages[k]`— and that was a round trip with
-            //  the 600 ms of blocking in the middle for something that does not
-            //  depend on the system; worse: the two new cards were not in its
-            //  list, so the logic put the page back to `none` right after the rule
-            //  opened it. Outside the layout, or they would be five identical rules.
-            on press row.1 { page = wifi }
-            on press row.2 { page = bluetooth }
-            on press row.3 { page = concentration }
-            on press row.4 { page = sound }
-            on press row.5 { page = session }
-            column cards {
-                at: card.x - 6, card.top + 76
-                gap: 8
-                repeat k in 1..6 {
-                    row card_row {
-                        size: 234, 58
-                        gap: 6
-                        padding: 8
-                        //  Centred vertically. By default a layout aligns to
-                        //  `start`, and with that the switch stayed stuck at the
-                        //  top while the text dropped to the middle.
-                        align: center
-                        //  The Focus one is highlighted when it is on: the
-                        //  background a touch greener. It is the only border in the
-                        //  panel, and the card paints it, not the layout.
-                        fill: mix(mix(mix(#1b1b1c, #202021, glow.$k), #1a241f, lit.$k * if(k == 3, 1, 0)), mix(ink, mint, lit.$k * if(k == 3, 1, 0)), glassiness) mix(1, veil + glow.$k * veil.glow, glassiness)
-                        corner: 14
-                        group {
-                            size: 20, 22
-                            //  Wi-Fi: three arcs and the dot.
-                            repeat a in 1..4 {
-                                //  An arc is drawn ABOVE its point, so the point
-                                //  goes at the very bottom: the icon takes up from
-                                //  y−16 to y+2, and is centred 7 lower.
-                                arc { at: 10, 18; radius: 3 + a * 3.4; span: 110deg; width: 1.8; color: ink
-                                      opacity: 40% + lit.1 * 60%; show: k == 1 }
-                            }
-                            ellipse { at: 10, 19; radius: 1.8; color: ink; opacity: 40% + lit.1 * 60%; show: k == 1 }
-                            //  Bluetooth: the rune, in one stroke.
-                            path { at: 6, 2; color: ink; stroke: 1.8; opacity: 40% + lit.2 * 60%; show: k == 2
-                                   move 0, 4; line 10, 14; line 5, 18; line 5, 0; line 10, 4; line 0, 14 }
-                            //  Focus: the moon. It was a disc with one side eaten by
-                            //  another the colour of the card, and on a glass card
-                            //  the eating one shows: now it is the crescent itself,
-                            //  the radius 9 disc at (11, 11) minus the 8.5 one at
-                            //  (16, 6), with each arc in curves.
-                            path { at: 0, 0; color: ink; opacity: 70%; show: k == 3
-                                   move 8.3, 2.4; curve 3.5, 6.1 via 5.2, 3.4; curve 2, 11.9 via 1.7, 8.7; curve 4.6, 17.4 via 2.4, 15.1
-                                   curve 10.1, 20 via 6.9, 19.6; curve 15.9, 18.5 via 13.3, 20.3; curve 19.6, 13.7 via 18.6, 16.8
-                                   curve 14.5, 14.4 via 17.2, 14.8; curve 10, 12 via 11.9, 13.9; curve 7.6, 7.5 via 8.1, 10.1
-                                   curve 8.3, 2.4 via 7.2, 4.8; close }
-                            //  Sound: the usual speaker, the same one that goes
-                            //  below its track.
-                            path { at: 2, 5; color: ink; opacity: 70%; show: k == 4
-                                   move 0, 3; line 4, 3; line 9, 0; line 9, 11; line 4, 8; line 0, 8; close }
-                            arc { at: 13, 10.5; radius: 5; span: 110deg; width: 1.5; rotate: 90deg; color: ink; opacity: 70%; show: k == 4 }
-                            //  Session: the power symbol, which is what that card
-                            //  ends up offering.
-                            arc { at: 10, 12; radius: 7; span: 280deg; width: 1.7; rotate: 180deg; color: ink; opacity: 70%; show: k == 5 }
-                            box { at: 10, 4.5; size: 1.7, 7; corner: 0.9; color: ink; opacity: 70%; show: k == 5 }
-                        }
-                        //  What is read, with whatever room is left. No widths.
-                        column { grow: 1; gap: 2
-                            text title.$k { family: "Geist"; size: 13; lines: 1; color: ink }
-                            text sub.$k { family: "Geist"; size: 11.5; lines: 1; color: mix(#8b8f95, faint, glassiness); show: k > 3 }
-                            text bt.sub { family: "Geist"; size: 11.5; lines: 1; color: mix(#8b8f95, faint, glassiness); show: k == 2 }
-                            text net.name { family: "Geist"; size: 11.5; lines: 1; color: mix(#8b8f95, faint, glassiness); show: k == 1 }
-                            //  The Focus one tells what it has left, not what it
-                            //  would last: when it is on, what you need to know is
-                            //  when she comes back.
-                            text "On · {remaining, 0} min" { family: "Geist"; size: 11.5; lines: 1; color: mint; show: k == 3 and haven }
-                            text sub.3 { family: "Geist"; size: 11.5; lines: 1; color: mix(#8b8f95, faint, glassiness); show: k == 3 and not haven }
-                        }
-                        //  The switch, or the arrow of those that open a page.
-                        //  The one that opens a page only carries an arrow, so it
-                        //  takes up much less and its text has more room left.
-                        group {
-                            size: if(k < 3, 40, 12), 23
-                            box { from: 0, 0; size: 40, 23; corner: 11.5; color: mix(#2a2b2c, mint, lit.$k); show: k < 3 }
-                            ellipse { at: 11.5 + 18 * lit.$k, 11.5; radius: 8.5; color: #ffffff; show: k < 3 }
-                            path { at: 3, 6; color: ink; stroke: 1.6; opacity: 70%; show: k > 2
-                                   move 0, 0; line 5, 5; line 0, 10 }
-                        }
-                    }
-                }
-            }
-            //  The mint outline of the one that is on. It goes apart and with
-            //  `stroke` —only the outline— because a layout's background is a
-            //  colour and carries no border; a filled `body` on top covered the
-            //  whole card.
-            box { at: card.x + 111, card.top + 237; size: 234, 58; corner: 14
-                  stroke: 1; color: mint; opacity: lit.3 }
-
-
-
-        }
-
-        // ── the page, which comes out of its card ────────────────
-        //  It grows from the place of the card that was pressed until it fills
-        //  the panel. What is below goes away meanwhile: there are no two things
-        //  halfway.
-        let pg.k = if(page == bluetooth, 2, 0) + if(page == concentration, 3, 0) + if(page == wifi, 1, 0) + if(page == sound, 4, 0) + if(page == session, 5, 0)
-        //  The first three come out of their card; the wardrobe has no card
-        //  —it is entered through her menu—, so it grows from the centre of the
-        //  panel.
-        let pg.own = if(page == wardrobe or page == systray or page == settings or page == agents or page == calendar or page == history or page == drift or page == walls, 0, 1)
-        let pg.ox = card.x + 111 * pg.own
-        let pg.oy = card.top + 231 + (-126 + (pg.k - 1) * 66) * pg.own
-        //  The page's box starts where its content does, 96 below the card's
-        //  top edge: the page's name and its buttons live in the card's own
-        //  header now, not in a row of the box. And the pages of their
-        //  own (agents, calendar, settings…) reach down to where their content
-        //  ends instead of letting it spill out of the box.
-        let pg.to.h = 310 + 88 * (1 - pg.own)
-        let pg.to.y = card.top + 96 + pg.to.h / 2
-        let pg.x = pg.ox + (card.x - pg.ox) * paging
-        let pg.y = pg.oy + (pg.to.y - pg.oy) * paging
-        let pg.w = 234 + 222 * paging
-        let pg.h = 58 + (pg.to.h - 58) * paging
-        //  The box only carries the row into the page: once there it melts,
-        //  and the page sits on the card itself, all of one colour.
-        box { at: pg.x, pg.y; size: pg.w, pg.h; corner: 14; color: mix(#1b1b1c, ink, glassiness); opacity: paging * min(1, (1 - paging) * 4) * mix(1, veil, glassiness) }
-
-        group {
-            opacity: clamp(paging * 3 - 2, 0, 1)
-            let px0 = card.x - 208
-            //  The page's header, in the card's own: back, and where you are.
-            path { at: card.x - 228, card.top + 40; color: ink; stroke: 1.8; opacity: 70%
-                   move 5, 0; line 0, 5; line 5, 10 }
-            text "Wi-Fi" { family: "Geist"; at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == wifi }
-            text "Bluetooth" { family: "Geist"; at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == bluetooth }
-            text "Focus" { family: "Geist"; at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == concentration }
-            text "Her wardrobe" { family: "Geist"; at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == wardrobe }
-            text "Sound" { family: "Geist"; at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == sound }
-            text pick(section, "Settings", "Where she lives", "Her look", "Language", "The lock", "Notices") { family: "Geist"; at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == settings }
-            text "Agents" { family: "Geist"; at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == agents }
-            text "History" { family: "Geist"; at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == history }
-            text "Deriva" { family: "Geist"; at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == drift }
-            text "Wallpapers" { family: "Geist"; at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == walls }
-            text "{drift.kept, 0} kept" { family: "Geist"; at: card.x + 150, card.top + 45; anchor: right center; size: 11; color: #8b8f95; show: page == drift }
-            text cal.month { family: "Geist"; at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == calendar }
-            text systray.title { family: "Geist"; at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; width: 300; lines: 1; color: ink; show: page == systray }
-            text "Shall we take a break?" { family: "Geist"; at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == session and confirming == none }
-            text "Confirm" { family: "Geist"; at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == session and confirming != none }
-            zone box back_arrow { at: card.x - 224, card.top + 45; size: 34, 34; corner: 17; cursor: pointer; active: paging > 0.9 }
-            //  A step back is ONE step: from the question you go back to the list,
-            //  not to the control center. The guards read the previous frame, so
-            //  the two do not step on each other.
-            on press back_arrow while confirming != none { confirming = none }
-            on press back_arrow while confirming == none and not (page == settings and section != menu) { page = none }
-
-            //  A list row, the same for all three: the network, the gadget and the
-            //  sound device are told apart by the drawing on the left and by
-            //  nothing else. The rest —lighting up on hover, the «this is the
-            //  current one» dot and the number sent on choosing it— is the same, so
-            //  it is written once.
-            //  `lock`: a network that asks for its password (a padlock); `busy`:
-            //  the one being joined, which breathes; `battery`: a gadget's,
-            //  0..1 (−1, it does not say); `fresh`: one not paired yet.
-            component ListRow(f: record, pick: event, glyph: number = 1, signal: number = 0, base: number = 0, lock: number = 0, busy: number = 0, battery: number = -1, fresh: number = 0) {
-                size: 456, 38
-                prop glow = 0 ~140ms
-                let current = if(f.current, 1, 0)
-                let tone = mix(#8b8f95, mint, current)
-                zone box touch { from: 0, 0; size: 456, 38; corner: 10; cursor: pointer }
-                box { from: 0, 0; size: 456, 38; corner: 10
-                      color: mix(mix(#202021, #262728, glow), #1a241f, current) }
-                //  1 · the network, with its strength in arcs: the more lit, the
-                //  better it reaches.
-                group {
-                    show: glyph == 1
-                    repeat a in 1..4 {
-                        arc { at: 20, 26; radius: 3 + a * 3.2; span: 110deg; width: 1.7; color: ink
-                              opacity: 20% + 80% * if(signal > (a - 1) * 0.25, 1, 0) }
-                    }
-                    ellipse { at: 20, 27; radius: 1.7; color: ink }
-                }
-                //  2 · the gadget
-                path { at: 15, 11; color: ink; stroke: 1.7; opacity: 80%; show: glyph == 2
-                       move 0, 4; line 10, 14; line 5, 18; line 5, 0; line 10, 4; line 0, 14 }
-                //  3 · the speaker
-                path { at: 12, 13; color: tone; show: glyph == 3
-                       move 0, 3; line 4, 3; line 9, 0; line 9, 11; line 4, 8; line 0, 8; close }
-                //  4 · and the mic, which is a capsule with its stand
-                group {
-                    show: glyph == 4
-                    box { at: 20, 15; size: 7, 14; corner: 3.5; color: tone }
-                    arc { at: 20, 17; radius: 6.4; span: 180deg; width: 1.5; color: tone }
-                    box { at: 20, 27.5; size: 1.5, 3.5; color: tone }
-                }
-                text f.name { family: "Geist"; at: 42, 19; anchor: left center; size: 12; width: 300; lines: 1
-                                color: mix(#dfe1e3, #f6f6f5, glow) }
-                ellipse { at: 438, 19; radius: 4; color: mint; opacity: current * 100% }
-                //  The padlock: it asks for a password the first time.
-                group {
-                    show: lock > 0.5
-                    box { at: 412, 21; size: 10, 8; corner: 2; color: #8b8f95 }
-                    arc { at: 412, 16.5; radius: 3.2; span: 180deg; width: 1.5; rotate: -90deg; color: #8b8f95 }
-                }
-                //  Joining: the row breathes, a ring of mint that comes and goes.
-                box { from: 0, 0; size: 456, 38; corner: 10; stroke: 1.5; color: mint
-                      opacity: busy * (35% + 35% * sin(join.t * 360)) }
-                //  A gadget's battery: a little drop, as full as it is.
-                group {
-                    show: battery >= 0
-                    box { at: 404, 19; size: 22, 11; corner: 3; stroke: 1.2; color: #8b8f95 }
-                    box { at: 416, 19; size: 2, 5; corner: 1; color: #8b8f95 }
-                    box { from: 394.5, 15.5; size: 19 * clamp(battery, 0, 1), 7; corner: 2
-                          color: mix(#e0655a, mint, clamp(battery * 3 - 0.3, 0, 1)) }
-                }
-                //  One just found, not paired: pressing it pairs it.
-                text "Pair" { family: "Geist"; at: 428, 19; anchor: right center; size: 11; weight: 600; color: mint; show: fresh > 0.5 }
-                on enter touch { glow: 1 }
-                on leave touch { glow: 0 }
-                on press touch { emit pick(f.index + base) }
-            }
-
-            //  The networks there are. The logic brings them from `nmcli`, because
-            //  pleamar can read the network but not list it or change it.
-            column network_list {
-                at: card.x - 228, card.top + 109
-                gap: 4
-                show: page == wifi
-                for r in networks { ListRow(r, pick: pick_network, glyph: 1, signal: r.signal, lock: r.secure and not r.known, busy: joining == r.index) }
-            }
-            //  Its password, asked for in place: under the list, with the
-            //  network's name, the field and «Join». Enter joins too; Esc, or
-            //  pressing elsewhere in the list, lets it be.
-            group {
-                show: page == wifi and asking >= 0
-                opacity: clamp(ask.in * 1.4, 0, 1)
-                move: 0, (1 - ask.in) * 8
-                let ay = card.top + 109 + networks.count * 42 + 16
-                box { from: card.x - 228, ay; size: 456, 78; corner: 12; color: mix(#202021, ink, glassiness * 0.06); stroke: 1; opacity: 100% }
-                box { from: card.x - 228, ay; size: 456, 78; corner: 12; stroke: 1.2; color: mint; opacity: 35% }
-                text "Password for «{ask.name}»" { family: "Geist"; at: card.x - 212, ay + 18; anchor: left center; size: 11.5; color: #8b8f95; width: 420; lines: 1 }
-                box { from: card.x - 212, ay + 32; size: 320, 32; corner: 9; color: #141415 }
-                input wifi_pw { family: "Geist"; at: card.x - 202, ay + 48; width: 300; size: 13; color: ink; placeholder: "Password"; secret: true; selection: #2f5f52 }
-                box { from: card.x + 118, ay + 32; size: 94, 32; corner: 9; color: mint; opacity: 85% + 15% * join_btn.glow }
-                text "Join" { family: "Geist"; at: card.x + 165, ay + 48; anchor: center; size: 12; weight: 600; color: #0c0f12 }
-                zone box join_btn { from: card.x + 118, ay + 32; size: 94, 32; corner: 9; cursor: pointer; active: page == wifi and asking >= 0 }
-            }
-            on enter join_btn { join_btn.glow: 1 }
-            on leave join_btn { join_btn.glow: 0 }
-            on press join_btn { emit join }
-            on submit wifi_pw { emit join }
-            on key Escape while page == wifi and asking >= 0 { emit forget_ask }
-            text "Looking for networks…" { family: "Geist"; at: card.x, card.y + 20; anchor: center; size: 11.5; color: #8b8f95
-                                     show: page == wifi and networks.count < 1 }
-
-            //  And the headphones and the rest, from `bluetoothctl`.
-            column gadget_list {
-                at: card.x - 228, card.top + 109
-                gap: 4
-                show: page == bluetooth
-                for c in gadgets { ListRow(c, pick: pick_gadget, glyph: 2, battery: c.battery, fresh: not c.paired) }
-            }
-            //  Looking for new ones: a radar in the header, rings that leave
-            //  from the Bluetooth mark while the radio listens; pressed, it
-            //  starts or stops listening.
-            group {
-                show: page == bluetooth
-                let rx = card.x + 150
-                let ry = card.top + 45
-                repeat w in 0..3 {
-                    let t = fract(radar.t + w / 3)
-                    ellipse { at: rx, ry; radius: 6 + 16 * t; stroke: 1.4; color: mint; opacity: if(bt_scanning, (1 - t) * 70%, 0) }
-                }
-                ellipse { at: rx, ry; radius: 13; color: mix(#202021, #1a241f, if(bt_scanning, 1, 0)) }
-                path { at: rx - 4, ry - 7; color: mix(ink, mint, if(bt_scanning, 1, 0)); stroke: 1.5
-                       move 0, 3.5; line 8, 10.5; line 4, 14; line 4, 0; line 8, 3.5; line 0, 10.5 }
-                text pick(bt_scanning, "Search", "Searching…") { family: "Geist"; at: rx - 22, ry; anchor: right center; size: 11.5; color: mix(#8b8f95, mint, if(bt_scanning, 1, 0)) }
-                zone box radar_btn { at: rx - 30, ry; size: 110, 32; corner: 16; cursor: pointer; active: page == bluetooth and paging > 0.9 }
-            }
-            on press radar_btn { emit bt_scan }
-            text pick(bt_scanning, "Nothing paired", "Looking around…") { family: "Geist"; at: card.x, card.y + 20; anchor: center; size: 11.5; color: #8b8f95
-                                     show: page == bluetooth and gadgets.count < 1 }
-
-            // ── the history: what has washed up ──────────────────
-            //  Every notice dealt with —done, thrown away, opened, or closed by
-            //  its own application—, kept on disk by the logic, newest first,
-            //  in days. Each one with the drop of its category's colour; the
-            //  older, the paler, as things the tide left a while ago. «Clear»
-            //  lets the tide take them: they slide away one after another.
-            group {
-                show: page == history
-                let hx = card.x - 228
-                let hy = card.top + 104
-                column history_list {
-                    at: hx, hy
-                    gap: 3
-                    for h in past {
-                        group {
-                            size: 456, if(h.head, 26, 44)
-                            opacity: (1 - clamp(hist.wash * 1.6 - h.index * 0.07, 0, 1)) * if(h.head, 1, 1 - 0.45 * h.age)
-                            move: 120 * pow(clamp(hist.wash * 1.6 - h.index * 0.07, 0, 1), 2), 0
-                            text h.day { family: "Geist"; at: 6, 16; anchor: left center; size: 10.5; weight: 700; color: #8b8f95; show: h.head }
-                            box { from: 0, 0; size: 456, 44; corner: 11; color: #1f2021; show: not h.head }
-                            ellipse { at: 16, 22; radius: 4.5; color: mix(mix(blue, lilac, h.cat == 2), mix(green, amber, h.cat == 4), h.cat >= 3); show: not h.head }
-                            text h.app { family: "Geist"; at: 32, 14; anchor: left center; size: 8.5; weight: 700; color: mix(mix(blue, lilac, h.cat == 2), mix(green, amber, h.cat == 4), h.cat >= 3); show: not h.head }
-                            text h.title { family: "Geist"; at: 32, 29; anchor: left center; size: 12; weight: 500; width: 250; lines: 1; color: ink; show: not h.head }
-                            text h.detail { family: "Geist"; at: 292, 29; anchor: left center; size: 10.5; width: 110; lines: 1; color: #8b8f95; show: not h.head }
-                            text h.when { family: "Geist"; at: 446, 14; anchor: right center; size: 9.5; color: #8b8f95; show: not h.head }
-                        }
-                    }
-                }
-                //  Nothing yet: three little drops resting on a calm line.
-                group {
-                    show: past.count < 1
-                    line { from: card.x - 60, card.y + 30; to: card.x + 60, card.y + 30; width: 1.2; color: #8b8f95; opacity: 40% }
-                    repeat d in 0..3 {
-                        ellipse { at: card.x - 20 + d * 20, card.y + 24 - 2 * sin(tide.t * 360 + d * 120); radius: 4; color: mix(mix(blue, lilac, d == 1), green, d == 2); opacity: 70% }
-                    }
-                    text "Nothing has washed up yet" { family: "Geist"; at: card.x, card.y + 52; anchor: center; size: 11.5; color: #8b8f95 }
-                }
-                //  «Clear», top right, and the wheel to go back in time.
-                text "Clear" { family: "Geist"; at: card.x + 150, card.top + 45; anchor: right center; size: 11.5; weight: 600
-                               color: mix(#8b8f95, #ef7a66, clear.glow); show: past.count > 0 }
-                zone box clear_btn { at: card.x + 128, card.top + 45; size: 70, 30; corner: 15; cursor: pointer; active: page == history and paging > 0.9 and past.count > 0 }
-                zone box history_area { from: hx, hy; size: 456, 300; active: page == history and paging > 0.9 }
-            }
-            on enter clear_btn { clear.glow: 1 }
-            on leave clear_btn { clear.glow: 0 }
-            on press clear_btn { hist.wash: 1 ~700ms }
-            on still hist.wash for 80ms while hist.wash > 0.97 {
-                emit clear_history
-                hist.wash: 0 ~16ms
-            }
-            on scroll history_area { emit history_scroll(wheel) }
-
-            // ── the wallpapers ───────────────────────────────────
-            //  Small, three by three; the one on now has its ring. The wheel
-            //  goes on. Hovered, one lifts a little and says its name.
-            component WallCard(w: record, pick: event) {
-                size: 144, 104
-                prop lift = 0 ~lively
-                prop arrive = 0 ~360ms
-                follow arrive = if(page == walls, 1, 0)
-                zone box touch { from: 0, 0; size: 144, 81; corner: 10; cursor: pointer; active: page == walls and paging > 0.9 }
-                group {
-                    opacity: arrive
-                    move: 0, (1 - arrive) * (12 + w.index * 5) - lift * 3
-                    pivot: 72, 40
-                    scale: 1 + 0.04 * lift
-                    body {
-                        color: #1a2a26
-                        shadow: 0, 4 + 6 * lift, 10 + 10 * lift, 30% + 20% * lift
-                        box { from: 0, 0; size: 144, 81; corner: 10 }
-                    }
-                    group {
-                        clip box { from: 0, 0; size: 144, 81; corner: 10 }
-                        ellipse { at: 72, 95; radius: 70; color: mint; opacity: 8%; show: not w.ready }
-                        image w.thumb { at: 0, 0; size: 144, 81; show: w.ready }
-                    }
-                    box { from: 0, 0; size: 144, 81; corner: 10; stroke: 2; color: mint; opacity: if(w.current, 1, 0) }
-                    box { from: 0, 0; size: 144, 81; corner: 10; stroke: 1.2; color: ink; opacity: lift * 45% * if(w.current, 0, 1) }
-                    text w.name { family: "Geist"; at: 72, 95; anchor: center; size: 10.5; width: 140; lines: 1; color: mix(#8b8f95, ink, max(lift, if(w.current, 1, 0))) }
-                }
-                on enter touch { lift: 1 }
-                on leave touch { lift: 0 }
-                on press touch { emit pick(w.index) }
-            }
-            group {
-                show: page == walls
-                grid {
-                    at: card.x - 228, card.top + 100; columns: 3; gap: 12; width: 456; row: 104
-                    for w in walls { WallCard(w, pick: wall_pick) }
-                }
-                zone box walls_area { from: card.x - 228, card.top + 100; size: 456, 340; active: page == walls and paging > 0.9 }
-            }
-            on scroll walls_area { emit walls_scroll(wheel) }
-
-            // ── Deriva's library ─────────────────────────────────
-            //  What she keeps: a search at the top, and cards below —the
-            //  picture of the page or the image when there is one, its title
-            //  and where it came from—. Pressed, it opens; carried out, it goes
-            //  wherever it is let go (a browser, a folder, a chat).
-            component DriftCard(d: record, pick: event) {
-                size: 222, 150
-                prop glow = 0 ~140ms
-                prop arrive = 0 ~320ms
-                follow arrive = if(page == drift, 1, 0)
-                zone box touch { from: 0, 0; size: 222, 150; corner: 14; cursor: pointer; active: page == drift and paging > 0.9; carries: "{d.link}" }
-                group {
-                    opacity: arrive
-                    move: 0, (1 - arrive) * (10 + d.index * 6)
-                    box { from: 0, 0; size: 222, 150; corner: 14; color: mix(#1f2021, #262829, glow) }
-                    group {
-                        clip box { from: 0, 0; size: 222, 92; corner: 14 }
-                        //  With no picture: a calm sea of its kind's colour, and its initial.
-                        box { from: 0, 0; size: 222, 92; color: #1a2a26; show: not d.has_preview }
-                        ellipse { at: 111, 110; radius: 90; color: mint; opacity: 10%; show: not d.has_preview }
-                        text d.kind { family: "Geist"; at: 111, 46; anchor: center; size: 11; weight: 700; color: mint; opacity: 70%; show: not d.has_preview }
-                        image d.preview { at: 0, 0; size: 222, 92; show: d.has_preview }
-                        box { from: 0, 0; size: 222, 92; color: #000; opacity: glow * 12% }
-                    }
-                    text d.title { family: "Geist"; at: 12, 108; anchor: left center; size: 12; weight: 500; width: 198; lines: 1; color: ink }
-                    text d.source { family: "Geist"; at: 12, 130; anchor: left center; size: 10.5; weight: 600; width: 120; lines: 1; color: mint; opacity: 85% }
-                    text d.date { family: "Geist"; at: 210, 130; anchor: right center; size: 10; color: #8b8f95 }
-                    box { from: 0, 0; size: 222, 150; corner: 14; stroke: 1.2; color: mint; opacity: glow * 45% }
-                }
-                on enter touch { glow: 1 }
-                on leave touch { glow: 0 }
-                on release touch { emit pick(d.index) }
-            }
-            group {
-                show: page == drift
-                let dx0 = card.x - 228
-                let dy0 = card.top + 96
-                group {
-                    show: not drift.missing
-                    box { from: dx0, dy0; size: 456, 36; corner: 12; color: #141415 }
-                    arc { at: dx0 + 18, dy0 + 17; radius: 6; span: 360deg; width: 1.8; color: ink; opacity: 60% }
-                    line { from: dx0 + 22.5, dy0 + 21.5; to: dx0 + 27, dy0 + 26; width: 2; color: ink; opacity: 60% }
-                    input drift_q { family: "Geist"; at: dx0 + 36, dy0 + 18; width: 400; size: 13; color: ink; placeholder: "Search what she keeps"; selection: #2f5f52 }
-                    grid {
-                        at: dx0, dy0 + 50; columns: 2; gap: 12; width: 456; row: 150
-                        for d in drift { DriftCard(d, pick: drift_pick) }
-                    }
-                }
-                zone box drift_area { from: dx0, dy0 + 50; size: 456, 312; active: page == drift and paging > 0.9 and not drift.missing }
-                group {
-                    show: drift.kept < 1 and not drift.missing
-                    text "Carry anything over her: a link, a file, an image." { family: "Geist"; at: card.x, card.y + 30; anchor: center; size: 11.5; color: #8b8f95 }
-                }
-                group {
-                    show: drift.missing
-                    text "Deriva needs its library, deriva-worker." { family: "Geist"; at: card.x, card.y + 20; anchor: center; size: 12.5; weight: 500; color: ink }
-                    text "She builds it herself when she starts, if Rust (cargo) is installed." { family: "Geist"; at: card.x, card.y + 42; anchor: center; size: 11.5; color: #8b8f95 }
-                }
-            }
-            on scroll drift_area { emit drift_scroll(wheel) }
-
-            // ── the wardrobe ─────────────────────────────────────
-            //  The pieces there are, one per spot. What is seen of each one is the
-            //  real piece —the same SVG, not an icon of it—, so the day you draw
-            //  another one it appears here without touching this.
-            group {
-                show: page == wardrobe
-                text "Each piece chases in its own way: the hat rests, the glasses stay stuck on, the mug keeps her company and the headphones go on air when the screen is shared." { family: "Geist";
-                    at: card.x - 228, card.top + 121; anchor: left center; size: 11.5; width: 456; lines: 2; color: #8b8f95 }
-                repeat a in 1..5 {
-                    let ax = card.x - 171 + (a - 1) * 114
-                    prop piece_glow.$a = 0 ~140ms
-                    box { at: ax, card.top + 191; size: 102, 96; corner: 14
-                          color: mix(#202021, #262728, piece_glow.$a) }
-                    //  The mint outline of the one she is wearing, as on the cards.
-                    box { at: ax, card.top + 191; size: 102, 96; corner: 14; stroke: 1; color: mint
-                          opacity: worn.$a }
-                    zone box piece_zone.$a { at: ax, card.top + 191; size: 102, 96; corner: 14; cursor: pointer
-                                        active: page == wardrobe and paging > 0.9 }
-                    on enter piece_zone.$a { piece_glow.$a: 1 }
-                    on leave piece_zone.$a { piece_glow.$a: 0 }
-                }
-                figure hat      { at: card.x - 171, card.top + 177; size: 62, 46 }
-                figure glasses  { at: card.x - 57,  card.top + 177; size: 54, 25 }
-                figure mug      { at: card.x + 57,  card.top + 177; size: 40, 40 }
-                figure phones   { at: card.x + 171, card.top + 177; size: 52, 52 }
-                text "Hat"      { family: "Geist"; at: card.x - 171, card.top + 221; anchor: center; size: 12; color: ink }
-                text "Glasses"  { family: "Geist"; at: card.x - 57,  card.top + 221; anchor: center; size: 12; color: ink }
-                text "Mug"      { family: "Geist"; at: card.x + 57,  card.top + 221; anchor: center; size: 12; color: ink }
-                text "Headphones" { family: "Geist"; at: card.x + 171, card.top + 221; anchor: center; size: 12; color: ink }
-                text "rests"     { family: "Geist"; at: card.x - 171, card.top + 235; anchor: center; size: 10; color: #8b8f95 }
-                text "stuck on"  { family: "Geist"; at: card.x - 57,  card.top + 235; anchor: center; size: 10; color: #8b8f95 }
-                text "tags along" { family: "Geist"; at: card.x + 57, card.top + 235; anchor: center; size: 10; color: #8b8f95 }
-                text "on air"    { family: "Geist"; at: card.x + 171, card.top + 235; anchor: center; size: 10; color: #8b8f95 }
-                on press piece_zone.1 { toggle wears.hat }
-                on press piece_zone.2 { toggle wears.glasses }
-                on press piece_zone.3 { toggle wears.mug }
-                on press piece_zone.4 { toggle wears.phones }
-
-                //  And the wallpaper: the one on now, small, and pressing it
-                //  opens the page where a new one is picked.
-                text "WALLPAPER" { family: "Geist"; at: card.x - 228, card.top + 284; anchor: left center; size: 9.5; weight: 700; color: #8b8f95 }
-                prop wallrow_glow = 0 ~140ms
-                box { from: card.x - 228, card.top + 298; size: 456, 116; corner: 14
-                      color: mix(#202021, #262728, wallrow_glow) }
-                for w in wallnow {
-                    body {
-                        color: #1a2a26
-                        shadow: 0, 3 + 3 * wallrow_glow, 10, 30%
-                        box { from: card.x - 216, card.top + 311; size: 160, 90; corner: 10 }
-                    }
-                    group {
-                        clip box { from: card.x - 216, card.top + 311; size: 160, 90; corner: 10 }
-                        image w.thumb { at: card.x - 216, card.top + 311; size: 160, 90; show: w.ready }
-                        //  A ring of water crosses it while the pointer is over it.
-                        ellipse { at: card.x - 136, card.top + 356; radius: 12 + 90 * wallrow_glow; stroke: 1.5
-                                  color: #e8f6ff; opacity: 50% * wallrow_glow * (1 - wallrow_glow * 0.6) }
-                    }
-                    box { from: card.x - 216, card.top + 311; size: 160, 90; corner: 10; stroke: 1.5; color: mint }
-                    text w.name { family: "Geist"; at: card.x - 40, card.top + 342; anchor: left center; size: 13; weight: 500; width: 230; lines: 1; color: ink }
-                }
-                text "Pick another one: the tide brings it" { family: "Geist"; at: card.x - 40, card.top + 364; anchor: left center; size: 11; width: 230; lines: 2; color: #8b8f95 }
-                path { at: card.x + 206, card.top + 356; stroke: 2; color: mix(#8b8f95, mint, wallrow_glow)
-                       move -3 - 3 * wallrow_glow, -6; line 3 - 3 * wallrow_glow, 0; line -3 - 3 * wallrow_glow, 6 }
-                zone box wallrow_zone { from: card.x - 228, card.top + 298; size: 456, 116; corner: 14; cursor: pointer
-                                        active: page == wardrobe and paging > 0.9 }
-                on enter wallrow_zone { wallrow_glow: 1 }
-                on leave wallrow_zone { wallrow_glow: 0 }
-                on press wallrow_zone { emit show_walls }
-            }
-
-            // ── sound: where it plays and where it listens ───────
-            //  A device row: its name, and a mint dot if it is the current one.
-            //  `base` is what has to be added to its place for the logic to know
-            //  which one it is: the two lists travel together.
-
-            //  Two lists, one below the other, with their label. What there is is
-            //  said by pleamar —`outputs` and `inputs` of the same volume
-            //  service— and choosing one is `audio.default`, so there is not a
-            //  single line here that knows about PipeWire.
-            group {
-                show: page == sound
-                text "OUTPUT" { family: "Geist"; at: card.x - 228, card.top + 118; anchor: left center; size: 9.5; weight: 700; color: #8b8f95 }
-                column output_list {
-                    at: card.x - 228, card.top + 132
-                    gap: 4
-                    for a in outputs { ListRow(a, pick: pick_device, glyph: 3) }
-                }
-                //  The input goes right below whatever the output takes up, not in
-                //  a fixed place: with two speakers a hole was left in the middle.
-                text "INPUT" { family: "Geist"; at: card.x - 228, card.top + 150 + output_list.height; anchor: left center; size: 9.5; weight: 700; color: #8b8f95 }
-                column mic_list {
-                    at: card.x - 228, card.top + 164 + output_list.height
-                    gap: 4
-                    for a in mics { ListRow(a, pick: pick_device, glyph: 4, base: outputs.count) }
-                }
-                text "Nothing to choose" { family: "Geist"; at: card.x, card.top + 200; anchor: center; size: 11.5; color: #8b8f95
-                                         show: outputs.count < 1 and mics.count < 1 }
-            }
-
-            // ── the settings ─────────────────────────────────────
-            //  A front page of tiles, one per subject, each with its drawing and
-            //  what it is set to right now; pressing one opens its own page, and
-            //  the arrow of the card's header comes back. The pages are
-            //  pleamar's `pages`, the tiles its `grid` of `Tile`s, and the
-            //  switches and choices its own pieces: what is left here is what
-            //  is Marea's.
-            on press back_arrow while page == settings and section != menu { section = menu }
-            event to_home
-            event to_look
-            event to_language
-            event to_lock
-            event to_notices
-            event to_wardrobe
-            event flip_follow
-            event flip_room
-            event flip_safety
-            on to_home { section = home }
-            on to_look { section = look }
-            on to_language { section = language }
-            on to_lock { section = lock }
-            on to_notices { section = notices }
-            on to_wardrobe { emit customize; page = wardrobe }
-            on flip_follow { toggle following }
-            on flip_room { toggle taking_room }
-            on flip_safety { toggle with_exit }
-            let st.faint = mix(#8b8f95, faint, glassiness)
-            group {
-                show: page == settings
-                pages section {
-                    page menu "Settings" {
-                        grid {
-                            at: card.x - 228, card.top + 109; columns: 2; gap: 12; width: 456; row: 106
-                            Tile("Where she lives", pick(if(following, 0, home + 1), "Follows you", screen.0.name, screen.1.name), to_home, cell.w) {
-                                group { size: 30, 26
-                                    box { at: 15, 10; size: 26, 17; corner: 3; stroke: 1.8; color: ink }
-                                    line { from: 9, 23; to: 21, 23; width: 1.8; color: ink }
-                                    ellipse { at: 15, 10; radius: 4.5; color: mint }
-                                }
-                            }
-                            Tile("Her look", pick(skin, "Liquid", "Light liquid", "Classic"), to_look, cell.w) {
-                                group { size: 32, 32
-                                    body {
-                                        color: coal
-                                        rim: 14%
-                                        glass: if(skin == classic, 0, 1)
-                                        lens: skin == lens
-                                        ellipse { at: 16, 16; radius: 15 }
-                                    }
-                                    box { at: 12, 16; size: 3, 7; corner: 1.5; color: ink }
-                                    box { at: 20, 16; size: 3, 7; corner: 1.5; color: ink }
-                                }
-                            }
-                            Tile("Language", pick(language, "System", "English", "Español"), to_language, cell.w) {
-                                text "Aa" { family: "Geist"; size: 17; weight: 700; color: ink }
-                            }
-                            Tile("The lock", pick(with_exit, "Password only", "Safety net on"), to_lock, cell.w) {
-                                group { size: 20, 24
-                                    arc { at: 10, 8; radius: 6; span: 180deg; width: 2; color: ink }
-                                    line { from: 4, 8; to: 4, 12; width: 2; color: ink }
-                                    line { from: 16, 8; to: 16, 12; width: 2; color: ink }
-                                    box { at: 10, 17; size: 18, 13; corner: 3; color: mix(ink, mint, with_exit) }
-                                }
-                            }
-                            Tile("Notices", pick(if(dnd, 3, min(muted.count, 2)), "All of them arrive", "One app muted", "Some apps muted", "Do not disturb"), to_notices, cell.w) {
-                                group { size: 24, 26
-                                    path { at: 12, 13; color: ink
-                                           move -9, 6; line -7, 3; line -7, -3; curve 0, -11 via -7, -11; curve 7, -3 via 7, -11; line 7, 3; line 9, 6; close }
-                                    ellipse { at: 12, 22; radius: 2.6; color: ink }
-                                    ellipse { at: 19, 5; radius: 3.2; color: mix(mint, lilac, dnd) }
-                                }
-                            }
-                            Tile("Wardrobe and wallpaper", "Pieces and the background", to_wardrobe, cell.w) {
-                                group { size: 30, 22
-                                    box { at: 15, 11; size: 28, 20; corner: 4; stroke: 1.6; color: ink }
-                                    path { at: 3, 19; color: ink; move 0, 0; line 8, -9; line 13, -3; line 17, -7; line 24, 0; close }
-                                    ellipse { at: 22, 6; radius: 2.4; color: mint }
-                                }
-                            }
-                        }
-                    }
-
-                    // ── where she lives ──
-                    //  The two monitors drawn as two pools, to scale, with their
-                    //  names, and her swimming in the one she is in; pressing a pool
-                    //  sends her there. «Follow me» sets her to go wherever the focus is.
-                    page home "Where she lives" {
-                        text "Choose her monitor, or let her follow you." { family: "Geist"; at: card.x - 228, card.top + 122; anchor: left center; size: 12; color: st.faint }
-                        repeat m in 0..2 {
-                            let px = card.x - 114 + m * 228
-                            let py = card.top + 222
-                            let is_home.$m = if(not following and home == m, 1, 0)
-                            text screen.$m.name { family: "Geist"; at: px, py - 76; anchor: center; size: 12; weight: 600; color: mix(st.faint, ink, is_home.$m) }
-                            box { at: px, py; size: 208, 118; corner: 12; color: mix(mix(#1b1f22, #202528, pool_zone.$m.hover), #1a2a25, is_home.$m) }
-                            box { at: px, py; size: 208, 118; corner: 12; stroke: 1.4; color: mint; opacity: is_home.$m * 85% + pool_zone.$m.hover * 25% }
-                            group {
-                                clip inset 0 box { at: px, py; size: 208, 118; corner: 12 }
-                                box { at: px, py + 46; size: 208, 44; color: mix(#1f3a34, #24524a, is_home.$m); opacity: 55% }
-                            }
-                            group {
-                                opacity: if(m == 0, if(hosts.0, 1, 0), if(hosts.1, 1, 0))
-                                body {
-                                    color: coal
-                                    rim: 14%
-                                    ellipse { at: px + 3 * sway, py + 26 + 1.5 * sway; radius: 12 }
-                                }
-                                box { at: px - 4 + 3 * sway, py + 26 + 1.5 * sway; size: 3, 6; corner: 1.5; color: ink }
-                                box { at: px + 4 + 3 * sway, py + 26 + 1.5 * sway; size: 3, 6; corner: 1.5; color: ink }
-                            }
-                            text "Her home" { family: "Geist"; at: px, py + 76; anchor: center; size: 10.5; weight: 600; color: mint; opacity: is_home.$m }
-                            zone box pool_zone.$m { at: px, py; size: 208, 118; corner: 12; cursor: pointer }
-                            on press pool_zone.$m { home = m; following = false }
-                        }
-                        box { at: card.x, card.top + 360; size: 456, 64; corner: 16; color: mix(#202021, #1a2a25, following) }
-                        box { at: card.x, card.top + 360; size: 456, 64; corner: 16; stroke: 1.2; color: mint; opacity: following * 70% }
-                        text "Follow me" { family: "Geist"; at: card.x - 206, card.top + 350; anchor: left center; size: 13; weight: 600; color: ink }
-                        text "She goes to the monitor where you are working" { family: "Geist"; at: card.x - 206, card.top + 369; anchor: left center; size: 11; color: st.faint }
-                        column { at: card.x + 174, card.top + 348
-                            Switch(following, flip_follow)
-                        }
-                        //  And whether windows go under her or leave her the strip at the top.
-                        box { at: card.x, card.top + 436; size: 456, 64; corner: 16; color: mix(#202021, #1a2a25, taking_room) }
-                        box { at: card.x, card.top + 436; size: 456, 64; corner: 16; stroke: 1.2; color: mint; opacity: taking_room * 70% }
-                        text "Her own strip" { family: "Geist"; at: card.x - 206, card.top + 426; anchor: left center; size: 13; weight: 600; color: ink }
-                        text "Windows leave her the top, instead of going under her" { family: "Geist"; at: card.x - 206, card.top + 445; anchor: left center; size: 11; color: st.faint }
-                        column { at: card.x + 174, card.top + 424
-                            Switch(taking_room, flip_room)
-                        }
-                    }
-
-                    // ── her look ──
-                    //  Three swatches, and in each one she herself painted that way:
-                    //  not a photo of how it would be, but really her.
-                    page look "Her look" {
-                        text "Made of glass like Apple's, or the usual one." { family: "Geist"; at: card.x - 228, card.top + 122; anchor: left center; size: 12; color: st.faint }
-                        repeat t in 0..3 {
-                            let fx = card.x - 152 + t * 152
-                            let fy = card.top + 250
-                            let chosen.$t = if(t == 0, skin == lens, if(t == 1, skin == liquid, skin == classic))
-                            box { at: fx, fy; size: 140, 180; corner: 18; color: mix(#25282b, #2c3033, swatch.$t.hover) }
-                            box { at: fx, fy; size: 140, 180; corner: 18; stroke: 1.5; color: mint; opacity: chosen.$t * 85% + swatch.$t.hover * 20% }
-                            body {
-                                color: coal
-                                rim: 14%
-                                glass: if(t < 2, 1, 0)
-                                lens: t == 0
-                                ellipse { at: fx + 3 * sway, fy - 26 + 1.5 * sway; radius: 32 }
-                            }
-                            box { at: fx - 7 + 3 * sway, fy - 26 + 1.5 * sway; size: 5, 11; corner: 2.5; color: ink }
-                            box { at: fx + 7 + 3 * sway, fy - 26 + 1.5 * sway; size: 5, 11; corner: 2.5; color: ink }
-                            text pick(t, "Liquid", "Light liquid", "Classic") { family: "Geist"; at: fx, fy + 38; anchor: center; size: 13; weight: 600; color: ink }
-                            text pick(t, "Bends what's behind", "Blurs it", "Opaque, no glass") { family: "Geist"; at: fx, fy + 58; anchor: center; size: 10.5; color: st.faint }
-                            ellipse { at: fx, fy + 76; radius: 4; color: mint; opacity: chosen.$t }
-                            zone box swatch.$t { at: fx, fy; size: 140, 180; corner: 18; cursor: pointer }
-                        }
-                        on press swatch.0 { skin = lens }
-                        on press swatch.1 { skin = liquid }
-                        on press swatch.2 { skin = classic }
-                        text "Liquid reads the screen behind her to bend it: it costs a little more." { family: "Geist"; at: card.x, card.top + 372; anchor: center; size: 11; width: 440; lines: 1; color: st.faint; opacity: 85% }
-                    }
-
-                    // ── the language ──
-                    //  Three rows, each name written in its own language.
-                    page language "Language" {
-                        text "The language she speaks in." { family: "Geist"; at: card.x - 228, card.top + 122; anchor: left center; size: 12; color: st.faint }
-                        repeat l in 0..3 {
-                            let ly = card.top + 178 + l * 74
-                            let lang.on.$l = if(l == 0, language == system, if(l == 1, language == english, language == spanish))
-                            box { at: card.x, ly; size: 456, 64; corner: 16; color: mix(mix(#25282b, #2c3033, lang_zone.$l.hover), #1a2a25, lang.on.$l) }
-                            box { at: card.x, ly; size: 456, 64; corner: 16; stroke: 1.3; color: mint; opacity: lang.on.$l * 80% + lang_zone.$l.hover * 20% }
-                            ellipse { at: card.x - 196, ly; radius: 20; color: ink; opacity: 8% }
-                            text pick(l, "Aa", "EN", "ES") { family: "Geist"; at: card.x - 196, ly; anchor: center; size: 13; weight: 700; color: ink }
-                            text pick(l, "System", "English", "Español") { family: "Geist"; at: card.x - 164, ly - 9; anchor: left center; size: 13.5; weight: 600; color: ink }
-                            text pick(l, "The one your session speaks", "Always in English", "Siempre en español") { family: "Geist"; at: card.x - 164, ly + 10; anchor: left center; size: 11; color: st.faint }
-                            ellipse { at: card.x + 200, ly; radius: 9; stroke: 1.6; color: mix(st.faint, mint, lang.on.$l) }
-                            ellipse { at: card.x + 200, ly; radius: 5 * lang.on.$l; color: mint }
-                            zone box lang_zone.$l { at: card.x, ly; size: 456, 64; corner: 16; cursor: pointer }
-                        }
-                        on press lang_zone.0 { language = system }
-                        on press lang_zone.1 { language = english }
-                        on press lang_zone.2 { language = spanish }
-                    }
-
-                    // ── the lock ──
-                    //  A big padlock, open while the safety net is on, and what that
-                    //  means said plainly, with its switch.
-                    page lock "The lock" {
-                        prop safety.pos = 0 ~200ms
-                        follow safety.pos = if(with_exit, 1, 0)
-                        arc { at: card.x, card.top + 172 - 6 * safety.pos; radius: 18; span: 180deg; width: 5; color: ink }
-                        line { from: card.x - 18, card.top + 172 - 6 * safety.pos; to: card.x - 18, card.top + 186 - 6 * safety.pos; width: 5; color: ink }
-                        line { from: card.x + 18, card.top + 172; to: card.x + 18, card.top + 186; width: 5; color: ink; opacity: 1 - safety.pos }
-                        box { at: card.x, card.top + 206; size: 54, 40; corner: 9; color: mix(ink, mint, safety.pos) }
-                        ellipse { at: card.x, card.top + 202; radius: 4.5; color: coal }
-                        box { at: card.x, card.top + 211; size: 3.5, 9; corner: 1.5; color: coal }
-                        text "Her lock screen opens with your password." { family: "Geist"; at: card.x, card.top + 256; anchor: center; size: 12.5; weight: 500; color: ink }
-                        text "While you try it out, a safety net: Esc also opens it, and it opens by itself after a minute." { family: "Geist"; at: card.x, card.top + 284; anchor: center; size: 11; width: 400; lines: 2; align: center; color: st.faint }
-                        box { at: card.x, card.top + 360; size: 456, 64; corner: 16; color: mix(#202021, #1a2a25, safety.pos) }
-                        box { at: card.x, card.top + 360; size: 456, 64; corner: 16; stroke: 1.2; color: mint; opacity: safety.pos * 70% }
-                        text "Safety net" { family: "Geist"; at: card.x - 206, card.top + 350; anchor: left center; size: 13; weight: 600; color: ink }
-                        text "Remove it once you trust your password. It lasts until a restart" { family: "Geist"; at: card.x - 206, card.top + 369; anchor: left center; size: 11; width: 370; lines: 1; color: st.faint }
-                        column { at: card.x + 174, card.top + 348
-                            Switch(with_exit, flip_safety)
-                        }
-                    }
-
-                    // ── the notices ──
-                    //  Whether they come in with a card or quietly, straight to
-                    //  their drop; how long «later» keeps one away; and the apps
-                    //  muted from a notice's bell, each with its way back.
-                    page notices "Notices" {
-                        text "Quiet ones still arrive: they go to their drop, without a card." { family: "Geist"; at: card.x - 228, card.top + 116; anchor: left center; size: 12; color: st.faint }
-                        box { at: card.x, card.top + 164; size: 456, 60; corner: 16; color: mix(#202021, #1f1d2a, dnd) }
-                        box { at: card.x, card.top + 164; size: 456, 60; corner: 16; stroke: 1.2; color: lilac; opacity: dnd * 70% }
-                        text "Do not disturb" { family: "Geist"; at: card.x - 206, card.top + 155; anchor: left center; size: 13; weight: 600; color: ink }
-                        text "Only the urgent ones get through" { family: "Geist"; at: card.x - 206, card.top + 173; anchor: left center; size: 11; color: st.faint }
-                        column { at: card.x + 174, card.top + 152
-                            Switch(dnd, flip_dnd, accent: lilac)
-                        }
-                        box { at: card.x, card.top + 232; size: 456, 60; corner: 16; color: mix(#202021, #1a2a25, quiet_rec) }
-                        box { at: card.x, card.top + 232; size: 456, 60; corner: 16; stroke: 1.2; color: mint; opacity: quiet_rec * 70% }
-                        text "Quiet while recording or sharing" { family: "Geist"; at: card.x - 206, card.top + 223; anchor: left center; size: 13; weight: 600; color: ink }
-                        text "None of them ends up in your video or your call. Locked, always quiet" { family: "Geist"; at: card.x - 206, card.top + 241; anchor: left center; size: 11; width: 360; lines: 1; color: st.faint }
-                        column { at: card.x + 174, card.top + 220
-                            Switch(quiet_rec, flip_quiet_rec)
-                        }
-                        //  How long «later» is: three drops to choose from.
-                        text "LATER BRINGS IT BACK IN" { family: "Geist"; at: card.x - 228, card.top + 288; anchor: left center; size: 9.5; weight: 700; color: #8b8f95 }
-                        repeat k in 0..3 {
-                            let lx = card.x - 228 + 76 + k * 152
-                            prop later_pick.glow.$k = 0 ~140ms
-                            box { at: lx, card.top + 318; size: 144, 34; corner: 17; color: mix(mix(#202021, #262728, later_pick.glow.$k), #1a2a25, snooze_k == k) }
-                            box { at: lx, card.top + 318; size: 144, 34; corner: 17; stroke: 1.2; color: mint; opacity: if(snooze_k == k, 70%, 0) }
-                            text pick(k, "15 minutes", "An hour", "Three hours") { family: "Geist"; at: lx, card.top + 318; anchor: center; size: 12; weight: 500; color: mix(#a9adb3, ink, snooze_k == k) }
-                            zone box later_pick.$k { at: lx, card.top + 318; size: 144, 34; corner: 17; cursor: pointer }
-                            on enter later_pick.$k { later_pick.glow.$k: 1 }
-                            on leave later_pick.$k { later_pick.glow.$k: 0 }
-                            on press later_pick.$k { snooze_k = k }
-                        }
-                        //  The muted apps: a pill each, and its cross unmutes it.
-                        text "MUTED APPS" { family: "Geist"; at: card.x - 228, card.top + 362; anchor: left center; size: 9.5; weight: 700; color: #8b8f95 }
-                        component MutedPill(m: record, drop: event) {
-                            size: 144, 34
-                            prop glow = 0 ~140ms
-                            //  The grid lays out every record there could be: the empty ones are not drawn.
-                            group {
-                                show: m.index < muted.count
-                                box { from: 0, 0; size: 144, 34; corner: 17; color: mix(#202021, #2a2222, glow) }
-                                text m.app { family: "Geist"; at: 14, 17; anchor: left center; size: 11.5; weight: 500; width: 100; lines: 1; color: ink }
-                                line { from: 122, 12; to: 132, 22; width: 1.5; color: mix(#8b8f95, #ef7a66, glow) }
-                                line { from: 132, 12; to: 122, 22; width: 1.5; color: mix(#8b8f95, #ef7a66, glow) }
-                                zone box touch { from: 0, 0; size: 144, 34; corner: 17; cursor: pointer }
-                            }
-                            on enter touch { glow: 1 }
-                            on leave touch { glow: 0 }
-                            on press touch { emit drop(m.index) }
-                        }
-                        grid {
-                            at: card.x - 228, card.top + 378; columns: 3; gap: 12; width: 456; row: 42
-                            for m in muted { MutedPill(m, drop: unmute) }
-                        }
-                        text "None. The bell on a notice mutes its app." { family: "Geist"; at: card.x - 228, card.top + 394; anchor: left center; size: 11.5; color: st.faint; show: muted.count < 1 }
-                    }
-                }
-            }
-
-            // ── the agents' reservoirs ───────────────────────────
-            //  What is left of Claude Code's and Codex's windows, as water in
-            //  glass tubes: as full as there is left, and of the colour of the
-            //  margin —mint, amber, coral—, never of the brand. Each tube is
-            //  its own window: nothing is added up between them. Coming in, they
-            //  fill one after another; a new reading makes them sway; the mouse
-            //  over one stirs its water. An unknown number is an empty tube with
-            //  a dashed line, not a zero.
-            shader reservoir = file "shaders/reservoir.wgsl"
-            //  The water rises once the page can be seen, from empty, every time:
-            //  started on asking for the page, it rose while the page was still
-            //  growing out of the card and by the time it showed it was full. And
-            //  leaving empties it at once, so coming back fills it again.
-            prop reveal = 0 ~3400ms
-            on change page == agents and paging > 0.9 while page == agents and paging > 0.9 { reveal: 0 ~16ms; reveal: 1 ~3400ms after 60ms }
-            on change page while page != agents { reveal: 0 ~16ms }
-            //  And she fills them herself: a breath, and a jet of water from her
-            //  mouth to each tube, one after another, left to right and top to
-            //  bottom. Each tube starts rising when its jet lands, not before —
-            //  the first drops take 0.7 s to fly to the top row and 0.9 s to the
-            //  bottom one—. Two jets overlap for a moment: she does not stop to
-            //  breathe between them.
-            on change page == agents and paging > 0.9 while page == agents and paging > 0.9 {
-                play gulp
-                blow: 1 ~200ms after 200ms
-                pour.1.1: 0 ~16ms; pour.1.2: 0 ~16ms; pour.1.3: 0 ~16ms
-                pour.2.1: 0 ~16ms; pour.2.2: 0 ~16ms; pour.2.3: 0 ~16ms
-                jet.head.1.1: 0 ~16ms; jet.head.1.2: 0 ~16ms; jet.head.1.3: 0 ~16ms; jet.head.2.1: 0 ~16ms; jet.head.2.2: 0 ~16ms; jet.head.2.3: 0 ~16ms
-                jet.tail.1.1: 0 ~16ms; jet.tail.1.2: 0 ~16ms; jet.tail.1.3: 0 ~16ms; jet.tail.2.1: 0 ~16ms; jet.tail.2.2: 0 ~16ms; jet.tail.2.3: 0 ~16ms
-                jet.head.1.1: 1 ~720ms after 260ms; jet.tail.1.1: 1 ~480ms after 1080ms; pour.1.1: 1 ~1300ms after 980ms
-                jet.head.1.2: 1 ~720ms after 660ms; jet.tail.1.2: 1 ~480ms after 1480ms; pour.1.2: 1 ~1300ms after 1380ms
-                jet.head.1.3: 1 ~720ms after 1060ms; jet.tail.1.3: 1 ~480ms after 1880ms; pour.1.3: 1 ~1300ms after 1780ms
-                jet.head.2.1: 1 ~930ms after 1460ms; jet.tail.2.1: 1 ~480ms after 2280ms; pour.2.1: 1 ~1300ms after 2390ms
-                jet.head.2.2: 1 ~930ms after 1860ms; jet.tail.2.2: 1 ~480ms after 2680ms; pour.2.2: 1 ~1300ms after 2790ms
-                jet.head.2.3: 1 ~930ms after 2260ms; jet.tail.2.3: 1 ~480ms after 3080ms; pour.2.3: 1 ~1300ms after 3190ms
-                blow: 0 ~300ms after 3250ms
-            }
-            on change page while page != agents {
-                blow: 0 ~16ms
-                jet.head.1.1: 0 ~16ms; jet.head.1.2: 0 ~16ms; jet.head.1.3: 0 ~16ms; jet.head.2.1: 0 ~16ms; jet.head.2.2: 0 ~16ms; jet.head.2.3: 0 ~16ms
-                jet.tail.1.1: 0 ~16ms; jet.tail.1.2: 0 ~16ms; jet.tail.1.3: 0 ~16ms; jet.tail.2.1: 0 ~16ms; jet.tail.2.2: 0 ~16ms; jet.tail.2.3: 0 ~16ms
-                pour.1.1: 0 ~16ms; pour.1.2: 0 ~16ms; pour.1.3: 0 ~16ms; pour.2.1: 0 ~16ms; pour.2.2: 0 ~16ms; pour.2.3: 0 ~16ms
-            }
-            //  Claude's rays turn slowly, only while the page is there: a
-            //  `time` would keep her painting all day for a page nobody sees.
-            prop rays = 0
-            spin rays by if(page == agents, 12, 0)
-            prop refresh.turn = 0 ~slow
-            prop refresh.glow = 0 ~140ms
-            group {
-                show: page == agents
-                //  Read again: the arrow turns once.
-                group {
-                    opacity: 55% + refresh.glow * 45%
-                    arc { at: card.x + 168, card.top + 37; radius: 7; span: 290deg; width: 1.8; rotate: refresh.turn * 1deg; color: ink }
-                    path { at: card.x + 168 + 7 * cos(refresh.turn - 55), card.top + 37 + 7 * sin(refresh.turn - 55); color: ink; rotate: (refresh.turn + 35) * 1deg
-                           move -3, -3; line 3, 0; line -3, 3; close }
-                }
-                zone box refresh_btn { at: card.x + 168, card.top + 37; size: 30, 30; corner: 15; cursor: pointer; active: page == agents and paging > 0.9 }
-                on enter refresh_btn { refresh.glow: 1 }
-                on leave refresh_btn { refresh.glow: 0 }
-                on press refresh_btn { refresh.turn: refresh.turn + 360; emit agents_refresh }
-
-                text "Reading your windows…" { family: "Geist"; at: card.x, card.top + 250; anchor: center; size: 11.5; color: #8b8f95
-                                              show: ag.kind.1 < 1 and ag.kind.2 < 1 }
-
-                repeat a in 1..3 {
-                    let ay = card.top + 120 + (a - 1) * 186
-                    let ax0 = card.x - 228
-                    group {
-                        show: ag.kind.$a > 0
-                        //  Each agent comes in a moment after the one before.
-                        opacity: clamp((reveal - (a - 1) * 0.12) * 3, 0, 1)
-                        move: 0, (1 - clamp((reveal - (a - 1) * 0.12) * 3, 0, 1)) * 12
-                        box { at: card.x, ay + 88; size: 456, 178; corner: 16; color: mix(#202122, ink, glassiness); opacity: mix(1, veil, glassiness) }
-                        //  Who it is. Claude: its burst of rays, turning very
-                        //  slowly. Codex: a hexagon with its prompt.
-                        group {
-                            show: ag.kind.$a == 1
-                            repeat r in 0..10 {
-                                line { from: ax0 + 26 + 3 * cos(r * 36 + rays), ay + 24 + 3 * sin(r * 36 + rays)
-                                       to: ax0 + 26 + 10 * cos(r * 36 + rays), ay + 24 + 10 * sin(r * 36 + rays)
-                                       width: 2.4; color: #d97757 }
-                            }
-                        }
-                        group {
-                            show: ag.kind.$a == 2
-                            path { at: ax0 + 26, ay + 24; stroke: 1.8; color: ink
-                                   move 0, -11; line 9.5, -5.5; line 9.5, 5.5; line 0, 11; line -9.5, 5.5; line -9.5, -5.5; close }
-                            path { at: ax0 + 22, ay + 24; stroke: 1.6; color: ink; move 0, -3.5; line 3.5, 0; line 0, 3.5 }
-                            line { from: ax0 + 27, ay + 27.5; to: ax0 + 31, ay + 27.5; width: 1.6; color: ink }
-                        }
-                        text ag.name.$a { family: "Geist"; at: ax0 + 46, ay + 17; anchor: left center; size: 15; weight: 600; color: ink }
-                        text ag.sub.$a { family: "Geist"; at: ax0 + 46, ay + 35; anchor: left center; size: 11; width: 380; lines: 1; color: faint; opacity: 75% }
-
-                        repeat l in 1..4 {
-                            let sx = ax0 + 16 + (l - 1) * 146
-                            let used = ag.used.$a.$l
-                            let known = if(used > -0.5, 1, 0)
-                            let avail = clamp(100 - used, 0, 100)
-                            //  The colour of the margin: coral under 15 %, amber
-                            //  up to 50 %, mint above.
-                            let tone = mix(mix(#ef7a66, #f0b85a, clamp((avail - 12) / 8, 0, 1)), mint, clamp((avail - 40) / 15, 0, 1))
-                            prop lvl.$a.$l = 0 ~calm
-                            follow lvl.$a.$l = avail / 100
-                            prop sway.$a.$l = 0 ~lively
-                            prop hover.$a.$l = 0 ~140ms
-                            //  Its jet —on while she spits at it— and how full it is,
-                            //  which starts when the jet lands.
-                            prop jet.head.$a.$l = 0 ~16ms
-                            prop jet.tail.$a.$l = 0 ~16ms
-                            prop pour.$a.$l = 0 ~1300ms
-                            let fill = clamp(pour.$a.$l, 0, 1)
-                            let eased = fill * fill * (3 - 2 * fill)
-                            group {
-                                show: ag.on.$a.$l
-                                opacity: 45% + 55% * if(ag.active.$a.$l, 1, 0)
-                                //  A halo when there is little left: the tube says it
-                                //  without a notice.
-                                group {
-                                    glow: 10, if(avail < 15 and known > 0.5, 70%, 0), #ef7a66
-                                    shader reservoir { at: sx, ay + 52; size: 46, 112; corner: 13
-                                                       values: if(known > 0.5, lvl.$a.$l * eased, -1), sway.$a.$l + clamp(vel(lvl.$a.$l) * 0.3 + vel(reveal) * 0.5 * (1 - eased), -0.6, 0.6), a * 3.7 + l * 1.3, if(ag.pending.$a.$l, 1, 0), hover.$a.$l, if(avail < 15 and known > 0.5, 1, 0)
-                                                       colors: tone, mix(tone, #0b1a22, 0.62) }
-                                }
-                                //  A reading splashes: drops jump off the surface of
-                                //  each tube and fall back into it.
-                                particles { at: sx + 23, ay + 56 + 104 * (1 - lvl.$a.$l * eased); area: 30, 0; count: 14
-                                            life: 0.35s .. 0.7s; speed: 40 .. 110; direction: -90deg; spread: 70deg
-                                            gravity: 0, 520; size: 2.6, 1.2; colors: tone, #ffffff; opacity: 90%, 0%
-                                            burst: agents_read }
-                                //  The jet: drops fired from her mouth on a real
-                                //  parabola. Given how long they fly (T, longer the
-                                //  further down, so the jet rises before it falls),
-                                //  the speed to land on the tube's mouth comes out of
-                                //  the sums: vx = dx / T, vy = dy / T − g·T / 2. They
-                                //  live exactly T: they go into the tube and vanish.
-                                let jet.x0 = cx + 9
-                                let jet.y0 = cy_actual + 10
-                                let jet.dx = sx + 23 - jet.x0
-                                let jet.dy = ay + 56 - jet.y0
-                                let jet.t = 0.55 + jet.dy / 900
-                                let jet.vx = jet.dx / jet.t
-                                let jet.vy = jet.dy / jet.t - 450 * jet.t
-                                //  Not drops: water. A parabola is exactly a quadratic
-                                //  Bézier, so the jet is ONE line with round ends, as
-                                //  long as it has to be, from its tail to its front:
-                                //  the ends are where the water is at those two
-                                //  moments, and the control point is where their
-                                //  tangents meet, P0 + (t1 − t0) / 2 · v(t0). Melted in
-                                //  a body with a fatter drop at its front —where the
-                                //  water piles up— and a line of light along the top.
-                                //  Its front flies from her mouth to the tube; when she
-                                //  stops, its tail follows it in.
-                                let jh = jet.head.$a.$l
-                                let jt = jet.tail.$a.$l
-                                let jon = jh > 0.002 and jt < 0.995 and ag.on.$a.$l
-                                let j0 = jt * jet.t
-                                let j1 = jh * jet.t
-                                let jx0 = jet.x0 + jet.vx * j0
-                                let jy0 = jet.y0 + jet.vy * j0 + 450 * j0 * j0
-                                let jx1 = jet.x0 + jet.vx * j1
-                                let jy1 = jet.y0 + jet.vy * j1 + 450 * j1 * j1
-                                let jcx = jx0 + (j1 - j0) / 2 * jet.vx
-                                let jcy = jy0 + (j1 - j0) / 2 * (jet.vy + 900 * j0)
-                                body {
-                                    color: mix(tone, #ffffff, 0.18)
-                                    rim: 24%
-                                    show: jon
-                                    path { at: 0, 0; stroke: 5
-                                           move jx0, jy0; curve jx1, jy1 via jcx, jcy }
-                                    ellipse { at: jx1, jy1; radius: 4.2; blend: 6 }
-                                }
-                                group {
-                                    show: jon
-                                    opacity: 65%
-                                    path { at: -0.8, -1.4; stroke: 1.3; color: #ffffff
-                                           move jx0, jy0; curve jx1, jy1 via jcx, jcy }
-                                    ellipse { at: jx1 - 1.3, jy1 - 1.5; radius: 1.3; color: #ffffff }
-                                }
-                                //  And a few drops come loose from it on the way.
-                                particles { at: jx1, jy1; count: 40; life: 0.2s .. 0.45s; speed: 10 .. 45; spread: 360deg
-                                            gravity: 0, 500; size: 2.4, 1; colors: mix(tone, #ffffff, 0.4); opacity: 80%, 0%
-                                            emit: jon and jh < 0.98 }
-                                //  And where it lands, the water jumps while it pours.
-                                particles { at: sx + 23, ay + 56 + 104 * (1 - lvl.$a.$l * eased); area: 14, 0; count: 60
-                                            life: 0.2s .. 0.45s; speed: 30 .. 90; direction: -90deg; spread: 100deg
-                                            gravity: 0, 600; size: 2.2, 0.8; colors: #ffffff, tone; opacity: 85%, 0%
-                                            emit: pour.$a.$l > 0.01 and pour.$a.$l < 0.45 }
-                                text ag.lname.$a.$l { family: "Geist"; at: sx + 58, ay + 62; anchor: left center; size: 11; weight: 500; width: 76; lines: 1; color: faint }
-                                text number(avail * eased, 0, "%") { family: "Geist"; at: sx + 58, ay + 90; anchor: left center; size: 26; weight: 700; color: tone; show: known > 0.5 }
-                                text "—" { family: "Geist"; at: sx + 58, ay + 90; anchor: left center; size: 26; weight: 700; color: #8b8f95; show: known < 0.5 }
-                                text "left" { family: "Geist"; at: sx + 58, ay + 112; anchor: left center; size: 10.5; color: faint; opacity: 70% }
-                                text ag.lrenew.$a.$l { family: "Geist"; at: sx + 58, ay + 134; anchor: left center; size: 10.5; width: 76; lines: 1; color: faint; opacity: 80% }
-                                //  How far into its window it is, and a dot at
-                                //  how much it has used: a dot ahead of the bar
-                                //  is spending faster than time goes.
-                                box { from: sx + 58, ay + 150; size: 72, 3; corner: 1.5; color: ink; opacity: 14% }
-                                box { from: sx + 58, ay + 150; size: 72 * ag.elapsed.$a.$l * eased, 3; corner: 1.5; color: ink; opacity: 45% }
-                                ellipse { at: sx + 58 + 72 * clamp(used / 100, 0, 1) * eased, ay + 151.5; radius: 3; color: tone; show: known > 0.5 }
-                            }
-                            zone box tank.$a.$l { at: sx + 23, ay + 108; size: 46, 112; corner: 13; active: page == agents and paging > 0.9 and ag.on.$a.$l }
-                            on enter tank.$a.$l { hover.$a.$l: 1; impulse sway.$a.$l 1.5 }
-                            on leave tank.$a.$l { hover.$a.$l: 0 }
-                            //  A new reading makes every tube sway, a little
-                            //  after its neighbour.
-                            on agents_read { impulse sway.$a.$l 2.4 }
-                        }
-                    }
-                }
-            }
-            //  And she reacts once, when the page comes in: little left
-            //  somewhere, the «!» face; everything with margin, the happy one.
-            on change page == agents and paging > 0.9 while page == agents and paging > 0.9 { face = reading; agents.face = reading }
-            on still agents.face for 3.6s while agents.face == reading and ag.worst < 15 { face = alert; agents.face = verdict }
-            on still agents.face for 3.6s while agents.face == reading and ag.worst >= 50 and ag.worst < 101 { face = happy; agents.face = verdict }
-            on still agents.face for 3.6s while agents.face == reading and (ag.worst >= 15 and ag.worst < 50 or ag.worst > 100) { face = eye; agents.face = none }
-            on still agents.face for 1.6s while agents.face == verdict { face = eye; agents.face = none }
-            //  Leaving the page mid-reading does not leave her with waves for eyes.
-            on change page while page != agents and agents.face != none { face = eye; agents.face = none }
-
-
-            // ── the calendar ─────────────────────────────────────
-            //  Every day is a drop, and it fills with water as it fills with
-            //  things: one event a third, three and it is full. Today has a
-            //  ring of light; the chosen one grows and sends a ripple out.
-            //  Changing month, the days come in like a wave, each row a little
-            //  behind the one above. Writing an event, a drop flies from the
-            //  field to its day and splashes in it.
-            prop cal.shift = 0 ~520ms
-            prop cal.ripple = 1 ~650ms
-            prop cal.fall = 0 ~16ms
-            prop cal.jig = 0 ~lively
-            on cal_went_next { cal.shift: 1 ~16ms; cal.shift: 0 ~560ms after 16ms }
-            on cal_went_prev { cal.shift: -1 ~16ms; cal.shift: 0 ~560ms after 16ms }
-            on cal_pick { cal.ripple: 0 ~16ms; cal.ripple: 1 ~650ms after 16ms }
-            on cal_added { cal.fall: 0 ~16ms; cal.fall: 1 ~620ms after 16ms; play happy }
-            on change cal.fall > 0.97 while cal.fall > 0.97 { emit cal_splash; impulse cal.jig 7 }
-            on change page while page == calendar { focus cal_new }
-            let cal.cw = 31
-            let cal.ch = 34
-            let cal.gx = card.x - 212
-            let cal.gy = card.top + 152
-            let cal.sx = cal.gx + mod(cal.sel, 7) * cal.cw
-            let cal.sy = cal.gy + floor(cal.sel / 7) * cal.ch
-            group {
-                show: page == calendar
-                //  Back a month, today, forward a month.
-                prop cal.prev.glow = 0 ~140ms
-                prop cal.next.glow = 0 ~140ms
-                prop cal.today.glow = 0 ~140ms
-                path { at: card.x + 92, card.top + 32; color: ink; stroke: 1.8; opacity: 55% + cal.prev.glow * 45%
-                       move 5, 0; line 0, 5; line 5, 10 }
-                box { at: card.x + 128, card.top + 37; size: 46, 24; corner: 12; color: ink; opacity: 8% + cal.today.glow * 10% }
-                text "Today" { family: "Geist"; at: card.x + 128, card.top + 37; anchor: center; size: 11; weight: 500; color: ink }
-                path { at: card.x + 160, card.top + 32; color: ink; stroke: 1.8; opacity: 55% + cal.next.glow * 45%
-                       move 0, 0; line 5, 5; line 0, 10 }
-                zone box cal_prev_btn { at: card.x + 95, card.top + 37; size: 28, 28; corner: 14; cursor: pointer; active: page == calendar and paging > 0.9 }
-                zone box cal_today_btn { at: card.x + 128, card.top + 37; size: 46, 26; corner: 13; cursor: pointer; active: page == calendar and paging > 0.9 }
-                zone box cal_next_btn { at: card.x + 163, card.top + 37; size: 28, 28; corner: 14; cursor: pointer; active: page == calendar and paging > 0.9 }
-                on enter cal_prev_btn { cal.prev.glow: 1 }
-                on leave cal_prev_btn { cal.prev.glow: 0 }
-                on enter cal_next_btn { cal.next.glow: 1 }
-                on leave cal_next_btn { cal.next.glow: 0 }
-                on enter cal_today_btn { cal.today.glow: 1 }
-                on leave cal_today_btn { cal.today.glow: 0 }
-                on press cal_prev_btn { emit cal_prev }
-                on press cal_next_btn { emit cal_next }
-                on press cal_today_btn { emit cal_today }
-
-                // ── her sky: where you are, and what it is like there. Pressed,
-                //  it becomes a field to write another city; Enter keeps it.
-                zone box sky_strip { at: card.x, card.top + 86; size: 456, 36; corner: 12; cursor: pointer; active: page == calendar and paging > 0.9 and not sky.editing }
-                box { at: card.x, card.top + 86; size: 456, 36; corner: 12; color: mix(#1d2124, #232a2c, sky_strip.hover) }
-                box { at: card.x, card.top + 86; size: 456, 36; corner: 12; stroke: 1; color: mint; opacity: if(sky.editing, 60%, 0%) }
-                group {
-                    show: not sky.editing
-                    //  A little sign of what it is like: the sun, or the moon at night;
-                    //  a cloud if it is covered, with drops or flakes under it; a bolt.
-                    let sg.x = card.x - 204
-                    let sg.y = card.top + 86
-                    let sg.cloudy = wx.cloud > 0.4 or wx.rain > 0.05 or wx.snow > 0.05 or wx.fog > 0.5
-                    group {
-                        glow: 5, 80%, #ffd36b
-                        ellipse { at: sg.x, sg.y; radius: 6; color: #ffd36b; show: not sg.cloudy and sky.day > 0.3 }
-                    }
-                    ellipse { at: sg.x, sg.y; radius: 6; color: #e8ecf5; show: not sg.cloudy and sky.day <= 0.3 }
-                    ellipse { at: sg.x + 2.8, sg.y - 1.8; radius: 5; color: #1d2124; show: not sg.cloudy and sky.day <= 0.3 }
-                    body {
-                        color: mix(#dfe3e8, #9aa3af, max(wx.rain, wx.storm))
-                        opacity: if(sg.cloudy, 1, 0)
-                        ellipse { at: sg.x - 4.5, sg.y - 1; radius: 4.5 }
-                        ellipse { at: sg.x + 1, sg.y - 4; radius: 5.5; blend: 3 }
-                        ellipse { at: sg.x + 6, sg.y; radius: 4; blend: 3 }
-                        box { at: sg.x + 0.5, sg.y + 1.5; size: 17, 5; corner: 2.5; blend: 3 }
-                    }
-                    line { from: sg.x - 4, sg.y + 7; to: sg.x - 5.2, sg.y + 10.5; width: 1.4; color: #a8d8ff; show: wx.rain > 0.05 }
-                    line { from: sg.x + 1, sg.y + 7; to: sg.x - 0.2, sg.y + 10.5; width: 1.4; color: #a8d8ff; show: wx.rain > 0.05 }
-                    line { from: sg.x + 6, sg.y + 7; to: sg.x + 4.8, sg.y + 10.5; width: 1.4; color: #a8d8ff; show: wx.rain > 0.05 }
-                    ellipse { at: sg.x - 3, sg.y + 9; radius: 1.2; color: #ffffff; show: wx.snow > 0.05 }
-                    ellipse { at: sg.x + 3.5, sg.y + 9.5; radius: 1.2; color: #ffffff; show: wx.snow > 0.05 }
-                    path { at: sg.x + 1, sg.y + 5; color: #ffd36b; show: wx.storm > 0.5
-                           move 1, 0; line -1.5, 4; line 1, 4; line -1, 8; line 3, 3; line 0.5, 3; line 2, 0; close }
-                    text wx.place { family: "Geist"; at: card.x - 186, card.top + 86; anchor: left center; size: 12.5; weight: 600; width: 150; lines: 1; color: ink; show: wx.ok }
-                    text "{wx.temp, 0}°" { family: "Geist"; at: card.x - 20, card.top + 86; anchor: left center; size: 17; weight: 600
-                                           color: mix(mix(ink, #a8d8ff, wx.cold), #ffbb85, wx.heat); show: wx.ok }
-                    text wx.summary { family: "Geist"; at: card.x + 24, card.top + 86; anchor: left center; size: 11.5; width: 120; lines: 1; color: faint; show: wx.ok }
-                    text "{wx.hi, 0}° · {wx.lo, 0}°" { family: "Geist"; at: card.x + 214, card.top + 86; anchor: right center; size: 11; color: faint; opacity: 75%; show: wx.ok }
-                    text "Your city, for her sky" { family: "Geist"; at: card.x - 186, card.top + 86; anchor: left center; size: 12; color: faint; show: not wx.ok }
-                }
-                group {
-                    show: sky.editing
-                    input city_q { family: "Geist"; at: card.x - 206, card.top + 86; width: 400; size: 13; color: ink; placeholder: "A city · Enter keeps it"; selection: #2f5f52 }
-                }
-                on press sky_strip {
-                    sky.editing = true
-                    focus city_q
-                }
-                on submit city_q { sky.editing = false }
-                on key Escape while sky.editing { sky.editing = false }
-
-                //  The weekdays.
-                repeat w in 1..8 {
-                    text cal.wd.$w { family: "Geist"; at: cal.gx + (w - 1) * cal.cw, card.top + 124; anchor: center; size: 10; weight: 600; color: faint; opacity: 60% }
-                }
-                //  The days.
-                repeat k in 0..42 {
-                    let row = floor(k / 7)
-                    let wave = cal.shift * 80 * (1 + row * 0.22)
-                    let dx = cal.gx + mod(k, 7) * cal.cw + wave
-                    let dy = cal.gy + row * cal.ch
-                    prop cal.pick.$k = 0 ~lively
-                    follow cal.pick.$k = if(cal.sel == k, 1, 0)
-                    prop cal.lvl.$k = 0 ~calm
-                    follow cal.lvl.$k = min(cal.n.$k, 3) / 3 * 0.85
-                    let grow = 1 + 0.12 * cal.pick.$k + cal.jig * 0.02 * cal.pick.$k
-                    group {
-                        opacity: (35% + 65% * if(cal.in.$k, 1, 0)) * clamp(1 - abs(cal.shift) * 1.3, 0, 1)
-                        pivot: dx, dy
-                        scale: grow, grow
-                        ellipse { at: dx, dy; radius: 13; color: mix(#24282c, #2f3a37, cal.pick.$k) }
-                        //  Its water: a level inside the drop, with a lighter surface.
-                        group {
-                            clip inset 0 ellipse { at: dx, dy; radius: 13 }
-                            box { from: dx - 13, dy + 13 - 26 * cal.lvl.$k; size: 26, 26 * cal.lvl.$k; color: mint; opacity: 50% }
-                            box { from: dx - 13, dy + 13 - 26 * cal.lvl.$k; size: 26, 1.5; color: #ffffff; opacity: 45% * if(cal.lvl.$k > 0.02, 1, 0) }
-                        }
-                        //  Today: a ring of light.
-                        group {
-                            glow: 6, 70%, mint
-                            ellipse { at: dx, dy; radius: 14.5; stroke: 1.6; color: mint; show: cal.today.$k }
-                        }
-                        ellipse { at: dx, dy; radius: 13.5; stroke: 1.6; color: ink; opacity: cal.pick.$k * 90% }
-                        text number(cal.day.$k, 0) { family: "Geist"; at: dx, dy; anchor: center; size: 12; weight: 500 + 200 * if(cal.today.$k, 1, 0); color: ink }
-                    }
-                    zone box cal_cell.$k { at: dx, dy; size: 30, 30; corner: 15; cursor: pointer; active: page == calendar and paging > 0.9 }
-                    on press cal_cell.$k { emit cal_pick(k) }
-                }
-                //  The ripple from the chosen day.
-                ellipse { at: cal.sx, cal.sy; radius: 14 + 30 * cal.ripple; stroke: 1.5; color: mint; opacity: (1 - cal.ripple) * 70% }
-                particles { at: cal.sx, cal.sy - 6; count: 18; life: 0.3s .. 0.6s; speed: 40 .. 110; direction: -90deg; spread: 120deg
-                            gravity: 0, 420; size: 3, 1; colors: #ffffff, mint; opacity: 90%, 0%; burst: cal_splash }
-
-                //  The chosen day, big, and what it holds.
-                text cal.sel_day { family: "Geist"; at: card.x + 14, card.top + 138; anchor: left center; size: 34; weight: 700; color: ink }
-                text cal.sel_title { family: "Geist"; at: card.x + 66, card.top + 130; anchor: left center; size: 12; weight: 500; width: 150; lines: 1; color: ink }
-                text cal.sel_sub { family: "Geist"; at: card.x + 66, card.top + 148; anchor: left center; size: 10.5; width: 150; lines: 1; color: faint; opacity: 75% }
-                component CalRow(e: record, drop: event) {
-                    size: 212, 30
-                    prop glow = 0 ~140ms
-                    zone box touch { from: 0, 0; size: 212, 30; corner: 9 }
-                    box { from: 0, 0; size: 212, 30; corner: 9; color: #23272b; opacity: 70% + glow * 30% }
-                    box { from: 5, 8; size: 3, 14; corner: 1.5; color: #9ed6bd }
-                    text e.time { family: "Geist"; at: 15, 15; anchor: left center; size: 11; weight: 600; width: 44; lines: 1; color: #9ed6bd }
-                    text e.title { family: "Geist"; at: 62, 15; anchor: left center; size: 12; width: 124; lines: 1; color: #f5f7f5 }
-                    line { from: 194, 11; to: 202, 19; width: 1.6; color: #f5f7f5; opacity: 25% + glow * 60% }
-                    line { from: 202, 11; to: 194, 19; width: 1.6; color: #f5f7f5; opacity: 25% + glow * 60% }
-                    zone box gone { at: 198, 15; size: 24, 24; corner: 12; cursor: pointer; active: page == calendar }
-                    on enter touch { glow: 1 }
-                    on leave touch { glow: 0 }
-                    on press gone { emit drop(e.index) }
-                }
-                column cal_list ~quick {
-                    at: card.x + 8, card.top + 172
-                    gap: 6
-                    for e in cal_events { CalRow(e, drop: cal_delete) }
-                }
-                text "Nothing yet." { family: "Geist"; at: card.x + 118, card.top + 220; anchor: center; size: 11.5; color: faint; opacity: 60%; show: cal_events.count < 1 }
-
-                //  Writing one: the field, and the drop it becomes.
-                box { at: card.x, card.top + 380; size: 456, 44; corner: 14; color: mix(#202122, ink, glassiness); opacity: mix(1, veil, glassiness) }
-                ellipse { at: card.x - 206, card.top + 380; radius: 6; color: mint; opacity: 80% }
-                input cal_new { family: "Geist"; at: card.x - 190, card.top + 380; width: 380; size: 13; color: ink; placeholder: "New event: 10:30 Dentist"; selection: #2f5f52 }
-                text "Start with a time, or leave it for the whole day. Enter saves it." { family: "Geist"; at: card.x, card.top + 414; anchor: center; size: 10; color: faint; opacity: 55% }
-                let fall.x0 = card.x - 206
-                let fall.y0 = card.top + 380
-                ellipse { at: fall.x0 + (cal.sx - fall.x0) * cal.fall, fall.y0 + (cal.sy - fall.y0) * cal.fall - 110 * sin(cal.fall * 180)
-                          radius: 5.5; color: mint; show: cal.fall > 0.01 and cal.fall < 0.97 }
-            }
-
-            // ── the menu of a tray icon ──────────────────────────
-            //  It is a page like the others, and that is why it holds what a
-            //  dropdown does not: a Telegram or Steam menu is fifteen rows with
-            //  submenus. The list scrolls with the wheel if it does not fit, and a
-            //  submenu is entered —the first row goes back—, which is what lets
-            //  everything happen in the same place without opening boxes beside it.
-            component MenuOption(r: record, pick: event) {
-                size: 456, 32 - r.separator * 22
-                prop glow = 0 ~140ms
-                box touch { from: 0, 0; size: 456, 32 - r.separator * 22; corner: 9; color: #262728; opacity: glow
-                           cursor: pointer; active: r.enabled and not r.separator and page == systray and paging > 0.9 }
-                box { from: 8, 4; size: 440, 1; color: ink; opacity: r.separator * 12% }
-                text r.label { family: "Geist"; at: 14, 16; anchor: left center; size: 12.5; width: 390; lines: 1; color: ink
-                               opacity: (1 - r.separator) * (0.45 + r.enabled * 0.55) }
-                //  Checkbox: filled if it is ticked, the ring if it is a checkbox and
-                //  is not ticked.
-                ellipse { at: 436, 16; radius: 3.5; color: mint; opacity: r.checked > 0.5 }
-                ellipse { at: 436, 16; radius: 3.5; stroke: 1.2; color: ink; opacity: if(r.checked > -0.5, 0.5, 0) }
-                path { at: 433, 11; color: ink; stroke: 1.6; opacity: if(r.children > 0, 0.6, 0)
-                       move 0, 0; line 5, 5; line 0, 10 }
-                on enter touch { glow: 1 }
-                on leave touch { glow: 0 }
-                on press touch { emit pick(r.index) }
-            }
-            column option_list ~quick {
-                at: card.x - 228, card.top + 112
-                view: 456, 286
-                show: page == systray
-                for r in options { MenuOption(r, pick: systray_pick) }
-            }
-            text "Asking it for its menu…" { family: "Geist"; at: card.x, card.top + 200; anchor: center; size: 11.5; color: #8b8f95
-                                            show: page == systray and options.count < 1 }
-            //  The scene opens the page, on the spot; the logic fills it. If it
-            //  turns out there is no menu to read, it is the logic that closes it.
-            on systray_menu { page = systray }
-
-            // ── the session ──────────────────────────────────────
-            //  Two separate intentions, as the sheet asks: **taking a break**
-            //  —lock and suspend, which are done just like that— and **finishing**
-            //  —log out, reboot and power off—, which open a separate
-            //  confirmation. Hovering only ANTICIPATES: it shows on her face what
-            //  it would do, and does nothing.
-            group {
-                show: page == session and question < 0.99
-                opacity: 1 - question
-                move: -22 * question, 0
-                repeat b in 0..2 {
-                    let bx = card.x - 117 + b * 234
-                    prop pause.$b = 0 ~140ms
-                    box { at: bx, card.top + 150; size: 222, 70; corner: 14
-                          color: mix(#202021, #1e2a25, pause.$b) }
-                    box { at: bx, card.top + 150; size: 222, 70; corner: 14; stroke: 1; color: mint; opacity: pause.$b }
-                    zone box pause_zone.$b { at: bx, card.top + 150; size: 222, 70; corner: 14; cursor: pointer
-                                        active: page == session and confirming == none and paging > 0.9 }
-                    on enter pause_zone.$b { pause.$b: 1 }
-                    on leave pause_zone.$b { pause.$b: 0 }
-                }
-                //  The lock's padlock: the body and its shackle.
-                box { at: card.x - 161, card.top + 152; size: 15, 12; corner: 3; color: ink }
-                arc { at: card.x - 161, card.top + 142; radius: 5; span: 180deg; width: 1.8; color: ink }
-                text "Lock" { family: "Geist"; at: card.x - 141, card.top + 142; anchor: left center; size: 13; color: ink }
-                text "Protect the session" { family: "Geist"; at: card.x - 141, card.top + 160; anchor: left center; size: 11; color: #8b8f95 }
-                //  And the suspend moon, the same as the Haven's.
-                ellipse { at: card.x + 75, card.top + 150; radius: 8.6; color: ink }
-                ellipse { at: card.x + 79.5, card.top + 145.5; radius: 7.4; color: mix(#202021, #1e2a25, pause.1) }
-                text "Suspend" { family: "Geist"; at: card.x + 93, card.top + 142; anchor: left center; size: 13; color: ink }
-                text "Go into standby" { family: "Geist"; at: card.x + 93, card.top + 160; anchor: left center; size: 11; color: #8b8f95 }
-
-                line { from: card.x - 228, card.top + 200; to: card.x + 228, card.top + 200; width: 1; color: ink; opacity: 12% }
-                text "When you're done" { family: "Geist"; at: card.x - 228, card.top + 220; anchor: left center; size: 11; weight: 600; color: #8b8f95 }
-
-                //  The three that cannot be undone. Each one with its arrow, and the
-                //  power-off one in coral: the colour marks what does not come back.
-                repeat f in 0..3 {
-                    let fy = card.top + 252 + f * 46
-                    prop finish.$f = 0 ~140ms
-                    box { at: card.x, fy; size: 456, 42; corner: 11; color: #202021; opacity: finish.$f * 80% }
-                    path { at: card.x + 212, fy - 5; color: mix(#8b8f95, ink, finish.$f); stroke: 1.6
-                           move 0, 0; line 5, 5; line 0, 10 }
-                    zone box finish_zone.$f { at: card.x, fy; size: 456, 42; corner: 11; cursor: pointer
-                                        active: page == session and confirming == none and paging > 0.9 }
-                    on enter finish_zone.$f { finish.$f: 1 }
-                    on leave finish_zone.$f { finish.$f: 0 }
-                }
-                //  Log out: a door and the arrow going out.
-                box { at: card.x - 208, card.top + 252; size: 11, 15; corner: 2; stroke: 1.6; color: ink }
-                path { at: card.x - 198, card.top + 247; color: ink; stroke: 1.6; move 0, 0; line 5, 5; line 0, 10 }
-                text "Log out" { family: "Geist"; at: card.x - 184, card.top + 252; anchor: left center; size: 12.5; color: ink }
-                //  Reboot: the arrow that goes all the way round.
-                arc { at: card.x - 208, card.top + 298; radius: 7; span: 280deg; width: 1.7; rotate: 20deg; color: ink }
-                path { at: card.x - 204, card.top + 289; color: ink; stroke: 1.6; move 0, 0; line 4, 3; line 0, 6 }
-                text "Restart" { family: "Geist"; at: card.x - 184, card.top + 298; anchor: left center; size: 12.5; color: ink }
-                //  Power off: the power symbol, and in coral.
-                arc { at: card.x - 208, card.top + 344; radius: 7; span: 280deg; width: 1.7; rotate: 180deg; color: #e0655a }
-                box { at: card.x - 208, card.top + 336; size: 1.7, 7; corner: 0.9; color: #e0655a }
-                text "Power off" { family: "Geist"; at: card.x - 184, card.top + 344; anchor: left center; size: 12.5; color: #e0655a }
-
-                text "Esc to go back" { family: "Geist"; at: card.x, card.top + 400; anchor: center; size: 11; color: #8b8f95; opacity: 70% }
-            }
-
-            // ── and the confirmation, which is something else ────
-            //  «Back receives the initial focus; the chosen action needs a new,
-            //  deliberate activation.» That is why it is not one more step of the
-            //  same page: it is a question, with its title, what is going to
-            //  happen and two buttons that do not look alike.
-            group {
-                show: page == session and question > 0.01
-                opacity: question
-                move: 26 * (1 - question), 0
-                text "Log out?" { family: "Geist"; at: card.x - 228, card.top + 146; anchor: left center; size: 19; weight: 500; color: ink; show: confirming == logout }
-                text "Restart the computer?" { family: "Geist"; at: card.x - 228, card.top + 146; anchor: left center; size: 19; weight: 500; color: ink; show: confirming == reboot }
-                text "Shut down the computer?" { family: "Geist"; at: card.x - 228, card.top + 146; anchor: left center; size: 19; weight: 500; color: ink; show: confirming == poweroff }
-                text "Applications will be closed." { family: "Geist"; at: card.x - 228, card.top + 186; anchor: left center; size: 12; color: #8b8f95 }
-                text "Save your changes before continuing." { family: "Geist"; at: card.x - 228, card.top + 208; anchor: left center; size: 12; color: #8b8f95 }
-
-                prop back.glow = 0 ~140ms
-                prop do_it.glow = 0 ~140ms
-                box { at: card.x - 128, card.top + 264; size: 200, 44; corner: 11; color: mix(mix(#1b1b1c, #232425, back.glow), ink, glassiness); opacity: mix(1, veil + back.glow * veil.glow, glassiness) }
-                box { at: card.x - 128, card.top + 264; size: 200, 44; corner: 11; stroke: 1.4; color: mint }
-                text "Back" { family: "Geist"; at: card.x - 128, card.top + 264; anchor: center; size: 13; color: ink }
-                box { at: card.x + 118, card.top + 264; size: 220, 44; corner: 11; color: mix(#e0655a, #f0796a, do_it.glow) }
-                text "Log out" { family: "Geist"; at: card.x + 118, card.top + 264; anchor: center; size: 13; weight: 600; color: #200705; show: confirming == logout }
-                text "Restart" { family: "Geist"; at: card.x + 118, card.top + 264; anchor: center; size: 13; weight: 600; color: #200705; show: confirming == reboot }
-                text "Shut down" { family: "Geist"; at: card.x + 118, card.top + 264; anchor: center; size: 13; weight: 600; color: #200705; show: confirming == poweroff }
-                zone box back { at: card.x - 128, card.top + 264; size: 200, 44; corner: 11; cursor: pointer
-                                  active: page == session and confirming != none and paging > 0.9 }
-                zone box do_it { at: card.x + 118, card.top + 264; size: 220, 44; corner: 11; cursor: pointer
-                                 active: page == session and confirming != none and paging > 0.9 and armed }
-                on enter back { back.glow: 1 }
-                on leave back { back.glow: 0 }
-                on enter do_it { do_it.glow: 1 }
-                on leave do_it { do_it.glow: 0 }
-                text "Esc to go back" { family: "Geist"; at: card.x, card.top + 320; anchor: center; size: 11; color: #8b8f95; opacity: 70% }
-            }
-
-            //  Pointing is not doing. Hovering only tells what it would do: the
-            //  padlock, the eyelids, the door, the turn or the power symbol. And on
-            //  leaving, her face comes back.
-            //  On jumping from one to another, `enter` and `leave` fall in the same
-            //  frame, and the second one erased what the first had just set. The
-            //  guards read the previous frame, so looking at the value is not
-            //  enough: what sorts it out is **declaring the one that clears first**.
-            on leave pause_zone.0 while confirming == none and hint == lock { hint = none }
-            on leave pause_zone.1 while confirming == none and hint == sleep { hint = none }
-            on leave finish_zone.0 while confirming == none and hint == logout { hint = none }
-            on leave finish_zone.1 while confirming == none and hint == reboot { hint = none }
-            on leave finish_zone.2 while confirming == none and hint == poweroff { hint = none }
-            on enter pause_zone.0 { hint = lock }
-            on enter pause_zone.1 { hint = sleep }
-            on enter finish_zone.0 { hint = logout }
-            on enter finish_zone.1 { hint = reboot }
-            on enter finish_zone.2 { hint = poweroff }
-            //  And from there to her face. One fact drives five springs, and the
-            //  five switch off by themselves on changing place: there is no need to
-            //  say in each rule what the other four stop being worth.
-            on change hint {
-                padlock: if(hint == lock, 1, 0)
-                lids: if(hint == sleep, 1, 0)
-                door: if(hint == logout, 1, 0)
-                turn: if(hint == reboot, 1, 0)
-                power: if(hint == poweroff, 1, 0)
-            }
-            //  «A single turn»: one whole turn every time you point at it, and none
-            //  while you stay there.
-            on change hint == reboot while hint == reboot { twirl: twirl + 1 }
-
-            //  Lock and suspend are asked for and that is it: there is nothing to
-            //  confirm in something that is undone with the password or with a
-            //  key. The other three open the question.
-            on press pause_zone.0 { open = false; page = none; emit lock }
-            on press pause_zone.1 { emit session(2); open = false; page = none }
-            on press finish_zone.0 { confirming = logout }
-            on press finish_zone.1 { confirming = reboot }
-            on press finish_zone.2 { confirming = poweroff }
-            on press back { confirming = none }
-            //  And the real one, only once. `armed` is what stops the row's double
-            //  click from landing on the button right below it: the sheet asks for
-            //  «a new, deliberate activation», and a second click that came from
-            //  the previous one is not that.
-            on press do_it { emit session(if(confirming == logout, 3, 0) + if(confirming == reboot, 4, 0) + if(confirming == poweroff, 5, 0))
-                             powerdown: 1 }
-            //  «If the system rejects or inhibits the action, get normal eyes
-            //  back.» There is no way to ask it, but there is a way to notice we are
-            //  still here: after four seconds, if nothing has happened, she comes
-            //  back.
-            on still powerdown for 4s while powerdown > 0.5 { powerdown: 0; confirming = none }
-            follow question = if(confirming == none, 0, 1)
-            on still confirming for 320ms while confirming != none { armed = true }
-            on change confirming { armed = false }
-            //  Changing page disarms whatever there was: «do not leave a
-            //  confirmation armed when the option changes».
-            on change page while page != session { confirming = none; hint = none }
-            on change confirming while confirming == logout { hint = logout }
-            on change confirming while confirming == reboot { hint = reboot }
-            on change confirming while confirming == poweroff { hint = poweroff }
-            on change confirming while confirming == none { hint = none }
-
-            //  Focus: what it does, said. There is no list to bring.
-            group {
-                show: page == concentration
-                text "While it lasts, notices are kept and not shown." { family: "Geist";
-                    at: card.x - 228, card.top + 119; anchor: left center; size: 12; width: 456; lines: 2; color: #8b8f95 }
-                repeat m in 0..3 {
-                    let mx = card.x - 158 + m * 158
-                    prop mins_glow.$m = 0 ~140ms
-                    box { at: mx, card.top + 185; size: 140, 44; corner: 12; color: mix(#202021, #262728, mins_glow.$m) }
-                    text "{25 + m * 20} min" { family: "Geist"; at: mx, card.top + 185; anchor: center; size: 12.5; color: ink }
-                    zone box mins_zone.$m { at: mx, card.top + 185; size: 140, 44; corner: 12; cursor: pointer; active: page == concentration and paging > 0.9 }
-                    on enter mins_zone.$m { mins_glow.$m: 1 }
-                    on leave mins_zone.$m { mins_glow.$m: 0 }
-                    //  And here is where the Haven is entered: you choose how long,
-                    //  and the first thing it does is close. Leaving the panel open
-                    //  on top of her would be the opposite of what you have just
-                    //  asked for. The page folds away first so that on opening it
-                    //  again the three cards are there and not the inside of one.
-                    on press mins_zone.$m { remaining = 25 + m * 20; page = none; open = false; emit enter_haven }
-                }
-            }
-        }
-
-        group {
-            opacity: overview
-            // ── the line and what is playing ─────────────────────────
-            line { from: x0, card.top + 424; to: card.x + 228, card.top + 424; width: 1; color: ink; opacity: 12% }
-            let by = card.top + 466
-            group {
-                show: playback.playing
-                //  The cover, which here is a gradient: there is no artwork yet.
-                body {
-                    gradient: radial x0 + 28, by - 6 radius 44, #e8c9a8, #6f8f7d
-                    box { at: x0 + 28, by; size: 56, 56; corner: 12 }
-                }
-                text playback.title { family: "Geist"; at: x0 + 66, by - 9; anchor: left center; size: 12.5; width: 130; lines: 1; color: ink }
-                text playback.artist { family: "Geist"; at: x0 + 66, by + 10; anchor: left center; size: 11; width: 130; lines: 1; color: #8b8f95 }
-                //  Previous, pause and next. The pause goes in its filled disc.
-                let bx1 = card.x + 126
-                let bx3 = card.x + 206
-                path { at: bx1 - 6, by - 7; color: ink; move 12, 0; line 12, 14; line 0, 7; close }
-                box { at: bx1 - 8, by; size: 2.6, 14; corner: 1.3; color: ink }
-                ellipse { at: card.x + 166, by; radius: 19; color: #2a2b2c }
-                box { at: card.x + 162, by; size: 3.4, 14; corner: 1.7; color: ink }
-                box { at: card.x + 170, by; size: 3.4, 14; corner: 1.7; color: ink }
-                path { at: bx3 - 6, by - 7; color: ink; move 0, 0; line 12, 7; line 0, 14; close }
-                box { at: bx3 + 10, by; size: 2.6, 14; corner: 1.3; color: ink }
-                zone box prev_btn { at: bx1, by; size: 34, 34; corner: 17; cursor: pointer; active: content > 0.9 }
-                zone box play_btn { at: card.x + 166, by; size: 42, 42; corner: 21; cursor: pointer; active: content > 0.9 }
-                zone box next_btn { at: bx3, by; size: 34, 34; corner: 17; cursor: pointer; active: content > 0.9 }
-                on press prev_btn { emit previous }
-                on press play_btn { emit play_pause }
-                on press next_btn { emit next }
-            }
-            text "Nothing playing" { family: "Geist"; at: card.x, by; anchor: center; size: 11.5; color: #8b8f95; show: not playback.playing }
-        }
-
+    //  The quick settings that are new in Etta: keeping the screen awake,
+    //  the power profile and the night light. The logic runs them
+    //  (systemd-inhibit, powerprofilesctl, wlsunset) and says what they are.
+    fact awake_on = false
+    fact night_on = false
+    fact power.mode = 1                // 0 saver · 1 balanced · 2 performance
+    //  Bluetooth blocked by the system switch (rfkill): Etta unblocks it.
+    fact bt.blocked = false
+    fact bt.turning = false
+    //  How long Do not disturb lasts: 25 min, 45 min, an hour, until off.
+    fact focus.dur = 0
+    //  The lock: idle time (5, 10, 30 min, never) and before suspending.
+    fact idle.k = 3
+    fact lock.suspend = true
+    //  The agents shown, and the ones there are on this machine.
+    repeat k in 1..5 {
+        fact ag.show.$k = true
+        fact ag.has.$k = false
     }
+    text ag.updated = ""
+    prop ag.spin = 0 ~slow
+    //  The history: a search and a category.
+    text hist_q = ""
+    fact hist.cat = 0
+    prop hist.ask = 0 ~180ms
+    fact hist.asking = false
+    follow hist.ask = if(hist.asking and page == history, 1, 0)
+    fact hist.typing = false
+    let hist.filtering = hist.cat > 0 or hist.typing
+    //  The background apps: whose menu is shown.
+    fact tray.sel = -1
+    //  The wallpaper: where they come from and the one on now.
+    text wall.source = "Pictures"
+    text wall.dir = ""
+    text wall.now = ""
+    //  Who is signed in, for the session page.
+    text session.user = ""
+    //  The apps playing sound, each with its own level.
+    model streams max 6 { name: text; volume: number }
+    //  The weather's next hours, for the calendar.
+    fact wx.hours = false
+    text wx.rainp = ""
+    repeat k in 0..6 {
+        fact wx.h.kind.$k = 2
+        fact wx.h.temp.$k = 0
+        text wx.h.t.$k = ""
+    }
+    let wx.now.k = if(wx.storm > 0.5, 5, if(wx.snow > 0.05, 4, if(wx.rain > 0.05, 3, if(wx.fog > 0.5, 6, if(wx.cloud > 0.4, 2, if(sky.day > 0.3, 0, 1))))))
+    //  What is playing: its place, counted here between readings.
+    prop media.pos = 0
+    spin media.pos by if(playback.playing, max(playback.rate, 0), 0)
+    on change playback.position { media.pos: playback.position ~16ms }
+    //  The settings' choices, as the place each one has in its row.
+    let size.k = if(pet.size == s46, 0, if(pet.size == s52, 1, if(pet.size == s56, 2, 3)))
+    let look.k = if(skin == classic, 0, if(skin == liquid, 1, 2))
+    let home.k = if(following, 2, home)
+    let wear.n = if(wears.hat, 1, 0) + if(wears.glasses, 1, 0) + if(wears.mug, 1, 0) + if(wears.phones, 1, 0)
+    //  The calendar's field, lit while it is being written in.
+    prop cal.focus = 0 ~140ms
+
+    group {
+        clip inset 0 box { at: card.x, card.y; size: card.w, card.h; corner: card.corner }
+        group {
+            opacity: content
+            move: card.left, card.top + (1 - content) * 10
+            //  The overview steps aside while a page comes in: never two
+            //  things halfway.
+            group {
+                show: paging < 0.98
+                opacity: 1 - clamp(paging * 2, 0, 1)
+                move: -24 * paging, 0
+                Overview()
+            }
+            group {
+                show: paging > 0.02
+                opacity: clamp(paging * 2 - 1, 0, 1)
+                move: 24 * (1 - paging), 0
+                group { show: page == wifi; WifiPage() }
+                group { show: page == bluetooth; BtPage() }
+                group { show: page == concentration; FocusPage() }
+                group { show: page == sound; SoundPage() }
+                group { show: page == session; SessionPage() }
+                group { show: page == settings; SettingsPage() }
+                group { show: page == agents; AgentsPage() }
+                group { show: page == calendar; CalendarPage() }
+                group { show: page == history; HistoryPage() }
+                group { show: page == drift; DrivaPage() }
+                group { show: page == walls; WallsPage() }
+                group { show: page == wardrobe; WardrobePage() }
+                group { show: page == systray; TrayPage() }
+            }
+        }
+    }
+    //  Her preview, in the wardrobe: her, three times bigger, wearing what
+    //  she wears. It is the same face, not a picture of it.
+    group {
+        show: page == wardrobe and paging > 0.02
+        opacity: clamp(paging * 2 - 1, 0, 1) * content
+        let pv.x = card.left + 130
+        let pv.y = card.top + 196
+        body {
+            color: skin
+            rim: 14%
+            ellipse { at: pv.x, pv.y; radius: 50.6 }
+        }
+        group {
+            pivot: pv.x, pv.y
+            scale: 2.2, 2.2
+            group { move: pv.x, pv.y - 30; opacity: worn.1
+                figure hat.brim { at: 0, 0; size: 58, 43 }
+                figure hat.crown { at: 0, 0; size: 58, 43 }
+                figure hat.pompom { at: 0, 0; size: 58, 43 }
+            }
+            Face(pv.x, pv.y, gaze.x * 0.4, gaze.y * 0.4, 0)
+            group { move: pv.x, pv.y + 2.5; opacity: worn.2; figure glasses { at: 0, 0; size: 44, 24 } }
+            group { move: pv.x, pv.y; opacity: worn.4
+                figure phones.band { at: 0, 0; size: 64, 64 }
+                figure phones.cups { at: 0, 0; size: 64, 64 }
+                figure phones.accent { at: 0, 0; size: 64, 64 }
+                figure phones.boom { at: 0, 0; size: 64, 64 }
+                figure phones.led { at: 0, 0; size: 64, 64; color: mix(#9ed6bd, #ef7a66, on_air) }
+            }
+            group { move: pv.x + 28, pv.y + 8 + 2 * sway; opacity: worn.3; figure mug { at: 0, 0; size: 34, 34 } }
+        }
+    }
+
+    // ── going from one to another ────────────────────────────────
+    on go_back while page == session and confirming != none { confirming = none }
+    on go_back while page == wardrobe { page = settings }
+    on go_back while page == walls { page = wardrobe }
+    on go_back while page != session and page != wardrobe and page != walls { page = none }
+    on go_back while page == session and confirming == none { page = none }
+    on close_panel { open = false }
+    on go_net { page = wifi; emit scan(1) }
+    on go_bt { page = bluetooth; emit scan(2) }
+    on go_dnd { page = concentration }
+    on go_sound { page = sound }
+    on go_session { page = session }
+    on go_settings { page = settings }
+    on go_calendar { page = calendar; emit calendar }
+    on go_agents { page = agents; emit agents_refresh }
+    on go_wardrobe { emit customize; page = wardrobe }
+    on systray_menu(i) { page = systray; tray.sel = i }
+    on change page while page != systray { tray.sel = -1 }
+    //  Esc steps back one, and from the overview it closes.
+    on key Escape while open and page == none and not searching { open = false }
+    on key Escape while open and page != none and asking < 0 and not sky.editing { emit go_back }
+
+    // ── the quick settings ───────────────────────────────────────
+    on tap_wifi { emit flip(1) }
+    on tap_bt { emit flip(2) }
+    on tap_dnd while haven { emit leave_haven }
+    on tap_dnd while not haven { remaining = pick(focus.dur, 25, 45, 60, 100000); emit enter_haven }
+    on pick_dur(i) { focus.dur = i }
+    on pick_dur(i) while haven { remaining = pick(i, 25, 45, 60, 100000) }
+    on pick_snooze(i) { snooze_k = i }
+    on scan_wifi { emit scan(1) }
+    on submit wifi_pw { emit join }
+    on key Escape while page == wifi and asking >= 0 { emit forget_ask }
+
+    // ── the session ──────────────────────────────────────────────
+    //  Hovering only shows on her face what it would do; doing it is the
+    //  press, and the last three ask first.
+    on change hint {
+        padlock: if(hint == lock, 1, 0)
+        lids: if(hint == sleep, 1, 0)
+        door: if(hint == logout, 1, 0)
+        turn: if(hint == reboot, 1, 0)
+        power: if(hint == poweroff, 1, 0)
+    }
+    on change hint == reboot while hint == reboot { twirl: twirl + 1 }
+    on do_session while armed { emit session(if(confirming == logout, 3, 0) + if(confirming == reboot, 4, 0) + if(confirming == poweroff, 5, 0)); powerdown: 1 }
+    on still powerdown for 4s while powerdown > 0.5 { powerdown: 0; confirming = none }
+    follow question = if(confirming == none, 0, 1)
+    on still confirming for 320ms while confirming != none { armed = true }
+    on change confirming { armed = false }
+    on change page while page != session { confirming = none; hint = none }
+    on change confirming while confirming == logout { hint = logout }
+    on change confirming while confirming == reboot { hint = reboot }
+    on change confirming while confirming == poweroff { hint = poweroff }
+    on change confirming while confirming == none { hint = none }
+
+    // ── settings ─────────────────────────────────────────────────
+    on pick_size(i) { pet.size = pick(i, s46, s52, s56, s64) }
+    on pick_look(i) { skin = pick(i, classic, liquid, lens) }
+    on pick_home(i) while i < 2 { home = i; following = false }
+    on pick_home(i) while i > 1 { following = true }
+    on pick_idle(i) { idle.k = i }
+    on flip_room { toggle taking_room }
+    on flip_24 { toggle clock24 }
+    on flip_secs { toggle clock.secs }
+    on flip_batpct { toggle bat.shown }
+    on flip_locksusp { toggle lock.suspend }
+    on flip_safety { toggle with_exit }
+    on edit_city { page = calendar; sky.editing = true; focus city_q }
+    on submit city_q { sky.editing = false }
+    on key Escape while sky.editing { sky.editing = false }
+
+    // ── the wardrobe ─────────────────────────────────────────────
+    on wear_hat { toggle wears.hat }
+    on wear_glasses { toggle wears.glasses }
+    on wear_mug { toggle wears.mug }
+    on wear_phones { toggle wears.phones }
+
+    // ── the agents ───────────────────────────────────────────────
+    //  The water rises once the page can be seen, from empty, every time.
+    prop reveal = 0 ~1800ms
+    on change page == agents and paging > 0.9 while page == agents and paging > 0.9 { reveal: 0 ~16ms; reveal: 1 ~1800ms after 60ms }
+    on change page while page != agents { reveal: 0 ~16ms }
+    on agents_refresh { ag.spin: ag.spin + 360 }
+    on flip_ag1 { toggle ag.show.1 }
+    on flip_ag2 { toggle ag.show.2 }
+    on flip_ag3 { toggle ag.show.3 }
+    on flip_ag4 { toggle ag.show.4 }
+    //  Her face, once, when the page comes in: she reads the water, and then
+    //  says what she thinks of it.
+    on change page == agents and paging > 0.9 while page == agents and paging > 0.9 { face = reading; agents.face = reading }
+    on still agents.face for 2.4s while agents.face == reading and ag.worst < 15 { face = alert; agents.face = verdict }
+    on still agents.face for 2.4s while agents.face == reading and ag.worst >= 50 and ag.worst < 101 { face = happy; agents.face = verdict }
+    on still agents.face for 2.4s while agents.face == reading and (ag.worst >= 15 and ag.worst < 50 or ag.worst > 100) { face = eye; agents.face = none }
+    on still agents.face for 1.6s while agents.face == verdict { face = eye; agents.face = none }
+    on change page while page != agents and agents.face != none { face = eye; agents.face = none }
+
+    // ── the calendar ─────────────────────────────────────────────
+    prop cal.shift = 0 ~520ms
+    prop cal.ripple = 1 ~650ms
+    on cal_went_next { cal.shift: 1 ~16ms; cal.shift: 0 ~560ms after 16ms }
+    on cal_went_prev { cal.shift: -1 ~16ms; cal.shift: 0 ~560ms after 16ms }
+    on cal_pick { cal.ripple: 0 ~16ms; cal.ripple: 1 ~650ms after 16ms }
+    on cal_added { play happy }
+    on change page while page == calendar and not sky.editing { focus cal_new }
+    follow cal.focus = if(page == calendar and not sky.editing, 1, 0)
+
+    // ── the history ──────────────────────────────────────────────
+    on pick_hcat0 { hist.cat = 0 }
+    on pick_hcat1 { hist.cat = 1 }
+    on pick_hcat2 { hist.cat = 2 }
+    on pick_hcat3 { hist.cat = 3 }
+    on pick_hcat4 { hist.cat = 4 }
+    on ask_clear { hist.asking = true }
+    on cancel_clear { hist.asking = false }
+    on do_clear { hist.asking = false; hist.wash: 1 ~700ms }
+    on change page while page != history { hist.asking = false }
+    on still hist.wash for 80ms while hist.wash > 0.97 {
+        emit clear_history
+        hist.wash: 0 ~16ms
+    }
+
+    // ── Deriva and the wallpapers ────────────────────────────────
 
     // ── opening and closing ──────────────────────────────────────
     //  On opening the geometry leads and the content comes in behind. On
@@ -5792,7 +4426,7 @@ scene Etta {
     on key Return while menu_open and menu_selected == 1 { emit settings; menu_open = false }
     //  «Settings», from her menu or from outside, opens its page in the control
     //  center.
-    on settings { open = true; page = settings; section = menu }
+    on settings { open = true; page = settings }
     on key Return while menu_open and menu_selected == 2 { emit customize; menu_open = false; open = true; page = wardrobe }
     on key Return while menu_open and menu_selected == 3 { emit sleep; menu_open = false }
     on key Return while menu_open and menu_selected > 3 { emit menu_entry(menu_selected - 4); menu_open = false }

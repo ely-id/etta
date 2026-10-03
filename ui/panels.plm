@@ -1,0 +1,1067 @@
+// What her panels hold. Each panel is a component drawn from its own top
+// left corner —the scene places it where her card is— and reads the scene's
+// facts, texts and models directly: they are hers, not a library's.
+//
+// The card itself (the box that grows out of her, its neck, its springs) is
+// the scene's; here is only what is written on it.
+
+import "tokens.plm"
+import "kit.plm"
+
+library Panels {
+    shader reservoir = file "../shaders/reservoir.wgsl"
+    //  A quick setting: the round badge switches it, the rest opens its page.
+    //  The icon goes inside, centred on the badge.
+    component QTile(title: text, sub: text, on: number, tap: event, go: event, w: number = 284, chevron: number = 1) {
+        size: w, 64
+        zone box body { from: 0, 0; size: w, 64; corner: 16; cursor: pointer }
+        box { from: 0, 0; size: w, 64; corner: 16; color: mix(tk.s1, #222527, body.hover) }
+        ellipse { at: 32, 32; radius: 18 + 1.5 * bub.hover; color: mix(mix(tk.s2, #33383b, bub.hover), mix(tk.mint, tk.mint_hi, bub.hover), on) }
+        children { move: 32, 32 }
+        text title { family: "Geist"; at: 62, 23; anchor: left center; size: 15; weight: 600; width: w - 96; lines: 1; color: tk.ink }
+        text sub { family: "Geist"; at: 62, 43; anchor: left center; size: 12; weight: 500; width: w - 96; lines: 1; color: tk.ink3 }
+        figure Kit.i_chev_r { at: w - 20, 32; size: 14, 14; color: tk.ink3; opacity: chevron }
+        zone ellipse bub { at: 32, 32; radius: 22; cursor: pointer }
+        on press body { emit go }
+        on press bub { emit tap }
+    }
+
+    //  A level: its icon (which mutes), its name and device, the track, the
+    //  number, and the way to its page.
+    component LevelRow(label: text, sub: text, v: number, set: event, mute: event, go: event, muted: number = 0, tone: color = tk.mint, w: number = 556, canmute: number = 1, hasgo: number = 1, live: bool = true) {
+        size: w, 56
+        measure lvl.lab
+        zone box mb { from: 0, 10; size: 36, 36; corner: 10; cursor: pointer; active: canmute > 0.5 and live }
+        box { from: 0, 10; size: 36, 36; corner: 10; color: tk.s2; opacity: mb.hover * canmute }
+        children { move: 18, 28 }
+        text label { family: "Geist"; at: 48, 16; anchor: left center; size: 13; weight: 500; color: tk.ink; measure: lvl.lab }
+        text sub { family: "Geist"; at: 56 + lvl.lab.width, 16; anchor: left center; size: 12; weight: 500; width: w - 160 - lvl.lab.width; lines: 1; color: tk.ink3 }
+        group { move: 48, 28; Slider(v, set, w: w - 48 - 60 - 40 * hasgo, muted: muted, tone: tone, live: live) }
+        text "{clamp(v, 0, 1) * 100, 0}%" { family: "Geist"; at: w - 40 * hasgo - 4, 40; anchor: right center; size: 15; weight: 600; color: mix(tk.ink, tk.ink3, max(muted, if(live, 0, 1))) }
+        group { move: w - 36, 22; show: hasgo > 0.5; Ib(go) { figure Kit.i_chev_r { at: 0, 0; size: 16, 16; color: tk.ink3 } } }
+        on press mb { emit mute }
+    }
+
+    //  A shortcut to one of her pages: its icon over its name.
+    component Shortcut(label: text, press: event, w: number = 92) {
+        size: w, 72
+        zone box touch { from: 0, 0; size: w, 72; corner: 14; cursor: pointer }
+        box { from: 0, 0; size: w, 72; corner: 14; color: tk.s1; opacity: touch.hover * (1 - 0.3 * touch.pressed) }
+        children { move: w / 2, 28 }
+        text label { family: "Geist"; at: w / 2, 54; anchor: center; size: 12; weight: 500; color: mix(tk.ink2, tk.ink, touch.hover) }
+        on press touch { emit press }
+    }
+
+    //  A page's header: back, where you are, and close. Whatever else it
+    //  carries on its right goes inside.
+    component PageHead(title: text, w: number = 620) {
+        size: w, 64
+        group { move: 56, 14; Ib(go_back) { figure Kit.i_chev_l { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+        text title { family: "Geist"; at: 100, 32; anchor: left center; size: 20; weight: 600; width: w - 300; lines: 1; color: tk.ink }
+        group { move: w - 52, 14; Ib(close_panel) { figure Kit.i_close { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+        children
+    }
+
+    //  An overline: the name of a section.
+    component Over(label: text, w: number = 300) {
+        size: w, 24
+        text label { family: "Geist"; at: 4, 12; anchor: left center; size: 12; weight: 600; color: tk.ink3 }
+    }
+
+    //  An icon of the tray: a click is the usual one, the right one asks for
+    //  its menu.
+    component TrayIcon(i: record) {
+        size: 30, 30
+        zone box touch { from: 0, 0; size: 30, 30; corner: 8; cursor: pointer; active: content > 0.9 and page == none }
+        box { from: 0, 0; size: 30, 30; corner: 8; color: tk.s2; opacity: touch.hover }
+        image i.icon { at: 4, 4 - touch.hover * 1.5; size: 22, 22 }
+        on press touch { emit systray_activate(i.index) }
+        on press right touch { emit systray_menu(i.index) }
+    }
+
+    // ── the control center ───────────────────────────────────────
+    component Overview() {
+        size: 620, 700
+        text "Control center" { family: "Geist"; at: 64, 33; anchor: left center; size: 20; weight: 600; color: tk.ink }
+        row tray_strip {
+            at: 236, 33
+            anchor: left middle
+            gap: 2
+            view: 150, 30
+            for i in icons { TrayIcon(i) }
+        }
+        //  The battery, small: the clock beside her steps aside while a panel
+        //  is out, so it is said here too.
+        group {
+            show: bat.present
+            box { from: 394, 18; size: 84, 30; corner: 15; color: tk.s1 }
+            box { from: 394, 18; size: 84, 30; corner: 15; stroke: 1; color: tk.line; opacity: 7% }
+            box { from: 407, 27.5; size: 18, 11; corner: 3; stroke: 1.4; color: bat.tone }
+            box { from: 426, 31; size: 1.8, 4; corner: 0.9; color: bat.tone }
+            box { from: 409, 29.5; size: max(1, 14 * bat.percent / 100), 7; corner: 1.6; color: bat.tone }
+            text "{bat.percent, 0}%" { family: "Geist"; at: 434, 33; anchor: left center; size: 13; weight: 600; color: bat.tone }
+        }
+        group { move: 488, 15; Ib(go_session) { figure Kit.i_power { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+        group { move: 528, 15; Ib(go_settings) { figure Kit.i_settings { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+        group { move: 568, 15; Ib(close_panel) { figure Kit.i_close { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+
+        grid {
+            at: 20, 72; columns: 2; gap: 12; width: 580; row: 64
+            QTile("Network", pick(if(net.online, 0, 1), net.name, "Offline"), if(switched_on.1, 1, 0), tap_wifi, go_net, w: cell.w) {
+                figure Kit.i_ethernet { at: 0, 0; size: 20, 20; color: mix(tk.ink2, tk.mint_ink, if(switched_on.1, 1, 0)); show: net.kind == wired }
+                figure Kit.i_wifi { at: 0, 0; size: 20, 20; color: mix(tk.ink2, tk.mint_ink, if(switched_on.1, 1, 0)); show: net.kind != wired }
+            }
+            QTile("Bluetooth", bt.sub, lit.2, tap_bt, go_bt, w: cell.w) {
+                figure Kit.i_bluetooth { at: 0, 0; size: 20, 20; color: mix(tk.ink2, tk.mint_ink, lit.2) }
+            }
+            QTile("Do not disturb", pick(if(haven, if(remaining > 9999, 2, 1), 0), "Off", "On · {remaining, 0} min left", "On · until you turn it off"), if(haven, 1, 0), tap_dnd, go_dnd, w: cell.w) {
+                figure Kit.i_moon { at: 0, 0; size: 20, 20; color: mix(tk.ink2, tk.mint_ink, if(haven, 1, 0)) }
+            }
+            QTile("Keep awake", pick(if(awake_on, 1, 0), "Off", "On · the screen stays on"), if(awake_on, 1, 0), tap_awake, tap_awake, w: cell.w, chevron: 0) {
+                figure Kit.i_coffee { at: 0, 0; size: 20, 20; color: mix(tk.ink2, tk.mint_ink, if(awake_on, 1, 0)) }
+            }
+            QTile("Power mode", pick(power.mode, "Power saver", "Balanced", "Performance"), if(power.mode != 1, 1, 0), tap_power, tap_power, w: cell.w, chevron: 0) {
+                figure Kit.i_gauge { at: 0, 0; size: 20, 20; color: mix(tk.ink2, tk.mint_ink, if(power.mode != 1, 1, 0)) }
+            }
+            QTile("Night light", pick(if(night_on, 1, 0), "Off", "On · warmer until sunrise"), if(night_on, 1, 0), tap_night, tap_night, w: cell.w, chevron: 0) {
+                figure Kit.i_sunset { at: 0, 0; size: 20, 20; color: mix(tk.ink2, tk.mint_ink, if(night_on, 1, 0)) }
+            }
+        }
+
+        box { from: 20, 296; size: 580, 180; corner: 16; color: tk.s1 }
+        group { move: 28, 302
+            LevelRow("Volume", osd.out, sound.volume, set_volume, mute_output, go_sound, muted: if(sound.muted, 1, 0), w: 564) {
+                figure Kit.i_speaker { at: 0, 0; size: 20, 20; color: tk.ink2; show: not sound.muted }
+                figure Kit.i_speaker_off { at: 0, 0; size: 20, 20; color: tk.red; show: sound.muted }
+            }
+        }
+        group { move: 28, 358
+            LevelRow("Microphone", osd.in, sound.input, set_mic, mute_mic, go_sound, muted: if(sound.input_muted, 1, 0), w: 564) {
+                figure Kit.i_mic { at: 0, 0; size: 20, 20; color: tk.ink2; show: not sound.input_muted }
+                figure Kit.i_mic_off { at: 0, 0; size: 20, 20; color: tk.red; show: sound.input_muted }
+            }
+        }
+        group { move: 28, 414
+            LevelRow("Brightness", pick(if(display.present, 0, 1), "Built-in display", "No backlight here"), display.level, set_brightness, noop, noop, tone: tk.sand, w: 564, canmute: 0, hasgo: 0, live: display.present) {
+                figure Kit.i_sun { at: 0, 0; size: 20, 20; color: if(display.present, tk.ink2, tk.ink3) }
+            }
+        }
+
+        //  What is playing.
+        group {
+            show: playback.playing or playback.length > 0
+            box { from: 20, 492; size: 580, 96; corner: 16; color: tk.s1 }
+            body {
+                gradient: 32, 504 to 104, 576, #2f5d50, #9ed6bd 60%, #e8c07a
+                box { from: 32, 504; size: 72, 72; corner: 12 }
+            }
+            figure Kit.i_play { at: 68, 540; size: 22, 22; color: #0e2a1f; opacity: 40% }
+            text playback.title { family: "Geist"; at: 120, 516; anchor: left center; size: 15; weight: 600; width: 300; lines: 1; color: tk.ink }
+            text playback.artist { family: "Geist"; at: 120, 536; anchor: left center; size: 13; weight: 500; width: 300; lines: 1; color: tk.ink2 }
+            text "{media.pos, time}" { family: "Geist"; at: 120, 564; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
+            group {
+                show: playback.length > 0
+                box { from: 160, 562; size: 220, 4; corner: 2; color: tk.s3 }
+                box { from: 160, 562; size: 220 * clamp(media.pos / max(playback.length, 1), 0, 1), 4; corner: 2; color: tk.ink2 }
+                text "{playback.length, time}" { family: "Geist"; at: 390, 564; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
+            }
+            group { move: 452, 520; Ib(previous, d: 40) { figure Kit.i_prev { at: 0, 0; size: 20, 20; color: tk.ink } } }
+            group { move: 500, 516
+                zone box pp { from: 0, 0; size: 48, 48; corner: 24; cursor: pointer }
+                ellipse { at: 24, 24; radius: 24; color: mix(tk.ink, #ffffff, pp.hover) }
+                figure Kit.i_pause { at: 24, 24; size: 22, 22; color: tk.body; show: playback.playing }
+                figure Kit.i_play { at: 25.5, 24; size: 22, 22; color: tk.body; show: not playback.playing }
+                on press pp { emit play_pause }
+            }
+            group { move: 556, 520; Ib(next, d: 40) { figure Kit.i_next { at: 0, 0; size: 20, 20; color: tk.ink } } }
+        }
+        group {
+            show: not (playback.playing or playback.length > 0)
+            box { from: 20, 492; size: 580, 64; corner: 16; color: tk.s1 }
+            group { move: 34, 506; Bubble(0) { figure Kit.i_play { at: 0, 0; size: 18, 18; color: tk.ink3 } } }
+            text "Nothing playing" { family: "Geist"; at: 84, 524; anchor: left center; size: 14; weight: 500; color: tk.ink2 }
+        }
+
+        row {
+            at: 20, 604
+            gap: 6
+            Shortcut("Calendar", go_calendar) { figure Kit.i_calendar { at: 0, 0; size: 22, 22; color: tk.ink2 } }
+            Shortcut("Agents", go_agents) { figure Kit.i_flask { at: 0, 0; size: 22, 22; color: tk.ink2 } }
+            Shortcut("Deriva", show_drift) { figure Kit.i_inbox { at: 0, 0; size: 22, 22; color: tk.ink2 } }
+            Shortcut("History", show_history) { figure Kit.i_history { at: 0, 0; size: 22, 22; color: tk.ink2 } }
+            Shortcut("Wallpaper", show_walls) { figure Kit.i_image { at: 0, 0; size: 22, 22; color: tk.ink2 } }
+            Shortcut("Wardrobe", go_wardrobe) { figure Kit.i_shirt { at: 0, 0; size: 22, 22; color: tk.ink2 } }
+        }
+    }
+
+    // ── network ──────────────────────────────────────────────────
+    component NetRow(r: record) {
+        size: 564, 50
+        zone box touch { from: 0, 0; size: 564, 50; corner: 12; cursor: pointer; active: page == wifi and paging > 0.9 }
+        box { from: 0, 0; size: 564, 50; corner: 12; color: tk.s2; opacity: max(touch.hover, if(asking == r.index, 1, 0)) }
+        repeat b in 0..4 {
+            box { from: 14 + b * 4.5, 32 - (4 + b * 3.5); size: 3, 4 + b * 3.5; corner: 1; color: tk.ink2; opacity: if(r.signal > b * 0.25, 1, 0.22) }
+        }
+        text r.name { family: "Geist"; at: 44, 25; anchor: left center; size: 14; weight: 500; width: 330; lines: 1; color: tk.ink }
+        group { move: 402, 14; show: r.current; Tag("Connected", w: 82, tone: 1) }
+        group { move: 434, 14; show: r.known and not r.current and joining != r.index; Tag("Saved", w: 50) }
+        group {
+            show: joining == r.index
+            arc { at: 430, 25; radius: 7; span: 270deg; width: 2; rotate: join.t * 360deg; color: tk.mint }
+            text "Joining…" { family: "Geist"; at: 444, 25; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
+        }
+        figure Kit.i_lock { at: 540, 25; size: 16, 16; color: tk.ink3; show: r.secure }
+        on press touch { emit pick_network(r.index) }
+    }
+
+    component WifiPage() {
+        size: 620, 716
+        PageHead("Network") {
+            group { move: 452, 16
+                Btn("Scan", scan_wifi, w: 100, kind: 3, h: 32)
+            }
+        }
+        let wired = net.kind == wired
+        let wy = if(wired, 172, 76)
+        group {
+            show: wired
+            group { move: 16, 76; Over("WIRED") }
+            box { from: 20, 100; size: 580, 64; corner: 16; color: tk.s1 }
+            group { move: 34, 114; Bubble(1) { figure Kit.i_ethernet { at: 0, 0; size: 20, 20; color: tk.mint_ink } } }
+            text net.name { family: "Geist"; at: 84, 122; anchor: left center; size: 15; weight: 600; width: 360; lines: 1; color: tk.ink }
+            text "Connected · this is the one in use" { family: "Geist"; at: 84, 142; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
+            group { move: 500, 121; Tag("Connected", w: 86, tone: 1) }
+        }
+        group { move: 16, wy; Over("WI-FI") }
+        group { move: 560, wy; Toggle(switched_on.1, tap_wifi) }
+        group {
+            show: switched_on.1
+            box { from: 20, wy + 30; size: 580, 12 + 52 * max(networks.count, 1); corner: 16; color: tk.s1 }
+            column {
+                at: 28, wy + 36
+                gap: 2
+                for r in networks { NetRow(r) }
+            }
+            text "Looking for networks…" { family: "Geist"; at: 310, wy + 62; anchor: center; size: 13; weight: 500; color: tk.ink3; show: networks.count < 1 }
+            //  Its password, asked for in place.
+            group {
+                show: asking >= 0
+                opacity: clamp(ask.in * 1.4, 0, 1)
+                let ay = wy + 52 + 52 * max(networks.count, 1)
+                text "Password for «{ask.name}»" { family: "Geist"; at: 24, ay; anchor: left center; size: 13; weight: 500; width: 560; lines: 1; color: tk.ink2 }
+                box { from: 20, ay + 14; size: 360, 44; corner: 12; color: tk.s1 }
+                box { from: 20, ay + 14; size: 360, 44; corner: 12; stroke: 1.5; color: tk.mint; opacity: 70% }
+                input wifi_pw { family: "Geist"; at: 34, ay + 36; width: 330; size: 14; color: tk.ink; placeholder: "Password"; secret: true; selection: #2f5f52 }
+                group { move: 392, ay + 16; Btn("Join", join, w: 92, kind: 1) }
+                group { move: 492, ay + 16; Btn("Cancel", forget_ask, w: 92, kind: 3) }
+            }
+        }
+        group {
+            show: not switched_on.1
+            box { from: 20, wy + 30; size: 580, 120; corner: 16; color: tk.s1 }
+            text "Wi-Fi is off" { family: "Geist"; at: 310, wy + 62; anchor: center; size: 15; weight: 600; color: tk.ink }
+            text pick(if(wired, 0, 1), "You are still online through the cable", "Turn it on to see the networks around") { family: "Geist"; at: 310, wy + 84; anchor: center; size: 13; weight: 500; color: tk.ink3 }
+            group { move: 250, wy + 100; Btn("Turn on", tap_wifi, w: 120, kind: 0, h: 34) }
+        }
+    }
+
+    // ── bluetooth ────────────────────────────────────────────────
+    component BtRow(r: record) {
+        size: 564, 56
+        zone box touch { from: 0, 0; size: 564, 56; corner: 12; active: page == bluetooth and paging > 0.9 }
+        box { from: 0, 0; size: 564, 56; corner: 12; color: tk.s2; opacity: touch.hover * 0.6 }
+        group { move: 10, 10; Bubble(if(r.current, 1, 0)) { figure Kit.i_bluetooth { at: 0, 0; size: 18, 18; color: if(r.current, tk.mint_ink, tk.ink2) } } }
+        text r.name { family: "Geist"; at: 58, 20; anchor: left center; size: 14; weight: 500; width: 340; lines: 1; color: tk.ink }
+        text pick(if(r.current, 0, if(r.paired, 1, 2)), "Connected", "Paired", "Nearby · not paired yet") { family: "Geist"; at: 58, 38; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
+        group {
+            show: r.battery >= 0
+            box { from: 360, 24; size: 20, 10; corner: 2.5; stroke: 1.2; color: tk.ink3 }
+            box { from: 361.8, 25.8; size: max(1, 16.4 * clamp(r.battery, 0, 1)), 6.4; corner: 1.4; color: mix(tk.red, tk.mint, clamp(r.battery * 3 - 0.3, 0, 1)) }
+        }
+        group { move: 440, 12; show: r.current; Btn("Disconnect", noop, w: 116, kind: 3, h: 32) }
+        group { move: 456, 12; show: not r.current and r.paired; Btn("Connect", noop, w: 100, h: 32) }
+        group { move: 476, 12; show: not r.paired; Btn("Pair", noop, w: 80, kind: 1, h: 32) }
+        zone box act { from: 436, 8; size: 124, 40; corner: 12; cursor: pointer; active: page == bluetooth and paging > 0.9 }
+        on press act { emit pick_gadget(r.index) }
+    }
+
+    component BtPage() {
+        size: 620, 716
+        PageHead("Bluetooth") {
+            group { move: 400, 16; show: switched_on.2
+                Btn(pick(if(bt_scanning, 1, 0), "Search", "Searching…"), bt_scan, w: 140, kind: 3, h: 32)
+            }
+        }
+        group {
+            show: not switched_on.2
+            box { from: 20, 76; size: 580, 140; corner: 16; color: tk.s1 }
+            group { move: 36, 92; Bubble(3) { figure Kit.i_bluetooth_off { at: 0, 0; size: 20, 20; color: tk.red } } }
+            text "Bluetooth is off" { family: "Geist"; at: 86, 102; anchor: left center; size: 15; weight: 600; color: tk.ink }
+            text pick(if(bt.blocked, 1, 0), "Turn it on to find your headphones, keyboard or phone.", "Blocked by the system switch (rfkill). Etta lifts it and powers the radio on, no password needed.") { family: "Geist"; at: 86, 132; anchor: left center; size: 14; width: 480; lines: 2; line_height: 1.35; color: tk.ink2 }
+            group { move: 86, 164; Btn(pick(if(bt.turning, 1, 0), "Turn on", "Turning on…"), tap_bt, w: 140, kind: 1, live: not bt.turning) }
+        }
+        group {
+            show: switched_on.2
+            box { from: 20, 76; size: 580, 64; corner: 16; color: tk.s1 }
+            group { move: 34, 90; Bubble(1) { figure Kit.i_bluetooth { at: 0, 0; size: 20, 20; color: tk.mint_ink } } }
+            text "Bluetooth on" { family: "Geist"; at: 84, 98; anchor: left center; size: 15; weight: 600; color: tk.ink }
+            text "Visible to nearby devices while this page is open" { family: "Geist"; at: 84, 118; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
+            group { move: 544, 96; Toggle(switched_on.2, tap_bt) }
+
+            group { move: 16, 156; Over("DEVICES") }
+            group {
+                show: bt_scanning
+                arc { at: 520, 168; radius: 6; span: 270deg; width: 2; rotate: radar.t * 360deg; color: tk.mint }
+                text "Looking for devices…" { family: "Geist"; at: 532, 168; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
+            }
+            box { from: 20, 184; size: 580, 12 + 58 * max(gadgets.count, 1); corner: 16; color: tk.s1 }
+            column {
+                at: 28, 190
+                gap: 2
+                for r in gadgets { BtRow(r) }
+            }
+            text pick(if(bt_scanning, 1, 0), "No devices yet · press Search", "Looking around…") { family: "Geist"; at: 310, 218; anchor: center; size: 13; weight: 500; color: tk.ink3; show: gadgets.count < 1 }
+        }
+    }
+
+    // ── do not disturb ───────────────────────────────────────────
+    component MutedChip(m: record) {
+        size: 180, 34
+        group {
+            show: m.index < muted.count
+            zone box touch { from: 0, 0; size: 180, 34; corner: 17; cursor: pointer }
+            box { from: 0, 0; size: 180, 34; corner: 17; color: mix(tk.s2, tk.red_soft, touch.hover) }
+            text m.app { family: "Geist"; at: 14, 17; anchor: left center; size: 13; weight: 500; width: 130; lines: 1; color: tk.ink }
+            figure Kit.i_close { at: 162, 17; size: 14, 14; color: mix(tk.ink3, tk.red, touch.hover) }
+            on press touch { emit unmute(m.index) }
+        }
+    }
+
+    component FocusPage() {
+        size: 620, 716
+        PageHead("Do not disturb")
+        box { from: 20, 76; size: 580, 160; corner: 16; color: tk.s1 }
+        group { move: 36, 92; Bubble(if(haven, 1, 0)) { figure Kit.i_moon { at: 0, 0; size: 20, 20; color: if(haven, tk.mint_ink, tk.ink2) } } }
+        text pick(if(haven, if(remaining > 9999, 2, 1), 0), "Off", "On · {remaining, 0} min left", "On · until you turn it off") { family: "Geist"; at: 86, 101; anchor: left center; size: 15; weight: 600; color: tk.ink }
+        text pick(if(haven, 1, 0), "Notifications arrive as usual", "Notifications are kept for later. Etta stays quiet.") { family: "Geist"; at: 86, 121; anchor: left center; size: 12; weight: 500; width: 380; lines: 1; color: tk.ink3 }
+        group { move: 544, 100; Toggle(haven, tap_dnd) }
+        text "For how long" { family: "Geist"; at: 36, 160; anchor: left center; size: 13; weight: 500; color: tk.ink2 }
+        group { move: 36, 178; Seg(focus.dur, "25 min", "45 min", pick_dur, c: "1 hour", d: "Until I turn it off", count: 4, w: 548) }
+
+        box { from: 20, 252; size: 580, 136; corner: 16; color: tk.s1 }
+        text "Quiet while recording or sharing" { family: "Geist"; at: 36, 278; anchor: left center; size: 14; weight: 500; color: tk.ink }
+        text "Notices go straight to their drop; locked, always quiet" { family: "Geist"; at: 36, 298; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
+        group { move: 544, 276; Toggle(quiet_rec, flip_quiet_rec) }
+        box { from: 36, 320; size: 548, 1; color: tk.line; opacity: 7% }
+        text "Later brings a notice back in" { family: "Geist"; at: 36, 354; anchor: left center; size: 14; weight: 500; color: tk.ink }
+        group { move: 316, 335; Seg(snooze_k, "15 min", "1 hour", pick_snooze, c: "3 hours", count: 3, w: 268) }
+
+        group { move: 16, 404; Over("MUTED APPS") }
+        grid {
+            at: 20, 432; columns: 3; gap: 10; width: 580; row: 34
+            for m in muted { MutedChip(m) }
+        }
+        text "None. The bell on a notice mutes its app." { family: "Geist"; at: 24, 449; anchor: left center; size: 13; weight: 500; color: tk.ink3; show: muted.count < 1 }
+
+        box { from: 20, 620; size: 580, 72; corner: 16; color: tk.s1 }
+        group { move: 36, 638; Bubble(2) { figure Kit.i_inbox { at: 0, 0; size: 20, 20; color: tk.sand } } }
+        text "{pending, 0} notices kept for later" { family: "Geist"; at: 86, 647; anchor: left center; size: 14; weight: 500; color: tk.ink }
+        text "They come back together when it ends" { family: "Geist"; at: 86, 667; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
+        group { move: 516, 640; Btn("View", open_tray, w: 68, h: 32) }
+    }
+
+    // ── sound ────────────────────────────────────────────────────
+    component DevRow(r: record, base: number, mic: number) {
+        size: 564, 48
+        zone box touch { from: 0, 0; size: 564, 48; corner: 12; cursor: pointer; active: page == sound and paging > 0.9 }
+        box { from: 0, 0; size: 564, 48; corner: 12; color: tk.s2; opacity: touch.hover }
+        ellipse { at: 24, 24; radius: 9; stroke: 1.75; color: if(r.current, tk.mint, tk.ink3) }
+        ellipse { at: 24, 24; radius: 4.5; color: tk.mint; opacity: if(r.current, 1, 0) }
+        text r.name { family: "Geist"; at: 46, 24; anchor: left center; size: 14; weight: 500; width: 480; lines: 1; color: tk.ink }
+        figure Kit.i_speaker { at: 540, 24; size: 18, 18; color: tk.ink3; show: mic < 0.5 }
+        figure Kit.i_mic { at: 540, 24; size: 18, 18; color: tk.ink3; show: mic > 0.5 }
+        on press touch { emit pick_device(r.index + base) }
+    }
+    component StreamRow(s: record) {
+        size: 564, 52
+        group { move: 4, 10; Bubble(0, d: 32) { figure Kit.i_speaker { at: 0, 0; size: 16, 16; color: tk.ink2 } } }
+        text s.name { family: "Geist"; at: 46, 26; anchor: left center; size: 14; weight: 500; width: 150; lines: 1; color: tk.ink }
+        group { move: 210, 14; Slider(s.volume, noop, w: 270) }
+        zone box track { from: 200, 8; size: 290, 36; corner: 18; cursor: pointer; active: page == sound and paging > 0.9 }
+        on press track { emit stream_pick(s.index); emit stream_set(clamp((local.x - 10) / 270, 0, 1)) }
+        on drag track { emit stream_pick(s.index); emit stream_set(clamp((local.x - 10) / 270, 0, 1)) }
+        text "{s.volume * 100, 0}%" { family: "Geist"; at: 556, 26; anchor: right center; size: 14; weight: 600; color: tk.ink }
+    }
+
+    component SoundPage() {
+        size: 620, 716
+        PageHead("Sound")
+        group { move: 16, 76; Over("OUTPUT") }
+        box { from: 20, 102; size: 580, 72 + 50 * max(outputs.count, 1); corner: 16; color: tk.s1 }
+        column {
+            at: 28, 108
+            gap: 2
+            for r in outputs { DevRow(r, 0, 0) }
+        }
+        group { move: 28, 116 + 50 * max(outputs.count, 1)
+            LevelRow("Volume", osd.out, sound.volume, set_volume, mute_output, noop, muted: if(sound.muted, 1, 0), w: 564, hasgo: 0) {
+                figure Kit.i_speaker { at: 0, 0; size: 20, 20; color: tk.ink2; show: not sound.muted }
+                figure Kit.i_speaker_off { at: 0, 0; size: 20, 20; color: tk.red; show: sound.muted }
+            }
+        }
+        let iy = 190 + 50 * max(outputs.count, 1)
+        group { move: 16, iy; Over("INPUT") }
+        box { from: 20, iy + 26; size: 580, 72 + 50 * max(mics.count, 1); corner: 16; color: tk.s1 }
+        column {
+            at: 28, iy + 32
+            gap: 2
+            for r in mics { DevRow(r, outputs.count, 1) }
+        }
+        group { move: 28, iy + 40 + 50 * max(mics.count, 1)
+            LevelRow("Microphone", osd.in, sound.input, set_mic, mute_mic, noop, muted: if(sound.input_muted, 1, 0), w: 564, hasgo: 0) {
+                figure Kit.i_mic { at: 0, 0; size: 20, 20; color: tk.ink2; show: not sound.input_muted }
+                figure Kit.i_mic_off { at: 0, 0; size: 20, 20; color: tk.red; show: sound.input_muted }
+            }
+        }
+        let ay = iy + 114 + 50 * max(mics.count, 1)
+        group {
+            show: streams.count > 0
+            group { move: 16, ay; Over("APPS") }
+            box { from: 20, ay + 26; size: 580, 12 + 54 * streams.count; corner: 16; color: tk.s1 }
+            column {
+                at: 28, ay + 32
+                gap: 2
+                for s in streams { StreamRow(s) }
+            }
+        }
+    }
+
+    // ── the session ──────────────────────────────────────────────
+    component SessionPage() {
+        size: 620, 560
+        PageHead(pick(if(confirming == none, 0, 1), "Session", "Confirm"))
+        group {
+            show: question < 0.99
+            opacity: 1 - question
+            move: -22 * question, 0
+            repeat b in 0..2 {
+                group { move: 20 + b * 296, 76
+                    zone box pause_zone.$b { from: 0, 0; size: 284, 132; corner: 16; cursor: pointer; active: page == session and confirming == none and paging > 0.9 }
+                    box { from: 0, 0; size: 284, 132; corner: 16; color: mix(tk.s1, tk.s2, pause_zone.$b.hover) }
+                    group { move: 16, 16; Bubble(0) {
+                        figure Kit.i_lock { at: 0, 0; size: 20, 20; color: tk.ink2; show: b == 0 }
+                        figure Kit.i_moon { at: 0, 0; size: 20, 20; color: tk.ink2; show: b == 1 }
+                    } }
+                    text pick(b, "Lock", "Suspend") { family: "Geist"; at: 16, 76; anchor: left center; size: 15; weight: 600; color: tk.ink }
+                    text pick(b, "Keep the session, ask for the password", "Low power, back where you left") { family: "Geist"; at: 16, 96; anchor: left center; size: 12; weight: 500; width: 256; lines: 1; color: tk.ink3 }
+                    group { move: 160, 18; show: b == 0; Kbd("Super Shift L", w: 108) }
+                }
+            }
+            group { move: 16, 224; Over("WHEN YOU ARE DONE") }
+            box { from: 20, 250; size: 580, 180; corner: 16; color: tk.s1 }
+            repeat f in 0..3 {
+                group { move: 28, 256 + f * 56
+                    zone box finish_zone.$f { from: 0, 0; size: 564, 52; corner: 12; cursor: pointer; active: page == session and confirming == none and paging > 0.9 }
+                    box { from: 0, 0; size: 564, 52; corner: 12; color: tk.s2; opacity: finish_zone.$f.hover }
+                    group { move: 8, 8; Bubble(if(f == 2, 3, 0)) {
+                        figure Kit.i_logout { at: 0, 0; size: 18, 18; color: tk.ink2; show: f == 0 }
+                        figure Kit.i_restart { at: 0, 0; size: 18, 18; color: tk.ink2; show: f == 1 }
+                        figure Kit.i_power { at: 0, 0; size: 18, 18; color: tk.red; show: f == 2 }
+                    } }
+                    text pick(f, "Log out", "Restart", "Power off") { family: "Geist"; at: 56, 18; anchor: left center; size: 14; weight: 500; color: tk.ink; show: f < 2 }
+                    text "Power off" { family: "Geist"; at: 56, 18; anchor: left center; size: 14; weight: 600; color: tk.red; show: f == 2 }
+                    text pick(f, "Close every app and end the session", "Close everything and start again", "Close everything and turn the computer off") { family: "Geist"; at: 56, 36; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
+                    figure Kit.i_chev_r { at: 544, 26; size: 14, 14; color: tk.ink3 }
+                }
+            }
+            text "Signed in as {session.user}" { family: "Geist"; at: 310, 470; anchor: center; size: 12; weight: 500; color: tk.ink3 }
+        }
+        group {
+            show: question > 0.01
+            opacity: question
+            move: 26 * (1 - question), 0
+            group { move: 282, 150; Bubble(if(confirming == poweroff, 3, 0), d: 56) {
+                figure Kit.i_logout { at: 0, 0; size: 26, 26; color: tk.ink2; show: confirming == logout }
+                figure Kit.i_restart { at: 0, 0; size: 26, 26; color: tk.ink2; show: confirming == reboot }
+                figure Kit.i_power { at: 0, 0; size: 26, 26; color: tk.red; show: confirming == poweroff }
+            } }
+            text pick(if(confirming == logout, 0, if(confirming == reboot, 1, 2)), "Log out now?", "Restart now?", "Power off now?") { family: "Geist"; at: 310, 236; anchor: center; size: 20; weight: 600; color: tk.ink }
+            text "Open apps will close. Save your work before going on." { family: "Geist"; at: 310, 266; anchor: center; size: 14; weight: 500; color: tk.ink2 }
+            group { move: 190, 300; Btn("Cancel", go_back, w: 112, kind: 3) }
+            group { move: 314, 300
+                Btn(pick(if(confirming == logout, 0, if(confirming == reboot, 1, 2)), "Log out", "Restart", "Power off"), do_session, w: 120, kind: if(confirming == poweroff, 2, 1), live: armed)
+            }
+            text "Esc goes back without doing anything" { family: "Geist"; at: 310, 366; anchor: center; size: 12; weight: 500; color: tk.ink3 }
+        }
+        //  Pointing is not doing: hovering only shows on her face what it would
+        //  do. The one that clears goes first (both can fall in one frame).
+        on leave pause_zone.0 while confirming == none and hint == lock { hint = none }
+        on leave pause_zone.1 while confirming == none and hint == sleep { hint = none }
+        on leave finish_zone.0 while confirming == none and hint == logout { hint = none }
+        on leave finish_zone.1 while confirming == none and hint == reboot { hint = none }
+        on leave finish_zone.2 while confirming == none and hint == poweroff { hint = none }
+        on enter pause_zone.0 { hint = lock }
+        on enter pause_zone.1 { hint = sleep }
+        on enter finish_zone.0 { hint = logout }
+        on enter finish_zone.1 { hint = reboot }
+        on enter finish_zone.2 { hint = poweroff }
+        on press pause_zone.0 { open = false; page = none; emit lock }
+        on press pause_zone.1 { emit session(2); open = false; page = none }
+        on press finish_zone.0 { confirming = logout }
+        on press finish_zone.1 { confirming = reboot }
+        on press finish_zone.2 { confirming = poweroff }
+    }
+
+    // ── settings ─────────────────────────────────────────────────
+    //  One page, in sections, that scrolls: nothing hides behind a tile. A
+    //  row is its name (and what it means, below) on the left and its control
+    //  on the right; the control goes inside, drawn from the row's right edge.
+    component SetRow(title: text, sub: text = "", w: number = 580, h: number = 56, last: number = 0, two: number = 1) {
+        size: w, h
+        let has_sub = two
+        text title { family: "Geist"; at: 16, h / 2 - 9 * has_sub; anchor: left center; size: 14; weight: 500; width: w - 340; lines: 1; color: tk.ink }
+        text sub { family: "Geist"; at: 16, h / 2 + 10; anchor: left center; size: 12; weight: 500; width: w - 340; lines: 1; color: tk.ink3; show: has_sub > 0.5 }
+        box { from: 16, h - 1; size: w - 32, 1; color: tk.line; opacity: 7% * (1 - last) }
+        children { move: w - 16, h / 2 }
+    }
+    component SetHead(label: text, note: text = "", w: number = 580) {
+        size: w, 28
+        text label { family: "Geist"; at: 4, 12; anchor: left center; size: 12; weight: 600; color: tk.ink3 }
+        text note { family: "Geist"; at: w - 4, 12; anchor: right center; size: 12; weight: 500; color: tk.ink3 }
+    }
+
+    component SettingsPage(h: number = 760) {
+        size: 620, h
+        PageHead("Settings")
+        column set_list {
+            at: 20, 68
+            view: 580, h - 88
+            gap: 6
+            SetHead("ETTA")
+            group { size: 580, 168
+                box { from: 0, 0; size: 580, 168; corner: 16; color: tk.s1 }
+                group { move: 0, 0; SetRow("Size", "Everything of hers grows with her") {
+                    group { move: -280, -19; Seg(size.k, "46", "52", pick_size, c: "56", d: "64", count: 4, w: 280) }
+                } }
+                group { move: 0, 56; SetRow("Look", pick(look.k, "Opaque · nothing extra needed", "Blurs what is behind her", "Bends what is behind, like glass")) {
+                    group { move: -280, -19; Seg(look.k, "Classic", "Frosted", pick_look, c: "Glass", count: 3, w: 280) }
+                } }
+                group { move: 0, 112
+                    zone box wr_zone { from: 0, 0; size: 580, 56; corner: 16; cursor: pointer; active: page == settings and paging > 0.9 }
+                    box { from: 0, 0; size: 580, 56; corner: 16; color: tk.s2; opacity: wr_zone.hover * 0.6 }
+                    SetRow("Wardrobe", "{wear.n, 0} on · and the wallpaper", last: 1) {
+                        figure Kit.i_chev_r { at: -6, 0; size: 16, 16; color: tk.ink3 }
+                    }
+                    on press wr_zone { emit go_wardrobe }
+                }
+            }
+            space 12
+            SetHead("WHERE SHE LIVES")
+            group { size: 580, 112
+                box { from: 0, 0; size: 580, 112; corner: 16; color: tk.s1 }
+                group { move: 0, 0; SetRow("Monitor", pick(if(following, 1, 0), "She stays on this monitor", "She goes to the monitor you are working on")) {
+                    group { move: -300, -19; Seg(home.k, screen.0.name, screen.1.name, pick_home, c: "Follow focus", count: 3, w: 300) }
+                } }
+                group { move: 0, 56; SetRow("Keep the top strip for her", "Windows leave her 72 px free at the top", last: 1) {
+                    group { move: -40, -12; Toggle(taking_room, flip_room) }
+                } }
+            }
+            space 12
+            SetHead("CLOCK AND BATTERY")
+            group { size: 580, 224
+                box { from: 0, 0; size: 580, 224; corner: 16; color: tk.s1 }
+                group { move: 0, 0; SetRow("24-hour time", two: 0) { group { move: -40, -12; Toggle(clock24, flip_24) } } }
+                group { move: 0, 56; SetRow("Seconds when the clock is open", two: 0) { group { move: -40, -12; Toggle(clock.secs, flip_secs) } } }
+                group { move: 0, 112; SetRow("Battery percentage beside the time", two: 0) { group { move: -40, -12; Toggle(bat.shown, flip_batpct) } } }
+                group { move: 0, 168; SetRow("Weather for", last: 1, two: 0) {
+                    group { move: -180, -15; Chip(pick(if(wx.ok, 0, 1), wx.place, "Choose a city"), edit_city, w: 180, hasdot: 0) }
+                } }
+            }
+            space 12
+            SetHead("LOCK")
+            group { size: 580, 168
+                box { from: 0, 0; size: 580, 168; corner: 16; color: tk.s1 }
+                group { move: 0, 0; SetRow("Lock when idle for", "Halley says when you have been away") {
+                    group { move: -300, -19; Seg(idle.k, "5 min", "10 min", pick_idle, c: "30 min", d: "Never", count: 4, w: 300) }
+                } }
+                group { move: 0, 56; SetRow("Lock before suspending", two: 0) { group { move: -40, -12; Toggle(lock.suspend, flip_locksusp) } } }
+                group { move: 0, 112; SetRow("Safety net", "Esc also opens the lock, until a restart", last: 1) { group { move: -40, -12; Toggle(with_exit, flip_safety) } } }
+            }
+            space 12
+            SetHead("SHORTCUTS", "Bound in Halley's config")
+            group { size: 580, 240
+                box { from: 0, 0; size: 580, 240; corner: 16; color: tk.s1 }
+                group { move: 0, 0; SetRow("Finder", h: 48, two: 0) { group { move: -96, -11; Kbd("Super Space", w: 96) } } }
+                group { move: 0, 48; SetRow("Lock", h: 48, two: 0) { group { move: -108, -11; Kbd("Super Shift L", w: 108) } } }
+                group { move: 0, 96; SetRow("Capture", h: 48, two: 0) { group { move: -108, -11; Kbd("Super Shift S", w: 108) } } }
+                group { move: 0, 144; SetRow("Record the screen", h: 48, two: 0) { group { move: -108, -11; Kbd("Super Shift V", w: 108) } } }
+                group { move: 0, 192; SetRow("Control center", h: 48, last: 1, two: 0) { group { move: -96, -11; Kbd("Click on Etta", w: 96) } } }
+            }
+            space 6
+            group { size: 580, 28
+                text "Etta 0.1 · pleamar 0.2.8 · Halley 0.7" { family: "Geist"; at: 290, 14; anchor: center; size: 12; weight: 500; color: tk.ink3 }
+            }
+        }
+        //  How far down it is, as a thin bar on the right.
+        let set.total = 1186
+        box { from: 606, 68 + set_list.scroll / set.total * (h - 88)
+              size: 4, (h - 88) * (h - 88) / set.total; corner: 2; color: tk.ink; opacity: 18% }
+    }
+
+    // ── the agents ───────────────────────────────────────────────
+    //  What is left of each one's windows, as water in a glass tube: as full
+    //  as there is left, and of the colour of the margin —mint, sand, red—,
+    //  never of the brand. Each tube is its own window: nothing is added up.
+    //  An unknown number is an empty tube and a dash, not a zero.
+    component AgentsPage(h: number = 640) {
+        size: 620, h
+        PageHead("Agents") {
+            text ag.updated { family: "Geist"; at: 470, 32; anchor: right center; size: 12; weight: 500; color: tk.ink3 }
+            group { move: 484, 14; Ib(agents_refresh) {
+                group { rotate: ag.spin * 1deg; figure Kit.i_refresh { at: 0, 0; size: 20, 20; color: tk.ink2 } }
+            } }
+        }
+        //  Which ones are shown: a chip each, lit when it is.
+        row {
+            at: 20, 70
+            gap: 8
+            Chip("Claude Code", flip_ag1, w: 132, on: if(ag.show.1, 1, 0), hasdot: 1, dot: if(ag.has.1, tk.mint, tk.ink3))
+            Chip("Codex", flip_ag2, w: 92, on: if(ag.show.2, 1, 0), hasdot: 1, dot: if(ag.has.2, tk.mint, tk.ink3))
+            Chip("Copilot", flip_ag3, w: 100, on: if(ag.show.3, 1, 0), hasdot: 1, dot: if(ag.has.3, tk.mint, tk.ink3))
+            Chip("Grok", flip_ag4, w: 84, on: if(ag.show.4, 1, 0), hasdot: 1, dot: tk.ink3)
+        }
+        grid {
+            at: 20, 114; columns: 2; gap: 12; width: 580; row: 220
+            repeat a in 1..5 {
+                group {
+                    size: 284, 220
+                    show: ag.kind.$a > 0 and pick(clamp(ag.kind.$a - 1, 0, 3), if(ag.show.1, 1, 0), if(ag.show.2, 1, 0), if(ag.show.3, 1, 0), if(ag.show.4, 1, 0)) > 0.5
+                    opacity: clamp((reveal - (a - 1) * 0.1) * 4, 0, 1)
+                    move: 0, (1 - clamp((reveal - (a - 1) * 0.1) * 4, 0, 1)) * 10
+                    //  The least left of its active windows: what its tag says.
+                    let left.$a.1 = if(ag.on.$a.1 and ag.active.$a.1 and ag.used.$a.1 > -0.5, 100 - ag.used.$a.1, 101)
+                    let left.$a.2 = if(ag.on.$a.2 and ag.active.$a.2 and ag.used.$a.2 > -0.5, 100 - ag.used.$a.2, 101)
+                    let least.$a = min(left.$a.1, left.$a.2)
+                    let state.$a = if(ag.kind.$a == 4, 4, if(least.$a > 100, 3, if(least.$a < 10, 2, if(least.$a < 30, 1, 0))))
+                    box { from: 0, 0; size: 284, 220; corner: 16; color: tk.s1 }
+                    group { move: 14, 14; Bubble(0) {
+                        figure Kit.i_terminal { at: 0, 0; size: 18, 18; color: tk.ink2; show: ag.kind.$a == 1 or ag.kind.$a == 2 }
+                        figure Kit.i_sparkle { at: 0, 0; size: 18, 18; color: tk.ink2; show: ag.kind.$a == 3 }
+                        figure Kit.i_chat { at: 0, 0; size: 18, 18; color: tk.ink2; show: ag.kind.$a == 4 }
+                    } }
+                    text ag.name.$a { family: "Geist"; at: 60, 23; anchor: left center; size: 15; weight: 600; width: 120; lines: 1; color: tk.ink }
+                    text ag.sub.$a { family: "Geist"; at: 60, 42; anchor: left center; size: 12; weight: 500; width: 210; lines: 1; color: tk.ink3 }
+                    group { move: 178, 12; Tag(pick(state.$a, "Healthy", "Running low", "Almost empty", "Unknown", "No report"), w: 92, tone: pick(state.$a, 1, 2, 3, 0, 0)) }
+                    //  Two windows, side by side.
+                    repeat l in 1..3 {
+                        let sx = 14 + (l - 1) * 136
+                        let used = ag.used.$a.$l
+                        let known = if(used > -0.5, 1, 0)
+                        let avail = clamp(100 - used, 0, 100)
+                        prop lvl.$a.$l = 0 ~calm
+                        follow lvl.$a.$l = avail / 100
+                        prop sway.$a.$l = 0 ~lively
+                        let fill = clamp(reveal * 1.4 - (a - 1) * 0.12 - (l - 1) * 0.08, 0, 1)
+                        let eased = fill * fill * (3 - 2 * fill)
+                        group {
+                            show: ag.on.$a.$l
+                            opacity: 55% + 45% * if(ag.active.$a.$l, 1, 0)
+                            group {
+                                glow: 10, if(avail < 10 and known > 0.5, 60%, 0), tk.red
+                                shader reservoir { at: sx, 76; size: 40, 128; corner: 13
+                                                   values: if(known > 0.5, lvl.$a.$l * eased, -1), sway.$a.$l + clamp(vel(lvl.$a.$l) * 0.3, -0.6, 0.6), a * 3.7 + l * 1.3, if(ag.pending.$a.$l, 1, 0), tube.$a.$l.hover, if(avail < 10 and known > 0.5, 1, 0)
+                                                   colors: mix(mix(tk.red, tk.sand, clamp((avail - 8) / 6, 0, 1)), tk.mint, clamp((avail - 26) / 8, 0, 1)), mix(mix(mix(tk.red, tk.sand, clamp((avail - 8) / 6, 0, 1)), tk.mint, clamp((avail - 26) / 8, 0, 1)), #0b1a22, 0.62) }
+                            }
+                            particles { at: sx + 20, 80 + 120 * (1 - lvl.$a.$l * eased); area: 26, 0; count: 12
+                                        life: 0.35s .. 0.7s; speed: 40 .. 100; direction: -90deg; spread: 70deg
+                                        gravity: 0, 520; size: 2.4, 1.1; colors: mix(mix(tk.red, tk.sand, clamp((avail - 8) / 6, 0, 1)), tk.mint, clamp((avail - 26) / 8, 0, 1)), #ffffff; opacity: 90%, 0%
+                                        burst: agents_read }
+                            text ag.lname.$a.$l { family: "Geist"; at: sx + 50, 88; anchor: left center; size: 13; weight: 500; width: 80; lines: 1; color: tk.ink2 }
+                            text number(avail * eased, 0, "%") { family: "Geist"; at: sx + 50, 118; anchor: left center; size: 28; weight: 600; color: if(avail < 30, mix(mix(tk.red, tk.sand, clamp((avail - 8) / 6, 0, 1)), tk.mint, clamp((avail - 26) / 8, 0, 1)), tk.ink); show: known > 0.5 }
+                            text "—" { family: "Geist"; at: sx + 50, 118; anchor: left center; size: 28; weight: 600; color: tk.ink3; show: known < 0.5 }
+                            text "left" { family: "Geist"; at: sx + 50, 144; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
+                            text ag.lrenew.$a.$l { family: "Geist"; at: sx + 50, 170; anchor: left top; size: 12; weight: 500; width: 82; lines: 2; line_height: 1.3; color: tk.ink2 }
+                            zone box tube.$a.$l { at: sx + 20, 140; size: 40, 128; corner: 13; active: page == agents and paging > 0.9 }
+                        }
+                        on enter tube.$a.$l { impulse sway.$a.$l 1.5 }
+                        on agents_read { impulse sway.$a.$l 2.4 }
+                    }
+                    //  Nothing read yet: Codex writes its windows after a turn.
+                    group {
+                        show: ag.kind.$a != 4 and not ag.on.$a.1
+                        text "No window read yet" { family: "Geist"; at: 16, 92; anchor: left center; size: 14; weight: 500; color: tk.ink2 }
+                        text "Its limits show up after its next turn, or a refresh." { family: "Geist"; at: 16, 110; anchor: left top; size: 12; weight: 500; width: 252; lines: 2; line_height: 1.4; color: tk.ink3 }
+                    }
+                    //  Grok: there is nothing to read, and it says so.
+                    group {
+                        show: ag.kind.$a == 4
+                        text "xAI publishes no usage report for a Grok subscription, so there is no number Etta could read honestly." { family: "Geist"; at: 16, 92; anchor: left top; size: 13; weight: 500; width: 252; lines: 4; line_height: 1.4; color: tk.ink2 }
+                        text "It shows up here the day there is one." { family: "Geist"; at: 16, 180; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
+                    }
+                }
+            }
+        }
+        text "Reading your windows…" { family: "Geist"; at: 310, 260; anchor: center; size: 13; weight: 500; color: tk.ink3; show: ag.kind.1 < 1 and ag.kind.2 < 1 and ag.kind.3 < 1 }
+        text "Read from each tool's own usage report. Nothing is sent anywhere else." { family: "Geist"; at: 310, h - 22; anchor: center; size: 12; weight: 500; color: tk.ink3 }
+    }
+
+    // ── the calendar ─────────────────────────────────────────────
+    component CalRow(e: record) {
+        size: 250, 52
+        box { from: 0, 0; size: 250, 52; corner: 12; color: tk.s1 }
+        box { from: 10, 10; size: 4, 32; corner: 2; color: tk.sand }
+        text e.title { family: "Geist"; at: 24, 18; anchor: left center; size: 14; weight: 500; width: 180; lines: 1; color: tk.ink }
+        text e.time { family: "Geist"; at: 24, 36; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
+        group { move: 212, 10; Ib(noop, d: 32) { figure Kit.i_trash { at: 0, 0; size: 16, 16; color: mix(tk.ink3, tk.red, gone.hover) } } }
+        zone box gone { from: 212, 10; size: 32, 32; corner: 16; cursor: pointer; active: page == calendar }
+        on press gone { emit cal_delete(e.index) }
+    }
+    //  A small sign of the weather, by its kind: 0 sun, 1 moon, 2 cloud,
+    //  3 rain, 4 snow, 5 storm, 6 fog.
+    component Wx(kind: number, d: number = 20) {
+        size: d, d
+        figure Kit.i_sun { at: d / 2, d / 2; size: d, d; color: tk.sand; show: kind == 0 }
+        figure Kit.i_moon { at: d / 2, d / 2; size: d, d; color: tk.ink2; show: kind == 1 }
+        figure Kit.i_cloud { at: d / 2, d / 2; size: d, d; color: tk.ink2; show: kind == 2 }
+        figure Kit.i_rain { at: d / 2, d / 2; size: d, d; color: tk.blue; show: kind == 3 }
+        figure Kit.i_snow { at: d / 2, d / 2; size: d, d; color: tk.ink; show: kind == 4 }
+        figure Kit.i_storm { at: d / 2, d / 2; size: d, d; color: tk.sand; show: kind == 5 }
+        figure Kit.i_fog { at: d / 2, d / 2; size: d, d; color: tk.ink3; show: kind == 6 }
+    }
+
+    component CalendarPage() {
+        size: 620, 716
+        measure cal.dayw
+        PageHead(cal.month) {
+            group { move: 404, 14; Ib(cal_prev) { figure Kit.i_chev_l { at: 0, 0; size: 18, 18; color: tk.ink2 } } }
+            group { move: 444, 16; Btn("Today", cal_today, w: 72, h: 32) }
+            group { move: 520, 14; Ib(cal_next) { figure Kit.i_chev_r { at: 0, 0; size: 18, 18; color: tk.ink2 } } }
+        }
+        //  Her sky: what it is like where you are, and the next hours.
+        box { from: 20, 68; size: 580, 136; corner: 16; color: tk.s1 }
+        group {
+            show: wx.ok
+            group { move: 34, 82; Wx(wx.now.k, d: 28) }
+            text "{wx.temp, 0}°" { family: "Geist"; at: 74, 97; anchor: left center; size: 28; weight: 600; color: tk.ink }
+            text wx.summary { family: "Geist"; at: 140, 88; anchor: left center; size: 14; weight: 500; width: 230; lines: 1; color: tk.ink }
+            text "H {wx.hi, 0}° · L {wx.lo, 0}°{? · {wx.rainp}}" { family: "Geist"; at: 140, 107; anchor: left center; size: 12; weight: 500; width: 230; lines: 1; color: tk.ink3 }
+            repeat k in 0..6 {
+                group { move: 34 + k * 80, 134
+                    show: wx.hours
+                    text wx.h.t.$k { family: "Geist"; at: 20, 8; anchor: center; size: 12; weight: 500; color: tk.ink3 }
+                    group { move: 10, 18; Wx(wx.h.kind.$k) }
+                    text "{wx.h.temp.$k, 0}°" { family: "Geist"; at: 20, 56; anchor: center; size: 13; weight: 600; color: tk.ink }
+                }
+            }
+        }
+        text "Choose your city for her sky" { family: "Geist"; at: 36, 97; anchor: left center; size: 14; weight: 500; color: tk.ink2; show: not wx.ok }
+        group { move: 410, 82; show: not sky.editing; Chip(pick(if(wx.ok, 0, 1), wx.place, "Choose a city"), edit_city, w: 176) }
+        group {
+            show: sky.editing
+            box { from: 380, 80; size: 206, 34; corner: 10; color: tk.body }
+            box { from: 380, 80; size: 206, 34; corner: 10; stroke: 1.5; color: tk.mint; opacity: 70% }
+            input city_q { family: "Geist"; at: 392, 97; width: 184; size: 13; color: tk.ink; placeholder: "A city · Enter"; selection: #2f5f52 }
+        }
+
+        //  The month: Monday first, six weeks.
+        repeat w in 1..8 {
+            text cal.wd.$w { family: "Geist"; at: 42 + (w - 1) * 44, 228; anchor: center; size: 12; weight: 600; color: tk.ink3 }
+        }
+        repeat k in 0..42 {
+            let row = floor(k / 7)
+            let wave = cal.shift * 60 * (1 + row * 0.2)
+            let dx = 42 + mod(k, 7) * 44 + wave
+            let dy = 262 + row * 42
+            let sel = if(cal.sel == k, 1, 0)
+            group {
+                opacity: (40% + 60% * if(cal.in.$k, 1, 0)) * clamp(1 - abs(cal.shift) * 1.3, 0, 1)
+                ellipse { at: dx, dy; radius: 18; color: tk.mint; opacity: sel }
+                ellipse { at: dx, dy; radius: 18; color: tk.s2; opacity: cal_cell.$k.hover * (1 - sel) }
+                ellipse { at: dx, dy; radius: 17.5; stroke: 1.5; color: tk.mint; opacity: if(cal.today.$k, 1, 0) * (1 - sel) }
+                text number(cal.day.$k, 0) { family: "Geist"; at: dx, dy - 1; anchor: center; size: 14; weight: 500; color: if(sel > 0.5, tk.mint_ink, tk.ink); show: not cal.today.$k }
+                text number(cal.day.$k, 0) { family: "Geist"; at: dx, dy - 1; anchor: center; size: 14; weight: 700; color: if(sel > 0.5, tk.mint_ink, tk.mint); show: cal.today.$k }
+                ellipse { at: dx, dy + 11; radius: 2; color: if(sel > 0.5, tk.mint_ink, tk.sand); opacity: if(cal.n.$k > 0, 1, 0) }
+            }
+            zone box cal_cell.$k { at: dx, dy; size: 40, 38; corner: 19; cursor: pointer; active: page == calendar and paging > 0.9 }
+            on press cal_cell.$k { emit cal_pick(k) }
+        }
+        ellipse { at: 42 + mod(cal.sel, 7) * 44, 262 + floor(cal.sel / 7) * 42; radius: 18 + 26 * cal.ripple; stroke: 1.5; color: tk.mint; opacity: (1 - cal.ripple) * 60% }
+
+        //  The chosen day, and what it holds.
+        text cal.sel_day { family: "Geist"; at: 350, 238; anchor: left center; size: 34; weight: 600; color: tk.ink; measure: cal.dayw }
+        text cal.sel_title { family: "Geist"; at: 362 + cal.dayw.width, 230; anchor: left center; size: 15; weight: 600; width: 220 - cal.dayw.width; lines: 1; color: tk.ink }
+        text cal.sel_sub { family: "Geist"; at: 362 + cal.dayw.width, 249; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
+        box { from: 350, 268; size: 250, 1; color: tk.line; opacity: 7% }
+        column cal_list ~quick {
+            at: 350, 282
+            gap: 8
+            view: 250, 240
+            for e in cal_events { CalRow(e) }
+        }
+        text "Nothing scheduled" { family: "Geist"; at: 350, 296; anchor: left center; size: 14; weight: 500; color: tk.ink3; show: cal_events.count < 1 }
+
+        //  Writing one.
+        box { from: 20, 600; size: 580, 44; corner: 12; color: tk.body }
+        box { from: 20, 600; size: 580, 44; corner: 12; stroke: 1; color: mix(tk.line, tk.mint, cal.focus); opacity: 9% + 50% * cal.focus }
+        figure Kit.i_plus { at: 42, 622; size: 18, 18; color: tk.ink3 }
+        input cal_new { family: "Geist"; at: 62, 622; width: 520; size: 14; color: tk.ink; placeholder: "New event — e.g. 10:30 Dentist"; selection: #2f5f52 }
+        text "Start with a time, or leave it out for the whole day. Enter saves it." { family: "Geist"; at: 24, 662; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
+    }
+
+    // ── the history ──────────────────────────────────────────────
+    component HistRow(h: record) {
+        size: 580, if(h.head, 34, 72)
+        let wash = clamp(hist.wash * 1.6 - h.index * 0.07, 0, 1)
+        group {
+            opacity: 1 - wash
+            move: 120 * wash * wash, 0
+            text h.day { family: "Geist"; at: 4, 20; anchor: left center; size: 12; weight: 600; color: tk.ink3; show: h.head }
+            group {
+                show: not h.head
+                box { from: 0, 0; size: 580, 68; corner: 14; color: tk.s1 }
+                ellipse { at: 30, 34; radius: 16; color: pick(clamp(h.cat - 1, 0, 3), tk.blue, tk.violet, tk.mint, tk.sand); opacity: 16% }
+                ellipse { at: 30, 34; radius: 4.5; color: pick(clamp(h.cat - 1, 0, 3), tk.blue, tk.violet, tk.mint, tk.sand) }
+                text h.app { family: "Geist"; at: 58, 18; anchor: left center; size: 12; weight: 600; color: pick(clamp(h.cat - 1, 0, 3), tk.blue, tk.violet, tk.mint, tk.sand); width: 300; lines: 1 }
+                text h.when { family: "Geist"; at: 566, 18; anchor: right center; size: 12; weight: 500; color: tk.ink3 }
+                text h.title { family: "Geist"; at: 58, 36; anchor: left center; size: 14; weight: 600; width: 500; lines: 1; color: tk.ink }
+                text h.detail { family: "Geist"; at: 58, 54; anchor: left center; size: 13; weight: 500; width: 500; lines: 1; color: tk.ink2 }
+            }
+        }
+    }
+
+    component HistoryPage() {
+        size: 620, 716
+        PageHead("History") {
+            group { move: 436, 16; show: past.count > 0; Btn("Clear all", ask_clear, w: 96, kind: 3, h: 32) }
+        }
+        box { from: 20, 68; size: 580, 44; corner: 12; color: tk.body }
+        box { from: 20, 68; size: 580, 44; corner: 12; stroke: 1; color: tk.line; opacity: 9% }
+        figure Kit.i_search { at: 42, 90; size: 18, 18; color: tk.ink3 }
+        input hist_q { family: "Geist"; at: 62, 90; width: 520; size: 14; color: tk.ink; placeholder: "Search notifications"; selection: #2f5f52 }
+        row {
+            at: 20, 124
+            gap: 6
+            Chip("All", pick_hcat0, w: 56, on: if(hist.cat == 0, 1, 0))
+            Chip("Messages", pick_hcat1, w: 108, on: if(hist.cat == 1, 1, 0), hasdot: 1, dot: tk.blue)
+            Chip("Work", pick_hcat2, w: 80, on: if(hist.cat == 2, 1, 0), hasdot: 1, dot: tk.violet)
+            Chip("Calendar", pick_hcat3, w: 104, on: if(hist.cat == 3, 1, 0), hasdot: 1, dot: tk.mint)
+            Chip("System", pick_hcat4, w: 92, on: if(hist.cat == 4, 1, 0), hasdot: 1, dot: tk.sand)
+        }
+        let cy0 = 166 + 64 * hist.ask
+        group {
+            show: hist.ask > 0.01
+            opacity: hist.ask
+            box { from: 20, 166; size: 580, 54; corner: 14; color: tk.s1 }
+            box { from: 20, 166; size: 580, 54; corner: 14; stroke: 1; color: tk.red; opacity: 35% }
+            text "Clear the whole history? It cannot be undone." { family: "Geist"; at: 36, 193; anchor: left center; size: 14; weight: 500; color: tk.ink }
+            group { move: 400, 177; Btn("Cancel", cancel_clear, w: 88, kind: 3, h: 32) }
+            group { move: 496, 177; Btn("Clear", do_clear, w: 92, kind: 2, h: 32) }
+        }
+        column history_list {
+            at: 20, cy0
+            view: 580, 696 - cy0
+            gap: 6
+            for h in past { HistRow(h) }
+        }
+        zone box history_area { from: 20, cy0; size: 580, 696 - cy0; active: page == history and paging > 0.9 }
+        on scroll history_area { emit history_scroll(wheel) }
+        group {
+            show: past.count < 1
+            group { move: 292, 330; Bubble(0) { figure Kit.i_history { at: 0, 0; size: 18, 18; color: tk.ink3 } } }
+            text pick(if(hist.filtering, 1, 0), "Nothing has washed up yet", "Nothing here") { family: "Geist"; at: 310, 392; anchor: center; size: 15; weight: 600; color: tk.ink }
+            text pick(if(hist.filtering, 1, 0), "What you deal with lands here, by day", "No notification matches this search") { family: "Geist"; at: 310, 414; anchor: center; size: 12; weight: 500; color: tk.ink3 }
+        }
+    }
+
+    // ── Deriva ───────────────────────────────────────────────────
+    component DriftCard(d: record) {
+        size: 284, 196
+        //  A grid lays out every record there could be: the empty ones are not drawn.
+        group {
+            show: d.index < drift.count
+            zone box touch { from: 0, 0; size: 284, 196; corner: 16; cursor: pointer; active: page == drift and paging > 0.9; carries: "{d.link}" }
+            box { from: 0, 0; size: 284, 196; corner: 16; color: mix(tk.s1, tk.s2, touch.hover) }
+            group {
+                clip box { from: 0, 0; size: 284, 124; corner: 16 }
+                box { from: 0, 0; size: 284, 124; color: mix(tk.s2, pick(clamp(d.k - 1, 0, 3), tk.blue, tk.violet, tk.mint, tk.sand), 0.12); show: not d.has_preview }
+                figure Kit.i_link { at: 142, 62; size: 28, 28; color: pick(clamp(d.k - 1, 0, 3), tk.blue, tk.violet, tk.mint, tk.sand); show: not d.has_preview and d.k == 1 }
+                figure Kit.i_file { at: 142, 62; size: 28, 28; color: pick(clamp(d.k - 1, 0, 3), tk.blue, tk.violet, tk.mint, tk.sand); show: not d.has_preview and d.k == 2 }
+                figure Kit.i_text { at: 142, 62; size: 28, 28; color: pick(clamp(d.k - 1, 0, 3), tk.blue, tk.violet, tk.mint, tk.sand); show: not d.has_preview and d.k == 4 }
+                figure Kit.i_image { at: 142, 62; size: 28, 28; color: pick(clamp(d.k - 1, 0, 3), tk.blue, tk.violet, tk.mint, tk.sand); show: not d.has_preview and d.k == 3 }
+                image d.preview { at: 0, 0; size: 284, 124; show: d.has_preview }
+            }
+            box { from: 10, 10; size: 60, 22; corner: 8; color: #000000; opacity: 45% }
+            text d.kind { family: "Geist"; at: 40, 21; anchor: center; size: 11; weight: 600; color: tk.ink; width: 56; lines: 1; align: center }
+            text d.title { family: "Geist"; at: 14, 148; anchor: left center; size: 14; weight: 600; width: 256; lines: 1; color: tk.ink }
+            text "{d.source} · {d.date}" { family: "Geist"; at: 14, 170; anchor: left center; size: 12; weight: 500; width: 256; lines: 1; color: tk.ink3 }
+            box { from: 0, 0; size: 284, 196; corner: 16; stroke: 1.5; color: tk.mint; opacity: touch.hover * 40% }
+            on release touch { emit drift_pick(d.index) }
+    
+        }
+    }
+
+    component DrivaPage() {
+        size: 620, 716
+        PageHead("Deriva") {
+            text "{drift.kept, 0} kept" { family: "Geist"; at: 552, 32; anchor: right center; size: 12; weight: 500; color: tk.ink3 }
+        }
+        group {
+            show: not drift.missing
+            box { from: 20, 68; size: 580, 44; corner: 12; color: tk.body }
+            box { from: 20, 68; size: 580, 44; corner: 12; stroke: 1; color: tk.line; opacity: 9% }
+            figure Kit.i_search { at: 42, 90; size: 18, 18; color: tk.ink3 }
+            input drift_q { family: "Geist"; at: 62, 90; width: 520; size: 14; color: tk.ink; placeholder: "Search what she keeps"; selection: #2f5f52 }
+            grid {
+                at: 20, 128; columns: 2; gap: 12; width: 580; row: 196
+                for d in drift { DriftCard(d) }
+            }
+            zone box drift_area { from: 20, 128; size: 580, 568; active: page == drift and paging > 0.9 }
+            on scroll drift_area { emit drift_scroll(wheel) }
+        }
+        group {
+            show: drift.kept < 1 and not drift.missing
+            ellipse { at: 310, 340; radius: 90; scale: 1, 0.3; color: tk.mint; opacity: 10% }
+            ellipse { at: 310, 340; radius: 60; scale: 1, 0.3; stroke: 1.5; color: tk.mint; opacity: 30% }
+            figure Kit.i_inbox { at: 310, 316; size: 32, 32; color: tk.mint }
+            text "Nothing kept yet" { family: "Geist"; at: 310, 400; anchor: center; size: 20; weight: 600; color: tk.ink }
+            text "Carry a link, a file, an image or some text over Etta and let go. She keeps it here, and finds it again." { family: "Geist"; at: 310, 440; anchor: center; size: 14; weight: 500; width: 380; lines: 2; align: center; line_height: 1.4; color: tk.ink2 }
+        }
+        group {
+            show: drift.missing
+            group { move: 292, 260; Bubble(2) { figure Kit.i_alert { at: 0, 0; size: 18, 18; color: tk.sand } } }
+            text "Deriva needs its library" { family: "Geist"; at: 310, 324; anchor: center; size: 20; weight: 600; color: tk.ink }
+            text "Etta builds deriva-worker herself when she starts, if Rust (cargo) is installed." { family: "Geist"; at: 310, 360; anchor: center; size: 14; weight: 500; width: 400; lines: 2; align: center; line_height: 1.4; color: tk.ink2 }
+        }
+    }
+
+    // ── the wallpapers ───────────────────────────────────────────
+    component WallCard(w: record) {
+        size: 212, 168
+        group {
+            show: w.index < walls.count
+            zone box touch { from: 0, 0; size: 212, 168; corner: 16; cursor: pointer; active: page == walls and paging > 0.9 }
+            box { from: 0, 0; size: 212, 168; corner: 16; color: mix(tk.s1, tk.s2, touch.hover) }
+            group {
+                clip box { from: 0, 0; size: 212, 119; corner: 16 }
+                box { from: 0, 0; size: 212, 119; color: tk.s2 }
+                image w.thumb { at: 0, 0; size: 212, 119; show: w.ready }
+            }
+            text w.name { family: "Geist"; at: 14, 143; anchor: left center; size: 14; weight: 600; width: 120; lines: 1; color: tk.ink }
+            group { move: 132, 132; show: w.current; Tag("Applied", w: 68, tone: 1) }
+            box { from: 0, 0; size: 212, 168; corner: 16; stroke: 2; color: tk.mint; opacity: if(w.current, 1, touch.hover * 0.35) }
+            on press touch { emit wall_pick(w.index) }
+    
+        }
+    }
+
+    component WallsPage() {
+        size: 700, 760
+        PageHead("Wallpaper", w: 700) {
+            group { move: 452, 17; Tag(wall.source, w: 150, tone: 0) }
+        }
+        figure Kit.i_folder { at: 30, 88; size: 18, 18; color: tk.ink3 }
+        text wall.dir { family: "Geist Mono"; at: 48, 88; anchor: left center; size: 13; weight: 500; width: 400; lines: 1; color: tk.ink2 }
+        group { move: 548, 72; Btn("Rescan", walls_rescan, w: 132, kind: 3, h: 32) }
+        grid {
+            at: 20, 116; columns: 3; gap: 12; width: 660; row: 168
+            for w in walls { WallCard(w) }
+        }
+        zone box walls_area { from: 20, 116; size: 660, 528; active: page == walls and paging > 0.9 }
+        on scroll walls_area { emit walls_scroll(wheel) }
+        group {
+            show: walls.count < 1
+            group { move: 332, 300; Bubble(0) { figure Kit.i_image { at: 0, 0; size: 18, 18; color: tk.ink3 } } }
+            text "No wallpapers yet" { family: "Geist"; at: 350, 362; anchor: center; size: 20; weight: 600; color: tk.ink }
+            text "Put pictures in one of these folders, or a .frag field shader in ~/.config/etta/shaders on Halley." { family: "Geist"; at: 350, 400; anchor: center; size: 14; weight: 500; width: 420; lines: 2; align: center; line_height: 1.4; color: tk.ink2 }
+        }
+        text "Drop a picture —or, on Halley, a field shader— into the folder: Etta makes its thumbnail." { family: "Geist"; at: 350, 730; anchor: center; size: 12; weight: 500; color: tk.ink3 }
+    }
+
+    // ── her wardrobe ─────────────────────────────────────────────
+    //  The pieces, each drawn as itself —the same SVG she wears—, and the way
+    //  to the wallpaper. Her preview, on the left, is drawn by the scene: it
+    //  is her.
+    component Piece(name: text, how: text, on: number, press: event) {
+        size: 172, 136
+        zone box touch { from: 0, 0; size: 172, 136; corner: 16; cursor: pointer; active: page == wardrobe and paging > 0.9 }
+        box { from: 0, 0; size: 172, 136; corner: 16; color: mix(mix(tk.s1, tk.s2, touch.hover), #1b2420, on) }
+        box { from: 0, 0; size: 172, 136; corner: 16; stroke: 1.5; color: tk.mint; opacity: on }
+        children { move: 86, 46 }
+        text name { family: "Geist"; at: 86, 92; anchor: center; size: 15; weight: 600; color: tk.ink }
+        text how { family: "Geist"; at: 86, 113; anchor: center; size: 12; weight: 500; width: 156; lines: 1; align: center; color: tk.ink3 }
+        on press touch { emit press }
+    }
+
+    component WardrobePage() {
+        size: 620, 600
+        PageHead("Wardrobe")
+        box { from: 20, 68; size: 220, 300; corner: 18; color: tk.s1 }
+        text "Preview" { family: "Geist"; at: 130, 350; anchor: center; size: 12; weight: 500; color: tk.ink3 }
+        grid {
+            at: 256, 68; columns: 2; gap: 12; width: 356; row: 136
+            Piece("Hat", "Rests, slips when she leaps", worn.1, wear_hat) { figure hat { at: 0, 0; size: 48, 36 } }
+            Piece("Glasses", "Stay put, whatever she does", worn.2, wear_glasses) { figure glasses { at: 0, 0; size: 58, 32 } }
+            Piece("Mug", "Tags along beside her", worn.3, wear_mug) { figure mug { at: 0, 0; size: 40, 40 } }
+            Piece("Headphones", "On air while sharing", worn.4, wear_phones) { figure phones { at: 0, 0; size: 44, 44 } }
+        }
+        zone box wallrow { from: 20, 384; size: 580, 72; corner: 16; cursor: pointer; active: page == wardrobe and paging > 0.9 }
+        box { from: 20, 384; size: 580, 72; corner: 16; color: mix(tk.s1, tk.s2, wallrow.hover) }
+        group {
+            clip box { from: 32, 396; size: 86, 48; corner: 8 }
+            box { from: 32, 396; size: 86, 48; color: tk.s2 }
+            for w in wallnow { image w.thumb { at: 32, 396; size: 86, 48; show: w.ready } }
+        }
+        text "Wallpaper" { family: "Geist"; at: 134, 410; anchor: left center; size: 14; weight: 500; color: tk.ink }
+        text wall.now { family: "Geist"; at: 134, 430; anchor: left center; size: 12; weight: 500; width: 400; lines: 1; color: tk.ink3 }
+        figure Kit.i_chev_r { at: 580, 420; size: 16, 16; color: tk.ink3 }
+        on press wallrow { emit show_walls }
+    }
+
+    // ── background apps (the tray) ───────────────────────────────
+    component TrayApp(i: record) {
+        size: 200, 52
+        zone box touch { from: 0, 0; size: 160, 52; corner: 12; cursor: pointer; active: page == systray and paging > 0.9 }
+        box { from: 0, 0; size: 200, 52; corner: 12; color: mix(tk.s2, tk.mint_soft, if(tray.sel == i.index, 1, 0)); opacity: max(touch.hover * 0.6, if(tray.sel == i.index, 1, 0)) }
+        image i.icon { at: 12, 15; size: 22, 22 }
+        text i.title { family: "Geist"; at: 46, 26; anchor: left center; size: 14; weight: 500; width: 110; lines: 1; color: tk.ink }
+        group { move: 164, 10; Ib(noop, d: 32) { figure Kit.i_window { at: 0, 0; size: 16, 16; color: tk.ink3 } } }
+        zone box show_it { from: 164, 10; size: 32, 32; corner: 16; cursor: pointer; active: page == systray and paging > 0.9 }
+        on press touch { emit systray_menu(i.index) }
+        on press show_it { emit systray_activate(i.index) }
+    }
+    component MenuOption(r: record) {
+        size: 340, if(r.separator, 10, 40)
+        zone box touch { from: 0, 0; size: 340, 40; corner: 10; cursor: pointer; active: r.enabled and not r.separator and page == systray and paging > 0.9 }
+        box { from: 0, 0; size: 340, 40; corner: 10; color: tk.s2; opacity: touch.hover * if(r.separator, 0, 1) }
+        box { from: 10, 4.5; size: 320, 1; color: tk.line; opacity: if(r.separator, 9%, 0) }
+        group {
+            show: not r.separator
+            box { from: 12, 12; size: 16, 16; corner: 5; stroke: 1.5; color: tk.ink3; opacity: if(r.checked > -0.5, 1, 0) }
+            box { from: 12, 12; size: 16, 16; corner: 5; color: tk.mint; opacity: if(r.checked > 0.5, 1, 0) }
+            figure Kit.i_check { at: 20, 20; size: 12, 12; color: tk.mint_ink; show: r.checked > 0.5 }
+            text r.label { family: "Geist"; at: 12 + 26 * if(r.checked > -0.5, 1, 0), 20; anchor: left center; size: 14; weight: 500; width: 280; lines: 1; color: tk.ink; opacity: 0.45 + if(r.enabled, 0.55, 0) }
+            figure Kit.i_chev_r { at: 322, 20; size: 14, 14; color: tk.ink3; show: r.children > 0 }
+        }
+        on press touch { emit systray_pick(r.index) }
+    }
+
+    component TrayPage() {
+        size: 620, 520
+        PageHead("Background apps")
+        text "RUNNING" { family: "Geist"; at: 26, 80; anchor: left center; size: 12; weight: 600; color: tk.ink3 }
+        column {
+            at: 20, 96
+            gap: 4
+            for i in icons { TrayApp(i) }
+        }
+        text "A click shows its menu here; the window icon brings it up." { family: "Geist"; at: 26, 104 + 56 * icons.count; anchor: left top; size: 12; weight: 500; width: 190; lines: 3; line_height: 1.35; color: tk.ink3 }
+        box { from: 240, 68; size: 360, min(12 + options.count * 42, 432); corner: 16; color: tk.s1; show: options.count > 0 }
+        column menu_list {
+            at: 250, 74
+            view: 340, 420
+            gap: 2
+            for r in options { MenuOption(r) }
+        }
+        text pick(if(tray.sel < 0, 0, 1), "Choose an app on the left", "Asking it for its menu…") { family: "Geist"; at: 420, 120; anchor: center; size: 13; weight: 500; color: tk.ink3; show: options.count < 1 }
+    }
+}

@@ -57,12 +57,49 @@ on("next", function() sys.call("media.next") end)
 --  pleamar's own services (NetworkManager and BlueZ, spoken to directly), and
 --  flipped from what they say rather than from what was assumed.
 local net_state, bt_state = {}, {}
+--  Whoever else wants to hear these two (the OSD, further down): a service is
+--  watched once, so they hang from the same watcher.
+local also = { network = {}, bluetooth = {} }
+
+--  Bluetooth can be off twice: powered down, or blocked by the system's own
+--  switch (rfkill). The second one is lifted first —no password needed: the
+--  session owns /dev/rfkill— and then the radio is powered.
+local function read_rfkill(after_read)
+    run("rfkill", { "-n", "-o", "TYPE,SOFT,HARD", "list" }, function(out)
+        local blocked = false
+        for line in tostring(out or ""):gmatch("[^\n]+") do
+            local kind, soft, hard = line:match("(%S+)%s+(%S+)%s+(%S+)")
+            if kind == "bluetooth" and (soft == "blocked" or hard == "blocked") then blocked = true end
+        end
+        fact["bt.blocked"] = blocked
+        if after_read then after_read(blocked) end
+    end)
+end
+read_rfkill()
 
 on("flip", function(k)
     if k == 1 then
         pcall(sys.call, "network.wifi", not net_state.wifi)
     elseif k == 2 then
-        pcall(sys.call, "bluetooth.power", not bt_state.powered)
+        if bt_state.powered then
+            pcall(sys.call, "bluetooth.power", false)
+            return
+        end
+        fact["bt.turning"] = true
+        read_rfkill(function(blocked)
+            local function power()
+                pcall(sys.call, "bluetooth.power", true)
+                after(2500, function() fact["bt.turning"] = false; read_rfkill() end)
+            end
+            if blocked then
+                run("rfkill", { "unblock", "bluetooth" }, function(_, code)
+                    if code ~= 0 then log("bluetooth · could not lift the rfkill block (" .. tostring(code) .. ")") end
+                    after(1200, power)
+                end)
+            else
+                power()
+            end
+        end)
     end
 end)
 
@@ -156,6 +193,7 @@ end
 sys.watch("network", function(state)
     net_state = state or {}
     paint_networks()
+    for _, f in ipairs(also.network) do f(net_state) end
 end)
 
 --  And if it never joins —a wrong password, out of reach— it stops breathing.
@@ -214,12 +252,13 @@ local function paint_gadgets()
     fact["switched_on.2"] = bt_state.powered == true
     fact.bt_scanning = bt_state.discovering == true
     local first = v[1]
-    text["bt.sub"] = (first and first.current) and first.name or (bt_state.powered and tr("On") or tr("Off"))
+    text["bt.sub"] = (first and first.current) and first.name or (bt_state.powered and tr("On · nothing connected") or tr("Off"))
 end
 
 sys.watch("bluetooth", function(state)
     bt_state = state or {}
     paint_gadgets()
+    for _, f in ipairs(also.bluetooth) do f(bt_state) end
 end)
 
 on("pick_gadget", function(i)
@@ -239,6 +278,7 @@ on("scan", function(k)
     elseif k == 2 and bt_state.powered and not bt_state.discovering then pcall(sys.call, "bluetooth.scan", true) end
 end)
 on("fact:page", function(p)
+    if p == "bluetooth" then read_rfkill() end
     if p ~= "bluetooth" and bt_state.discovering then pcall(sys.call, "bluetooth.scan", false) end
     if p ~= "wifi" then fact.asking = -1 end
 end)
@@ -298,7 +338,6 @@ local function open_page(page, section)
     return function()
         fact.open = true
         fact.page = page
-        if section then fact.section = section end
     end
 end
 --  What is written further down and opened from here: filled in there.
@@ -795,8 +834,16 @@ local function day_label(t)
 end
 local function paint_history()
     local rows, last_day = {}, nil
-    for k = history_offset + 1, #history do
-        local h = history[k]
+    local q = string.lower(tostring(text.hist_q or "")):match("^%s*(.-)%s*$")
+    local cat = tonumber(fact["hist.cat"]) or 0
+    fact["hist.typing"] = q ~= ""
+    local shown = {}
+    for _, h in ipairs(history) do
+        local hay = string.lower((h.app or "") .. " " .. (h.title or "") .. " " .. (h.detail or ""))
+        if (cat == 0 or (h.cat or 4) == cat) and (q == "" or hay:find(q, 1, true)) then shown[#shown + 1] = h end
+    end
+    for k = history_offset + 1, #shown do
+        local h = shown[k]
         local day = day_label(h.time or 0)
         if day ~= last_day then
             if #rows >= 8 then break end
@@ -822,6 +869,8 @@ on("history_open", function()
     history_offset = 0
     paint_history()
 end)
+on("text:hist_q", function() history_offset = 0; paint_history() end)
+on("fact:hist.cat", function() history_offset = 0; paint_history() end)
 --  The wheel: up, newer; down, older. Three at a time.
 on("history_scroll", function(w)
     local step = (w or 0) > 0 and -3 or 3
@@ -890,7 +939,9 @@ local function show_drift()
         local title = (it.title ~= nil and it.title ~= "") and it.title or it.blob_name or it.excerpt or "…"
         local source = (it.source ~= nil and it.source ~= "" and it.source ~= "web") and it.source or host_of(it.source_url)
         local preview = type(it.preview_path) == "string" and it.preview_path or ""
-        cards[#cards + 1] = { title = tostring(title):gsub("%s+", " "), source = source, kind = string.upper(tostring(it.type or "")),
+        local kind = string.upper(tostring(it.type or ""))
+        local k = (kind == "LINK" or kind == "URL") and 1 or (kind == "IMAGE" and 3 or ((kind == "TEXT" or kind == "NOTE") and 4 or 2))
+        cards[#cards + 1] = { title = tostring(title):gsub("%s+", " "), source = source, kind = kind, k = k,
                               date = day_label(math.floor((it.captured_at or 0) / 1000)), preview = preview,
                               has_preview = preview ~= "", link = link_of(it) }
     end
@@ -1204,6 +1255,7 @@ end
 --  added up, and a window past its renewal is «pending», not full.
 local agents = {}
 local agents_now = 0
+local agents_read_at = nil
 
 local function span(seconds)
     seconds = math.max(0, math.floor(seconds))
@@ -1213,19 +1265,22 @@ local function span(seconds)
     return string.format("%d min", math.max(m, 1))
 end
 
-local WINDOW_NAMES = { [300] = "5 hours", [10080] = "Weekly" }
+local WINDOW_NAMES = { [300] = "5 hours", [10080] = "Weekly", [43200] = "Premium" }
 
 local function paint_agents()
     local now = os.time()
     local worst = 101
-    for a = 1, 2 do
+    local KINDS = { claude = 1, codex = 2, copilot = 3, grok = 4 }
+    for a = 1, 4 do
         local g = agents[a]
-        fact["ag.kind." .. a] = g and (g.id == "claude" and 1 or (g.id == "codex" and 2 or 3)) or 0
+        fact["ag.kind." .. a] = g and (KINDS[g.id] or 0) or 0
         text["ag.name." .. a] = g and g.name or ""
         if g then
             local parts = {}
             if g.plan ~= "" then table.insert(parts, g.plan) end
-            if g.origin ~= "" then table.insert(parts, tr(g.origin == "servidor" and "server" or "on this machine")) end
+            if g.origin == "servidor" then table.insert(parts, tr("account"))
+            elseif g.origin == "local" then table.insert(parts, tr("on this machine")) end
+            if g.id == "grok" then table.insert(parts, tr("no usage report")) end
             if g.observed then
                 local ago = now - g.observed
                 table.insert(parts, ago < 90 and tr("just now") or string.format(tr("%s ago"), span(ago)))
@@ -1270,6 +1325,10 @@ local function paint_agents()
         end
     end
     fact["ag.worst"] = worst
+    if agents_read_at then
+        local ago = now - agents_read_at
+        text["ag.updated"] = ago < 90 and tr("Updated just now") or string.format(tr("Updated %s ago"), span(ago))
+    end
 end
 
 local reading_agents = false
@@ -1283,8 +1342,10 @@ local function read_agents()
         for line in string.gmatch(out, "[^\n]+") do
             local f = string.split(line, "\t")
             local num = function(i) return tonumber(f[i]) end
-            if f[1] == "agent" and #list < 2 then
-                local g = { id = f[2], name = f[3] or "", plan = f[4] or "", origin = f[5] or "", observed = num(6), limits = {} }
+            if f[1] == "agent" and #list < 4 then
+                local plan = f[4] or ""
+                if plan == "default_claude_ai" then plan = "Claude.ai" end
+                local g = { id = f[2], name = f[3] or "", plan = plan, origin = f[5] or "", observed = num(6), limits = {} }
                 table.insert(list, g)
                 by_id[g.id] = g
             elseif f[1] == "limit" and by_id[f[2]] and #by_id[f[2]].limits < 3 then
@@ -1295,6 +1356,13 @@ local function read_agents()
             end
         end
         agents = list
+        local has = {}
+        for _, g in ipairs(list) do has[g.id] = true end
+        fact["ag.has.1"] = has.claude == true
+        fact["ag.has.2"] = has.codex == true
+        fact["ag.has.3"] = has.copilot == true
+        fact["ag.has.4"] = has.grok == true
+        agents_read_at = os.time()
         paint_agents()
         emit("agents_read")
     end)
@@ -1665,6 +1733,11 @@ on("session", function(k)
     end
     --  Once and only once: «after confirming, send the request a single time».
     log("session ·", command)
+    if k == 2 and fact["lock.suspend"] then
+        emit("lock")
+        after(700, function() sys.call(command) end)
+        return
+    end
     sys.call(command)
 end)
 
@@ -2204,6 +2277,7 @@ local function show_wall_now()
     local name = (tostring(path):match("([^/]+)$") or path):gsub("%.%w+$", ""):gsub("[_%-]", " ")
     local thumb = cache_name(path, "thumb")
     model.wallnow = { { name = name, thumb = wall_thumbs[path] or "", ready = wall_thumbs[path] ~= nil } }
+    text["wall.now"] = name
     if wall_thumbs[path] ~= nil then return end
     run("test", { "-s", thumb }, function(_, exists)
         local function done()
@@ -2488,7 +2562,7 @@ local function url_encode(s)
 end
 local function sky_fetch()
     if sky_place == nil then return end
-    local url = string.format("https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current=temperature_2m,weather_code,cloud_cover&daily=temperature_2m_max,temperature_2m_min&forecast_days=1&timezone=auto", sky_place.lat, sky_place.lon)
+    local url = string.format("https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current=temperature_2m,weather_code,cloud_cover,is_day&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&hourly=temperature_2m,weather_code,is_day&forecast_days=2&forecast_hours=7&timezone=auto", sky_place.lat, sky_place.lon)
     run("curl", { "-s", "--max-time", "10", url }, function(out)
         local ok, v = pcall(json.decode, tostring(out or ""))
         if not ok or type(v) ~= "table" or type(v.current) ~= "table" then return end
@@ -2506,6 +2580,30 @@ local function sky_fetch()
         if type(v.daily) == "table" then
             fact["wx.hi"] = tonumber((v.daily.temperature_2m_max or {})[1]) or fact["wx.temp"]
             fact["wx.lo"] = tonumber((v.daily.temperature_2m_min or {})[1]) or fact["wx.temp"]
+        end
+        if type(v.daily) == "table" then
+            local p = tonumber((v.daily.precipitation_probability_max or {})[1])
+            text["wx.rainp"] = p and string.format("rain %d%%", math.floor(p + 0.5)) or ""
+        end
+        --  The next hours, for the calendar's strip: now and the five after it.
+        --  Each one's kind is a glyph: 0 sun, 1 moon, 2 cloud, 3 rain, 4 snow,
+        --  5 storm, 6 fog.
+        if type(v.hourly) == "table" then
+            local temps, codes, days, times = v.hourly.temperature_2m or {}, v.hourly.weather_code or {}, v.hourly.is_day or {}, v.hourly.time or {}
+            for k = 0, 5 do
+                local code = tonumber(codes[k + 1]) or 0
+                local kind = 2
+                if code >= 95 then kind = 5
+                elseif WX_SNOW[code] then kind = 4
+                elseif WX_RAIN[code] then kind = 3
+                elseif code == 45 or code == 48 then kind = 6
+                elseif code <= 1 then kind = (tonumber(days[k + 1]) == 1) and 0 or 1 end
+                fact["wx.h.kind." .. k] = kind
+                fact["wx.h.temp." .. k] = tonumber(temps[k + 1]) or 0
+                local hh = tostring(times[k + 1] or ""):match("T(%d%d)")
+                text["wx.h.t." .. k] = k == 0 and "Now" or ((hh or "--") .. "h")
+            end
+            fact["wx.hours"] = true
         end
         fact["wx.ok"] = true
         sky_words()
@@ -2557,6 +2655,7 @@ for _, piece in ipairs(PIECES) do
 end
 
 
+do
 -- ── Etta: the clock's card, the OSD's words, the battery ─────────────
 --  What the scene shows beside her and does not know by itself: how long
 --  the battery lasts, what comes next today, a device or a network that has
@@ -2649,7 +2748,7 @@ on("fact:page", function() paint_next() end)
 --  A device that has just connected, or a network just joined: the OSD
 --  says it. Not in the first seconds, when everything reports at once.
 local bt_seen = nil
-sys.watch("bluetooth", function(state)
+table.insert(also.bluetooth, function(state)
     local now = {}
     for _, d in ipairs((state or {}).devices or {}) do
         if d.connected then now[d.address or d.name or "?"] = d end
@@ -2668,7 +2767,7 @@ sys.watch("bluetooth", function(state)
     bt_seen = now
 end)
 local net_seen = nil
-sys.watch("network", function(state)
+table.insert(also.network, function(state)
     local active = ""
     for _, n in ipairs((state or {}).networks or {}) do
         if n.active then active = n.ssid or "" end
@@ -2696,3 +2795,145 @@ every(300, function()
         if fact["caps.on"] ~= on then fact["caps.on"] = on end
     end)
 end)
+end
+
+do
+-- ── the control center's new pieces ───────────────────────────────
+--  Who is signed in, for the session page.
+text["session.user"] = sys.ask("env", "USER") or ""
+
+--  Settings that are only Etta's: the lock's idle time and whether it locks
+--  before suspending, and which agents are shown.
+if tonumber(settings.lock_idle) then fact["idle.k"] = math.clamp(tonumber(settings.lock_idle), 0, 3) end
+if settings.lock_suspend ~= nil then fact["lock.suspend"] = settings.lock_suspend == true end
+if type(settings.agents_shown) == "table" then
+    for k = 1, 4 do
+        if settings.agents_shown[k] ~= nil then fact["ag.show." .. k] = settings.agents_shown[k] == true end
+    end
+end
+local function save_more()
+    settings.lock_idle = fact["idle.k"]
+    settings.lock_suspend = fact["lock.suspend"] == true
+    settings.agents_shown = {}
+    for k = 1, 4 do settings.agents_shown[k] = fact["ag.show." .. k] == true end
+    save_settings()
+end
+for _, f in ipairs({ "idle.k", "lock.suspend", "ag.show.1", "ag.show.2", "ag.show.3", "ag.show.4" }) do on("fact:" .. f, save_more) end
+
+--  A program of hers that keeps running (an inhibitor, the night light):
+--  found by what it was started with, and stopped with its children.
+local function stop_matching(pattern, done)
+    run("pgrep", { "-f", pattern }, function(out)
+        local pids = {}
+        for pid in tostring(out or ""):gmatch("%d+") do pids[#pids + 1] = pid end
+        if #pids == 0 then if done then done() end return end
+        local left = #pids
+        for _, pid in ipairs(pids) do
+            run("pgrep", { "-P", pid }, function(kids)
+                local args = { pid }
+                for kid in tostring(kids or ""):gmatch("%d+") do args[#args + 1] = kid end
+                run("kill", args, function()
+                    left = left - 1
+                    if left == 0 and done then done() end
+                end)
+            end)
+        end
+    end)
+end
+
+--  Keep awake: a logind inhibitor for as long as it is on. If something else
+--  ends it, the switch says so.
+local AWAKE_WHY = "Etta: keep awake"
+on("tap_awake", function()
+    if fact.awake_on then
+        stop_matching(AWAKE_WHY, function() fact.awake_on = false end)
+    else
+        fact.awake_on = true
+        run("systemd-inhibit", { "--what=idle:sleep:handle-lid-switch", "--who=Etta", "--why=" .. AWAKE_WHY, "--mode=block", "sleep", "infinity" },
+            function() fact.awake_on = false end)
+    end
+end)
+run("pgrep", { "-f", AWAKE_WHY }, function(out) fact.awake_on = tostring(out or ""):match("%d") ~= nil end)
+
+--  The power profile: power-profiles-daemon's own three.
+local PROFILES = { [0] = "power-saver", [1] = "balanced", [2] = "performance" }
+local function read_profile()
+    run("powerprofilesctl", { "get" }, function(out, code)
+        if code ~= 0 then return end
+        local name = tostring(out or ""):match("[%w%-]+")
+        for k, v in pairs(PROFILES) do if v == name then fact["power.mode"] = k end end
+    end)
+end
+read_profile()
+on("tap_power", function()
+    local next_mode = ((tonumber(fact["power.mode"]) or 1) + 1) % 3
+    run("powerprofilesctl", { "set", PROFILES[next_mode] }, function(_, code)
+        if code ~= 0 then log("power · could not set", PROFILES[next_mode]) end
+        read_profile()
+    end)
+end)
+every(60000, read_profile)
+
+--  The night light: wlsunset, with her sky's city for the sunset and sunrise
+--  (without one, a fixed evening: 19:00 to 06:30).
+on("tap_night", function()
+    if fact.night_on then
+        stop_matching("^wlsunset", function() fact.night_on = false end)
+        return
+    end
+    local args = { "-t", "4000", "-T", "6500" }
+    if sky_place ~= nil and sky_place.lat and sky_place.lon then
+        table.insert(args, "-l"); table.insert(args, string.format("%.3f", sky_place.lat))
+        table.insert(args, "-L"); table.insert(args, string.format("%.3f", sky_place.lon))
+    else
+        table.insert(args, "-S"); table.insert(args, "06:30")
+        table.insert(args, "-s"); table.insert(args, "19:00")
+    end
+    fact.night_on = true
+    run("wlsunset", args, function(_, code)
+        fact.night_on = false
+        if code ~= 0 and code ~= 143 and code ~= 15 then log("night light · wlsunset ended (" .. tostring(code) .. ")") end
+    end)
+end)
+run("pgrep", { "-x", "wlsunset" }, function(out) fact.night_on = tostring(out or ""):match("%d") ~= nil end)
+
+--  The apps playing sound, each with its own level (PipeWire's pulse side).
+local streams = {}
+local stream_chosen = nil
+local function read_streams()
+    run("pactl", { "-f", "json", "list", "sink-inputs" }, function(out, code)
+        if code ~= 0 then return end
+        local ok, list = pcall(json.decode, tostring(out or ""))
+        if not ok or type(list) ~= "table" then return end
+        local v, ids = {}, {}
+        for _, si in ipairs(list) do
+            local props = si.properties or {}
+            local name = props["application.name"] or props["media.name"] or "App"
+            local vol = 0
+            for _, ch in pairs(si.volume or {}) do
+                local pct = tonumber(tostring(ch.value_percent or ""):match("%d+"))
+                if pct then vol = math.max(vol, pct / 100) end
+            end
+            if #v < 6 then
+                v[#v + 1] = { name = tostring(name), volume = math.clamp(vol, 0, 1) }
+                ids[#ids + 1] = si.index
+            end
+        end
+        streams = ids
+        model.streams = v
+    end)
+end
+every(2000, function() if fact.page == "sound" and fact.open then read_streams() end end)
+on("fact:page", function(p) if p == "sound" then read_streams() end end)
+on("stream_pick", function(i) stream_chosen = streams[(tonumber(i) or -1) + 1] end)
+on("stream_set", function(v)
+    if stream_chosen == nil then return end
+    local pct = math.floor(math.clamp(tonumber(v) or 0, 0, 1) * 100 + 0.5)
+    run("pactl", { "set-sink-input-volume", tostring(stream_chosen), pct .. "%" }, function() read_streams() end)
+end)
+
+--  The wallpaper page's header: where they come from, and the one on now.
+text["wall.dir"] = "~/Pictures · ~/Wallpapers · /usr/share/wallpapers"
+text["wall.source"] = "Pictures"
+on("walls_rescan", function() emit("walls_open") end)
+end

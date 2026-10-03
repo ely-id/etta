@@ -31,6 +31,7 @@
 import { readFileSync, writeFileSync, mkdirSync, openSync, readSync, closeSync,
          statSync, readdirSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
+import { execFileSync } from "node:child_process";
 import { join, dirname } from "node:path";
 
 const CLAUDE_USO = "https://api.anthropic.com/api/oauth/usage";
@@ -323,11 +324,47 @@ function leeCodex() {
     return agente;
 }
 
+// ── GitHub Copilot ───────────────────────────────────────────────
+//  Its own account, asked through `gh` —the same token the CLI already
+//  keeps—. Chat and completions are unlimited on most plans; what runs out
+//  is the monthly allowance of premium requests, so that is the window.
+
+function leeCopilot() {
+    let datos = null;
+    try {
+        const crudo = execFileSync("gh", ["api", "/copilot_internal/user"],
+                                   { timeout: 8000, stdio: ["ignore", "pipe", "ignore"] });
+        datos = JSON.parse(String(crudo));
+    } catch (e) { return null; }
+    const snaps = (datos && datos.quota_snapshots) || {};
+    const renueva = epoca(datos.quota_reset_date ? datos.quota_reset_date + "T00:00:00Z" : null);
+    const limites = [];
+    for (const [id, nombre] of [["premium_interactions", "Premium requests"], ["chat", "Chat"], ["completions", "Completions"]]) {
+        const q = snaps[id];
+        if (!q || q.unlimited === true) continue;
+        const queda = pct(q.percent_remaining);
+        limites.push({ id, nombre, duracionMin: 43200, usadoPct: queda === null ? null : 100 - queda,
+                       renuevaEn: renueva, activo: true });
+    }
+    const plan = String(datos.copilot_plan || "").replace(/^./, (c) => c.toUpperCase());
+    return { plan, origen: "servidor", observadoEn: epoca(snaps.premium_interactions?.timestamp_utc) ?? ahora(), limites };
+}
+
+// ── Grok ─────────────────────────────────────────────────────────
+//  xAI publishes no usage report for a Grok subscription, so there is no
+//  number to read. The card says so instead of making one up.
+
+function leeGrok() {
+    return { plan: "", origen: "ninguno", observadoEn: null, limites: [], razon: "sin-api" };
+}
+
 // ── el registro ──────────────────────────────────────────────────
 
 const AGENTES = [
     { id: "claude", nombre: "Claude Code", binario: "claude", lee: leeClaude, red: true },
     { id: "codex", nombre: "Codex", binario: "codex", lee: leeCodex, red: false },
+    { id: "copilot", nombre: "GitHub Copilot", binario: "gh", lee: leeCopilot, red: false },
+    { id: "grok", nombre: "Grok", binario: null, lee: leeGrok, red: false },
 ];
 
 const conRed = !process.argv.includes("--sin-red");
@@ -335,7 +372,7 @@ const fuera = [];
 for (const a of AGENTES) {
     //  Sin el programa no hay tarjeta: un agente que no está instalado no
     //  merece una tarjeta vacía diciendo que no tiene datos.
-    if (!enElCamino(a.binario)) continue;
+    if (a.binario && !enElCamino(a.binario)) continue;
     let datos = null;
     try { datos = a.red ? await a.lee(conRed) : a.lee(); }
     catch (e) { datos = { origen: null, observadoEn: null, limites: [], razon: "error" }; }
