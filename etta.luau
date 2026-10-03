@@ -2346,6 +2346,7 @@ end
 
 --  The one on now, for her wardrobe: its small copy, made if it is not there.
 local function show_wall_now()
+    if on_halley then return end
     local path = WALLPAPER
     local name = (tostring(path):match("([^/]+)$") or path):gsub("%.%w+$", ""):gsub("[_%-]", " ")
     local thumb = cache_name(path, "thumb")
@@ -2368,6 +2369,7 @@ on("customize", show_wall_now)
 local WALL_DIRS = { home_dir .. "/Imágenes", home_dir .. "/Pictures", home_dir .. "/Wallpapers", home_dir .. "/Fondos",
                     "/usr/share/wallpapers", "/usr/share/backgrounds" }
 on("walls_open", function()
+    if on_halley then return end
     local args = { "--type", "f", "--max-depth", "3", "--color", "never",
                    "-e", "png", "-e", "jpg", "-e", "jpeg", "-e", "webp",
                    "--exclude", "Capturas", "--exclude", "Screenshots", "--exclude", "Etta", "--exclude", "pokes", ".", }
@@ -2389,6 +2391,7 @@ on("walls_open", function()
     end)
 end)
 on("walls_scroll", function(w)
+    if on_halley then return end
     local step = (w or 0) > 0 and -3 or 3
     wall_offset = math.max(0, math.min(wall_offset + step, math.max(#wall_list - 3, 0)))
     wall_offset = wall_offset - wall_offset % 3
@@ -2415,6 +2418,7 @@ end
 
 local tide_new = nil
 on("wall_pick", function(i)
+    if on_halley then return end
     local path = wall_list[wall_offset + i + 1]
     if path == nil or path == WALLPAPER or wall_busy then return end
     wall_busy = true
@@ -3060,3 +3064,205 @@ sys.watch("media", function(m)
     end
 end)
 end
+
+-- ── the wallpaper, on Halley: its field shaders ────────────────────
+--  Halley paints its own wallpaper with a fragment shader: its bundled
+--  «space», or a file. Etta lists hers (wallpapers/*.frag, next to her) and
+--  yours (~/.config/etta/shaders), paints each one's thumbnail with the
+--  colours chosen —etta-shader-thumb, through the GPU—, and applying one is
+--  writing the small file halley.rune gathers: Halley reloads it by itself.
+--  In a function of its own: the main chunk is near Luau's 200 locals.
+local function halley_wallpaper()
+    local HOME = sys.ask("env", "HOME") or "."
+    local ETTA = sys.ask("env", "ETTA_DIR") or "."
+    local SHIPPED = ETTA .. "/wallpapers"
+    local MINE = HOME .. "/.config/etta/shaders"
+    local THUMBS = HOME .. "/.cache/etta/walls"
+    local BASES = { "#181a26", "#10201b", "#1f1622", "#0e1116" }
+    local ACCENTS = { "#8fa8d8", "#9ed6bd", "#e8a87c", "#b5a0f2" }
+    run("mkdir", { "-p", MINE, THUMBS }, function() end)
+
+    --  What is chosen, as it was left. Halley's own defaults the first time:
+    --  the bundled space, as it was before Etta painted anything.
+    local w = type(settings.halley_wall) == "table" and settings.halley_wall or {}
+    w.shader = type(w.shader) == "string" and w.shader or "space"
+    w.base = tonumber(w.base) or 0
+    w.accent = tonumber(w.accent) or 0
+    w.intensity = tonumber(w.intensity) or 1.0
+    w.animated = w.animated == true
+    --  Marea-era colours that are not in the swatches stay as they were.
+    w.base_hex = type(w.base_hex) == "string" and w.base_hex or "#10131d"
+    w.accent_hex = type(w.accent_hex) == "string" and w.accent_hex or "#8fa8d8"
+    --  Which swatch is lit: none, if the colour is not one of them.
+    w.base, w.accent = -1, -1
+    for k, hex in ipairs(BASES) do if hex == w.base_hex then w.base = k - 1 end end
+    for k, hex in ipairs(ACCENTS) do if hex == w.accent_hex then w.accent = k - 1 end end
+    fact["wall.base"] = w.base
+    fact["wall.accent"] = w.accent
+    fact["wall.intensity"] = math.clamp(w.intensity / 1.5, 0, 1)
+    fact["wall.animated"] = w.animated
+    text["wall.source"] = "Halley field shaders"
+    text["wall.dir"] = "~/.config/etta/shaders"
+
+    local list, offset = {}, 0
+    local made = {}            -- thumbnails already painted, by their key
+    local queue, painting = {}, false
+
+    local function nice(file)
+        local n = tostring(file):match("([^/]+)%.frag$") or tostring(file)
+        n = n:gsub("[_%-]", " ")
+        return n:sub(1, 1):upper() .. n:sub(2)
+    end
+    local function key_of(item)
+        return string.format("%s-%s-%s-%.2f", item.name:gsub("%W", ""), w.base_hex:sub(2), w.accent_hex:sub(2), w.intensity)
+    end
+    local function current_name()
+        for _, it in ipairs(list) do if it.path == w.shader then return it.name end end
+        return nice(w.shader)
+    end
+
+    local function paint()
+        local cards = {}
+        for k = offset + 1, math.min(offset + 6, #list) do
+            local it = list[k]
+            local thumb = it.builtin and (SHIPPED .. "/space.png") or made[key_of(it)]
+            cards[#cards + 1] = { name = it.name, file = it.label, thumb = thumb or "", ready = thumb ~= nil, current = it.path == w.shader }
+        end
+        model.walls = cards
+        text["wall.now"] = current_name()
+        local now_thumb = nil
+        for _, it in ipairs(list) do
+            if it.path == w.shader then now_thumb = it.builtin and (SHIPPED .. "/space.png") or made[key_of(it)] end
+        end
+        model.wallnow = { { name = current_name(), thumb = now_thumb or "", ready = now_thumb ~= nil } }
+        text["wall.status"] = string.format("%d shaders · %s applied", #list, current_name())
+    end
+
+    --  One thumbnail at a time: they share the card with everything else.
+    local function next_thumb()
+        if painting or #queue == 0 then return end
+        local it = table.remove(queue, 1)
+        local key = key_of(it)
+        if made[key] then next_thumb() return end
+        local out = THUMBS .. "/" .. key .. ".png"
+        painting = true
+        run("test", { "-s", out }, function(_, exists)
+            if exists == 0 then
+                made[key] = out
+                painting = false
+                paint()
+                next_thumb()
+                return
+            end
+            run("etta-shader-thumb", { it.path, out, "--size", "424x238", "--base", w.base_hex, "--accent", w.accent_hex,
+                                       "--intensity", string.format("%.2f", w.intensity), "--time", "12" }, function(_, code)
+                painting = false
+                if code == 0 then made[key] = out else log("wallpaper · could not paint", it.path) end
+                paint()
+                next_thumb()
+            end)
+        end)
+    end
+    local function thumbs()
+        queue = {}
+        for _, it in ipairs(list) do
+            if not it.builtin and not made[key_of(it)] then queue[#queue + 1] = it end
+        end
+        next_thumb()
+    end
+
+    local function scan()
+        local found = { { name = "Space", label = "bundled with Halley", path = "space", builtin = true } }
+        local function from(dir, label, done)
+            run("ls", { dir }, function(out)
+                local names = {}
+                for f in tostring(out or ""):gmatch("[^\n]+") do
+                    if f:match("%.frag$") then names[#names + 1] = f end
+                end
+                table.sort(names)
+                for _, f in ipairs(names) do
+                    found[#found + 1] = { name = nice(f), label = label .. "/" .. f, path = dir .. "/" .. f }
+                end
+                done()
+            end)
+        end
+        from(SHIPPED, "etta", function()
+            from(MINE, "~/.config/etta/shaders", function()
+                list = found
+                offset = 0
+                paint()
+                thumbs()
+            end)
+        end)
+    end
+
+    --  Applying: the small file Halley gathers, rewritten whole.
+    local function write_rune()
+        local rune = string.format([[@description "Etta's wallpaper. Written by Etta (Wallpaper page); gathered by halley.rune."
+
+etta:
+  shader "%s"
+  colour "%s"
+  accent "%s"
+  intensity %.2f
+  animated %s
+end
+]], w.shader, w.base_hex, w.accent_hex, w.intensity, w.animated and "true" or "false")
+        pcall(sys.call, "files.write", "halley-wallpaper.rune", rune)
+        settings.halley_wall = w
+        save_settings()
+    end
+    --  Etta's file is there before halley.rune asks for it.
+    if not sys.ask("files.exists", "halley-wallpaper.rune") then write_rune() end
+
+    on("walls_open", scan)
+    on("walls_rescan", scan)
+    on("customize", function() if #list == 0 then scan() else paint() end end)
+    on("walls_scroll", function(d)
+        local step = (d or 0) > 0 and -3 or 3
+        offset = math.max(0, math.min(offset + step, math.max(#list - 6, 0)))
+        offset = offset - offset % 3
+        paint()
+    end)
+    on("wall_pick", function(i)
+        local it = list[offset + i + 1]
+        if it == nil or it.path == w.shader then return end
+        w.shader = it.path
+        write_rune()
+        paint()
+        emit("splash")
+    end)
+    --  The colours and the intensity repaint the thumbnails —after a moment
+    --  still, not at every step of the slider— and go to Halley at once.
+    local settle = 0
+    local function changed()
+        settle = settle + 1
+        local mine = settle
+        after(450, function()
+            if mine ~= settle then return end
+            write_rune()
+            paint()
+            thumbs()
+        end)
+    end
+    on("fact:wall.base", function(v)
+        w.base = tonumber(v) or 0
+        w.base_hex = BASES[w.base + 1] or w.base_hex
+        changed()
+    end)
+    on("fact:wall.accent", function(v)
+        w.accent = tonumber(v) or 0
+        w.accent_hex = ACCENTS[w.accent + 1] or w.accent_hex
+        changed()
+    end)
+    on("fact:wall.intensity", function(v)
+        w.intensity = math.floor((tonumber(v) or 0.67) * 150 + 0.5) / 100
+        changed()
+    end)
+    on("fact:wall.animated", function(v)
+        w.animated = v == true
+        write_rune()
+    end)
+    after(1500, scan)
+end
+if on_halley then halley_wallpaper() end

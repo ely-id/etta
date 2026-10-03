@@ -33,7 +33,7 @@ scene Etta {
         //  The network and the headphones are pleamar's own services now
         //  (NetworkManager and BlueZ, spoken to directly): listing, joining
         //  with a password, pairing. And `fd` finds the files and the folders.
-        run: "curl", "timedatectl", "node", "notify-send", "fd", "deriva-worker", "kill", "xdg-open", "grim", "slurp", "hyprctl", "magick", "wl-copy", "mkdir", "wf-recorder", "xdg-user-dir", "test", "pgrep", "swaybg", "pactl", "pleamar-wm", "etta-halley", "cat", "ls", "rfkill", "systemd-inhibit", "powerprofilesctl", "wlsunset"
+        run: "curl", "timedatectl", "node", "notify-send", "fd", "deriva-worker", "kill", "xdg-open", "grim", "slurp", "hyprctl", "magick", "wl-copy", "mkdir", "wf-recorder", "xdg-user-dir", "test", "pgrep", "swaybg", "pactl", "pleamar-wm", "etta-halley", "cat", "ls", "rfkill", "systemd-inhibit", "powerprofilesctl", "wlsunset", "etta-shader-thumb"
     }
     service clock as now { time: text = "--:--"; date: text; hour: number; minute: number; day: number; month: number; weekday: number }
     service audio as sound { volume: number; muted: bool; input: number; input_muted: bool }
@@ -88,7 +88,7 @@ scene Etta {
     prop radar.t = 0
     prop join_btn.glow = 0 ~140ms
     spin join.t by if(joining >= 0, 1, 0)
-    spin radar.t by if(bt_scanning and page == bluetooth, 0.8, 0)
+    spin radar.t by if(bt_scanning and page == bluetooth or page == walls, 0.8, 0)
     //  Where it plays and where it listens. pleamar brings them in the same
     //  service as the volume, so this does not know about `wpctl`, nor does it
     //  need to.
@@ -358,7 +358,7 @@ scene Etta {
     //  lands the new picture spreads as a ring of water with a shadow running
     //  ahead of it and a line of light on its crest; behind it the water
     //  ripples until it settles. Then `swaybg` takes the new one, unseen.
-    model walls max 9 { name: text; thumb: image 212, 119; ready: bool; current: bool }
+    model walls max 6 { name: text; file: text; thumb: image 424, 238; ready: bool; current: bool }
     model wallnow max 1 { name: text; thumb: image 160, 90; ready: bool }   // the one on now, in her wardrobe
     model tidepics max 1 { pic: image 1280, 720 }
     event show_walls
@@ -3665,7 +3665,7 @@ scene Etta {
     prop card.W = 620 ~240ms
     prop card.H = 700 ~240ms
     follow card.W = if(page == walls, 700, 620)
-    follow card.H = pick(pg.size, 700, 716, 560, 760, 640, 500, 520, 760)
+    follow card.H = pick(pg.size, 700, 716, 560, 760, 640, 500, 520, 680)
     let card.w = card.W * card
     let card.h = card.H * card
     //  The corner: the panel's as soon as there is a card, and rounder and
@@ -3824,6 +3824,21 @@ scene Etta {
     text wall.source = "Pictures"
     text wall.dir = ""
     text wall.now = ""
+    //  The wallpaper's colours, intensity (0..1, for 0..1.5) and animation,
+    //  on Halley; the logic writes them for Halley to read.
+    fact wall.base = 0
+    fact wall.accent = 0
+    fact wall.intensity = 0.667
+    fact wall.animated = false
+    text wall.status = ""
+    event pick_base
+    event pick_accent
+    event set_wall_intensity
+    event flip_wall_anim
+    on pick_base(i) { wall.base = i }
+    on pick_accent(i) { wall.accent = i }
+    on set_wall_intensity(v) { wall.intensity = v }
+    on flip_wall_anim { toggle wall.animated }
     //  Who is signed in, for the session page.
     text session.user = ""
     //  The apps playing sound, each with its own level.

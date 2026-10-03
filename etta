@@ -22,8 +22,12 @@ STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/etta"
 # folder: `deriva/`, built there. Hers goes first on the PATH.
 DERIVA="$HERE/deriva/target/release"
 HALLEY_ADAPTER="$HERE/halley/target/release"
-PATH="$HALLEY_ADAPTER:$DERIVA:$PATH"
-export PATH
+# The field shaders' thumbnails, for the Wallpaper page on Halley.
+SHADER_THUMB="$HERE/tools/shader-thumb/target/release"
+PATH="$HALLEY_ADAPTER:$SHADER_THUMB:$DERIVA:$PATH"
+# Where she lives, for the logic: her own wallpapers are in it.
+ETTA_DIR="$HERE"
+export PATH ETTA_DIR
 
 # Only Halley needs the SDK adapter. Other compositors keep Pleamar's services.
 build_halley() {
@@ -40,6 +44,20 @@ build_halley() {
         (cd "$HERE/halley" && cargo build --release --locked > "$STATE_DIR/halley-build.log" 2>&1) && return 0
     fi
     echo "Etta: Halley's adapter is unavailable; see $STATE_DIR/halley-build.log or build halley/Cargo.toml." >&2
+}
+
+# The thumbnails' painter, on Halley only, built like the adapter.
+build_shader_thumb() {
+    case ":${XDG_CURRENT_DESKTOP:-}:" in
+        *:Halley:*|*:halley:*) ;;
+        *) return 0 ;;
+    esac
+    T="$HERE/tools/shader-thumb"
+    if [ -x "$SHADER_THUMB/etta-shader-thumb" ] && [ -z "$(find "$T/src" "$T/Cargo.toml" -newer "$SHADER_THUMB/etta-shader-thumb" 2> /dev/null)" ]; then
+        return 0
+    fi
+    [ -w "$T" ] && command -v cargo > /dev/null 2>&1 || return 0
+    (cd "$T" && nice -n 10 cargo build --release > "$STATE_DIR/shader-thumb-build.log" 2>&1) &
 }
 
 # Built the first time she starts, and again when its source changes (after an
@@ -64,6 +82,7 @@ case "${1:-}" in
         # grow forever, but yesterday's can still be looked at.
         [ -f "$STATE_DIR/etta.log" ] && mv -f "$STATE_DIR/etta.log" "$STATE_DIR/etta.log.1"
         build_halley
+        build_shader_thumb
         build_deriva
         exec "$PLEAMAR" --scene etta.plm --no-hud --stall 0 "$@" > "$STATE_DIR/etta.log" 2>&1
         ;;

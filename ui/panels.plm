@@ -948,6 +948,8 @@ library Panels {
     }
 
     // ── the wallpapers ───────────────────────────────────────────
+    //  On Halley, its field shaders: each one painted with the colours chosen
+    //  below. Elsewhere, pictures.
     component WallCard(w: record) {
         size: 212, 168
         group {
@@ -957,37 +959,76 @@ library Panels {
             group {
                 clip box { from: 0, 0; size: 212, 119; corner: 16 }
                 box { from: 0, 0; size: 212, 119; color: tk.s2 }
+                arc { at: 106, 60; radius: 9; span: 270deg; width: 2; rotate: radar.t * 360deg; color: tk.ink3; show: not w.ready }
                 image w.thumb { at: 0, 0; size: 212, 119; show: w.ready }
             }
-            text w.name { family: "Geist"; at: 14, 143; anchor: left center; size: 14; weight: 600; width: 120; lines: 1; color: tk.ink }
-            group { move: 132, 132; show: w.current; Tag("Applied", w: 68, tone: 1) }
-            box { from: 0, 0; size: 212, 168; corner: 16; stroke: 2; color: tk.mint; opacity: if(w.current, 1, touch.hover * 0.35) }
+            text w.name { family: "Geist"; at: 14, 138; anchor: left center; size: 14; weight: 600; width: 120; lines: 1; color: tk.ink }
+            text w.file { family: "Geist Mono"; at: 14, 156; anchor: left center; size: 11; weight: 500; width: 184; lines: 1; color: tk.ink3 }
+            group { move: 134, 127; show: w.current; Tag("Applied", w: 66, tone: 1) }
+            group {
+                show: not w.current
+                opacity: touch.hover
+                box { from: 146, 127; size: 54, 22; corner: 11; color: tk.mint }
+                text "Apply" { family: "Geist"; at: 173, 138; anchor: center; size: 12; weight: 600; color: tk.mint_ink }
+            }
+            box { from: 0, 0; size: 212, 168; corner: 16; stroke: 2; color: tk.mint; opacity: if(w.current, 1, 0) }
             on press touch { emit wall_pick(w.index) }
-    
         }
+    }
+    component Swatch(c: color, i: number, on: number, press: event) {
+        size: 32, 32
+        zone ellipse touch { at: 16, 16; radius: 16; cursor: pointer; active: page == walls and paging > 0.9 }
+        ellipse { at: 16, 16; radius: 15.5; stroke: 2; color: tk.mint; opacity: on }
+        ellipse { at: 16, 16; radius: 11 + 1.5 * touch.hover - 1 * on; color: c }
+        ellipse { at: 16, 16; radius: 11 + 1.5 * touch.hover - 1 * on; stroke: 1; color: #ffffff; opacity: 14% }
+        on press touch { emit press(i) }
     }
 
     component WallsPage() {
-        size: 700, 760
+        size: 700, 680
         PageHead("Wallpaper", w: 700) {
-            group { move: 452, 17; Tag(wall.source, w: 150, tone: 0) }
+            group { move: 456, 21; show: compositor_halley; Tag("Halley field shaders", w: 140, tone: 0) }
         }
         figure Kit.i_folder { at: 30, 88; size: 18, 18; color: tk.ink3 }
-        text wall.dir { family: "Geist Mono"; at: 48, 88; anchor: left center; size: 13; weight: 500; width: 400; lines: 1; color: tk.ink2 }
-        group { move: 548, 72; Btn("Rescan", walls_rescan, w: 132, kind: 3, h: 32) }
+        text wall.dir { family: "Geist Mono"; at: 48, 88; anchor: left center; size: 13; weight: 500; width: 460; lines: 1; color: tk.ink2 }
+        group { move: 568, 72; Btn("Rescan", walls_rescan, w: 112, kind: 3, h: 32) }
         grid {
-            at: 20, 116; columns: 3; gap: 12; width: 660; row: 168
+            at: 20, 112; columns: 3; gap: 12; width: 660; row: 168
             for w in walls { WallCard(w) }
         }
-        zone box walls_area { from: 20, 116; size: 660, 528; active: page == walls and paging > 0.9 }
+        zone box walls_area { from: 20, 112; size: 660, 348; active: page == walls and paging > 0.9 }
         on scroll walls_area { emit walls_scroll(wheel) }
         group {
             show: walls.count < 1
-            group { move: 332, 300; Bubble(0) { figure Kit.i_image { at: 0, 0; size: 18, 18; color: tk.ink3 } } }
-            text "No wallpapers yet" { family: "Geist"; at: 350, 362; anchor: center; size: 20; weight: 600; color: tk.ink }
-            text "Put pictures in one of these folders, or a .frag field shader in ~/.config/etta/shaders on Halley." { family: "Geist"; at: 350, 400; anchor: center; size: 14; weight: 500; width: 420; lines: 2; align: center; line_height: 1.4; color: tk.ink2 }
+            group { move: 332, 230; Bubble(0) { figure Kit.i_image { at: 0, 0; size: 18, 18; color: tk.ink3 } } }
+            text "Nothing here yet" { family: "Geist"; at: 350, 292; anchor: center; size: 15; weight: 600; color: tk.ink }
         }
-        text "Drop a picture —or, on Halley, a field shader— into the folder: Etta makes its thumbnail." { family: "Geist"; at: 350, 730; anchor: center; size: 12; weight: 500; color: tk.ink3 }
+        text pick(if(compositor_halley, 0, 1), "Add your own: drop a .frag that follows Halley's field-shader interface in the folder, and Rescan.", "Put pictures in Pictures or Wallpapers, and Rescan.") { family: "Geist"; at: 24, 476; anchor: left center; size: 12; weight: 500; width: 650; lines: 1; color: tk.ink3 }
+        group {
+            show: compositor_halley
+            box { from: 20, 496; size: 660, 140; corner: 16; color: tk.s1 }
+            text "Base colour" { family: "Geist"; at: 36, 518; anchor: left center; size: 13; weight: 500; color: tk.ink2 }
+            group { move: 32, 532
+                Swatch(#181a26, 0, if(wall.base == 0, 1, 0), pick_base)
+                group { move: 40, 0; Swatch(#10201b, 1, if(wall.base == 1, 1, 0), pick_base) }
+                group { move: 80, 0; Swatch(#1f1622, 2, if(wall.base == 2, 1, 0), pick_base) }
+                group { move: 120, 0; Swatch(#0e1116, 3, if(wall.base == 3, 1, 0), pick_base) }
+            }
+            text "Accent colour" { family: "Geist"; at: 370, 518; anchor: left center; size: 13; weight: 500; color: tk.ink2 }
+            group { move: 366, 532
+                Swatch(#8fa8d8, 0, if(wall.accent == 0, 1, 0), pick_accent)
+                group { move: 40, 0; Swatch(#9ed6bd, 1, if(wall.accent == 1, 1, 0), pick_accent) }
+                group { move: 80, 0; Swatch(#e8a87c, 2, if(wall.accent == 2, 1, 0), pick_accent) }
+                group { move: 120, 0; Swatch(#b5a0f2, 3, if(wall.accent == 3, 1, 0), pick_accent) }
+            }
+            text "Intensity" { family: "Geist"; at: 36, 604; anchor: left center; size: 13; weight: 500; color: tk.ink2 }
+            group { move: 112, 592; Slider(wall.intensity, set_wall_intensity, w: 150) }
+            text "{wall.intensity * 1.5, 2}" { family: "Geist"; at: 316, 604; anchor: right center; size: 13; weight: 600; color: tk.ink }
+            text "Animated" { family: "Geist"; at: 370, 596; anchor: left center; size: 13; weight: 500; color: tk.ink2 }
+            text "Halley pauses it under fullscreen windows" { family: "Geist"; at: 370, 614; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
+            group { move: 624, 592; Toggle(wall.animated, flip_wall_anim) }
+        }
+        text wall.status { family: "Geist"; at: 24, 656; anchor: left center; size: 12; weight: 500; width: 650; lines: 1; color: tk.ink3 }
     }
 
     // ── her wardrobe ─────────────────────────────────────────────

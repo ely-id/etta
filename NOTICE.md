@@ -25,3 +25,11 @@ lock screen's padlock, the capture flow, and her integration with the
   as a separate process.
 - `wallpapers/` holds field shaders for Halley's wallpaper. The ones written for
   Etta are BSD 3-Clause; Halley's own bundled `space` shader is not copied here.
+
+## Wallpapers
+
+`wallpapers/*.frag` are Etta's own field shaders (BSD-3-Clause), written for
+Halley's field-shader interface. `wallpapers/space.png` is a picture of
+Halley's bundled «space» shader (GPL-3.0-only), painted once by
+`tools/shader-thumb` at Halley's default colours so the Wallpaper page can show
+it; the shader's code itself is not part of Etta.

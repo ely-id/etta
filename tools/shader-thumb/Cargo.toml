@@ -1,0 +1,11 @@
+[package]
+name = "etta-shader-thumb"
+version = "0.1.0"
+edition = "2024"
+license = "BSD-3-Clause"
+description = "Renders a Halley field shader to a PNG, for Etta's wallpaper page"
+
+[dependencies]
+wgpu = { version = "30", features = ["spirv"] }
+pollster = "1"
+png = "0.18"
