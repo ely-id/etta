@@ -2671,6 +2671,12 @@ on("fact:taking_room", function() save_settings() end)
 if settings.skin == "lens" or settings.skin == "liquid" or settings.skin == "classic" then
     fact.skin = settings.skin
 end
+--  Glass reads what is behind her through wlr-screencopy, and Halley rejects
+--  the buffer pleamar offers («buffer does not match the advertised capture
+--  format»): a protocol error, and she is gone. Until one of the two changes,
+--  on Halley it is Frosted.
+if on_halley and fact.skin == "lens" then fact.skin = "liquid" end
+on("fact:skin", function(v) if on_halley and v == "lens" then fact.skin = "liquid" end end)
 on("fact:skin", function() save_settings() end)
 
 -- ── her sky: the weather where you are ─────────────────────────────

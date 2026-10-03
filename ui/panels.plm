@@ -556,8 +556,8 @@ library Panels {
                 group { move: 0, 0; SetRow("Size", "Everything of hers grows with her") {
                     group { move: -280, -19; Seg(size.k, "46", "52", pick_size, c: "56", d: "64", count: 4, w: 280) }
                 } }
-                group { move: 0, 56; SetRow("Look", pick(look.k, "Opaque · nothing extra needed", "Blurs what is behind her", "Bends what is behind, like glass")) {
-                    group { move: -280, -19; Seg(look.k, "Classic", "Frosted", pick_look, c: "Glass", count: 3, w: 280) }
+                group { move: 0, 56; SetRow("Look", pick(if(compositor_halley, 3 + look.k, look.k), "Opaque · nothing extra needed", "Blurs what is behind her", "Bends what is behind, like glass", "Opaque · nothing extra needed", "Translucent: Halley does not blur behind it yet", "")) {
+                    group { move: -280, -19; Seg(look.k, "Classic", "Frosted", pick_look, c: "Glass", count: if(compositor_halley, 2, 3), w: 280) }
                 } }
                 group { move: 0, 112
                     zone box wr_zone { from: 0, 0; size: 580, 56; corner: 16; cursor: pointer; active: page == settings and paging > 0.9 }

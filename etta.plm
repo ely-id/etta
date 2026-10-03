@@ -4128,7 +4128,7 @@ scene Etta {
 
     // ── settings ─────────────────────────────────────────────────
     on pick_size(i) { pet.size = pick(i, s46, s52, s56, s64) }
-    on pick_look(i) { skin = pick(i, classic, liquid, lens) }
+    on pick_look(i) while not compositor_halley or i < 2 { skin = pick(i, classic, liquid, lens) }
     on pick_home(i) while i < 2 { home = i; following = false }
     on pick_home(i) while i > 1 { following = true }
     on pick_idle(i) { idle.k = i }
