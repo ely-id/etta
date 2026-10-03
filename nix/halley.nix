@@ -1,6 +1,6 @@
 { lib, rustPlatform }:
 rustPlatform.buildRustPackage {
-  pname = "marea-halley";
+  pname = "etta-halley";
   version = "0.1.0";
   src = lib.cleanSource ../halley;
   cargoLock = {
@@ -8,9 +8,9 @@ rustPlatform.buildRustPackage {
     allowBuiltinFetchGit = true;
   };
   meta = {
-    description = "Halley API adapter for Marea";
+    description = "Halley API adapter for Etta";
     license = lib.licenses.gpl3Only;
-    mainProgram = "marea-halley";
+    mainProgram = "etta-halley";
     platforms = lib.platforms.linux;
   };
 }

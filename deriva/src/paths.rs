@@ -4,7 +4,7 @@
 //  `XDG_RUNTIME_DIR`. Nada en `XDG_STATE_HOME` —ahí solo va el estado pequeño
 //  del plugin, que escribe QML— y nada junto al código.
 //
-//  `MAREA_DERIVA_DIR` lo mueve todo. Existe para las pruebas: una prueba que
+//  `ETTA_DERIVA_DIR` lo mueve todo. Existe para las pruebas: una prueba que
 //  escribe en la biblioteca del usuario no es una prueba, es un accidente
 //  esperando a que alguien la ejecute en su portátil.
 
@@ -16,7 +16,7 @@ pub fn home() -> PathBuf {
 }
 
 pub fn base() -> PathBuf {
-    if let Ok(d) = std::env::var("MAREA_DERIVA_DIR") {
+    if let Ok(d) = std::env::var("ETTA_DERIVA_DIR") {
         if !d.is_empty() {
             return PathBuf::from(d);
         }
@@ -26,7 +26,7 @@ pub fn base() -> PathBuf {
         .filter(|s| !s.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| home().join(".local/share"));
-    datos.join("proyecto-marea/deriva")
+    datos.join("etta/deriva")
 }
 
 pub fn db_path() -> PathBuf {
@@ -56,7 +56,7 @@ pub fn tmp() -> PathBuf {
 //  ya viene con permisos de solo el usuario; en `/tmp` lo vería cualquiera con
 //  cuenta en la máquina.
 pub fn socket() -> PathBuf {
-    if let Ok(s) = std::env::var("MAREA_DERIVA_SOCKET") {
+    if let Ok(s) = std::env::var("ETTA_DERIVA_SOCKET") {
         if !s.is_empty() {
             return PathBuf::from(s);
         }
@@ -66,7 +66,7 @@ pub fn socket() -> PathBuf {
         .filter(|s| !s.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(format!("/run/user/{}", unsafe { libc_getuid() })));
-    run.join("proyecto-marea/deriva.sock")
+    run.join("etta/deriva.sock")
 }
 
 //  Sin `libc` como dependencia: es la única llamada que hacía falta y traerse

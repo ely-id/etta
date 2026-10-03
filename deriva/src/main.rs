@@ -1,11 +1,11 @@
 //  Deriva · el worker de la biblioteca local.
 //
-//  Un solo binario pequeño. Guarda lo que le sueltas a Marea, lo busca y lo
+//  Un solo binario pequeño. Guarda lo que le sueltas a Etta, lo busca y lo
 //  devuelve; nada de esto vive en QML, porque QML se recarga cuando guardas un
 //  fichero del repo y una base de datos a medio escribir no sobrevive a eso.
 //
 //  Dos maneras de hablarle, el mismo despachador detrás: el socket —que es como
-//  le habla Marea— y la línea de órdenes, que es como se diagnostica cuando
+//  le habla Etta— y la línea de órdenes, que es como se diagnostica cuando
 //  algo va mal sin tener que levantar el escritorio entero.
 //
 //  Lo que NO hace, y es a propósito: no sale a la red, no abre puertos, no
@@ -202,7 +202,7 @@ fn ayuda() {
     eprintln!(
         r#"deriva-worker · la biblioteca local de Deriva
 
-  serve                              atiende el socket; es como le habla Marea
+  serve                              atiende el socket; es como le habla Etta
   ingest   --request <json>          guarda algo
   search   --query <texto> [--limit] busca
   get      --id <id>                 una captura entera
@@ -223,7 +223,7 @@ fn ayuda() {
 Con `--db <ruta>` cualquiera de ellas mira OTRA base: así se comprueba una
 copia de seguridad sin restaurarla encima de la buena.
 
-Todo sale como una línea de JSON. `MAREA_DERIVA_DIR` mueve la biblioteca
+Todo sale como una línea de JSON. `ETTA_DERIVA_DIR` mueve la biblioteca
 entera, que es como se prueba sin tocar la del usuario."#
     );
 }

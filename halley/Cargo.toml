@@ -1,9 +1,9 @@
 [package]
-name = "marea-halley"
+name = "etta-halley"
 version = "0.1.0"
 edition = "2024"
 license = "BSD-3-Clause"
-description = "Halley API adapter for Marea's compositor-dependent operations"
+description = "Halley API adapter for Etta's compositor-dependent operations"
 
 [dependencies]
 halley-api = { git = "https://github.com/saltnpepper97/halley", rev = "7eb8cd8e6e7153cbb6815129358af9b30a6a21fa" }

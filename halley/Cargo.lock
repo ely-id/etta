@@ -152,7 +152,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "marea-halley"
+name = "etta-halley"
 version = "0.1.0"
 dependencies = [
  "halley-api",

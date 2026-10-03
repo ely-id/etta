@@ -226,14 +226,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 _ => return Err(format!("unsupported window action: {action}").into()),
             }
         }
-        _ => return Err("usage: marea-halley outputs | watch | window activate|restore ID".into()),
+        _ => return Err("usage: etta-halley outputs | watch | window activate|restore ID".into()),
     }
     Ok(())
 }
 
 fn main() {
     if let Err(error) = run() {
-        eprintln!("marea-halley: {error}");
+        eprintln!("etta-halley: {error}");
         std::process::exit(1);
     }
 }

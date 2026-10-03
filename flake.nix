@@ -1,5 +1,5 @@
 {
-  description = "Marea: a desktop companion that lives at the top of your screen, written in pleamar";
+  description = "Etta: a desktop companion for Halley, written in pleamar";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -25,25 +25,25 @@
     {
       packages = forAll (
         system: pkgs: rec {
-          marea = pkgs.callPackage ./nix/package.nix { pleamar = pleamar.packages.${system}.pleamar; };
+          etta = pkgs.callPackage ./nix/package.nix { pleamar = pleamar.packages.${system}.pleamar; };
           deriva-worker = pkgs.callPackage ./nix/deriva.nix { };
-          marea-halley = pkgs.callPackage ./nix/halley.nix { };
-          default = marea;
+          etta-halley = pkgs.callPackage ./nix/halley.nix { };
+          default = etta;
         }
       );
 
-      # `nix run github:k4ditano/marea-plm -- start`
+      # `nix run github:ely-id/etta -- start`
       apps = forAll (
         system: _pkgs: {
           default = {
             type = "app";
-            program = "${self.packages.${system}.marea}/bin/marea";
+            program = "${self.packages.${system}.etta}/bin/etta";
           };
         }
       );
 
       overlays.default = final: _prev: {
-        marea = final.callPackage ./nix/package.nix { pleamar = pleamar.packages.${final.stdenv.hostPlatform.system}.pleamar; };
+        etta = final.callPackage ./nix/package.nix { pleamar = pleamar.packages.${final.stdenv.hostPlatform.system}.pleamar; };
       };
     };
 }

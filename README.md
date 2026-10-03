@@ -1,186 +1,62 @@
-<div align = center>
+# Etta
 
-<img src="assets/header.svg" width="750" alt="Marea">
+Etta is a desktop companion for the [Halley](https://github.com/saltnpepper97/halley)
+compositor: a little ball with a face that lives at the top of your screen and
+is your whole shell — clock and battery, notifications, control center, finder,
+captures and recordings, lock screen. She is written in
+[pleamar](https://github.com/k4ditano/pleamar).
 
-<br>
+Her name comes from Halley's comet: the trail of debris 1P/Halley leaves behind
+gives the Eta Aquariids meteor shower. From *Eta*, Etta — the small character
+that lives alongside Halley.
 
-[![Badge License]][License]
-![Badge Language]
-![Badge Commit]
-[![Badge Issues]][Issues]
-[![Badge X]][X]
-[![Badge Ko-fi]][Ko-fi]
+Etta began as [Marea](https://github.com/k4ditano/marea-plm), by Abel. See
+[`NOTICE.md`](NOTICE.md) for what she keeps from Marea and what is new.
 
-<br>
-
-Marea is a desktop companion: a little ball with a face that lives at the top of
-your screen and is your whole shell — notifications, control center, finder,
-screenshots, lock screen — written in [pleamar], on any Wayland compositor.
-
-<br>
-
----
-
-**[<kbd> <br> Install <br> </kbd>][Install]**
-**[<kbd> <br> Use <br> </kbd>][Use]**
-**[<kbd> <br> pleamar <br> </kbd>][pleamar]**
-**[<kbd> <br> pleamar-wm <br> </kbd>][pleamar-wm]**
-
----
-
-<br>
-
-</div>
-
-# Features
-
-- **Notifications as drops**: they fall into her and wait there, one colour per
-  kind; hover and she shows the latest, open the swell to read them all, with
-  their actions. The *Haven* is do-not-disturb that keeps them for later.
-- **A control center that grows out of its cards**: Wi-Fi, Bluetooth, sound,
-  session, tray, calendar, focus, your AI agents' remaining quota (Claude,
-  Codex), settings — each page opens out of its own card.
-- **A finder for apps, files and folders**: `Super+Space`, type, Enter. Drag a
-  file out of it into any program.
-- **Screenshots and recording**: a piece of the screen, the screen or a window,
-  and screen recording, with their own animations and a card to keep them.
-- **Her own lock screen** (`ext-session-lock`), checked with PAM.
-- **She follows you**: to the monitor with the focus (or the mouse, in
-  [pleamar-wm]), leaping from one to the other.
-- **A face that lives**: she breathes, looks at the pointer, celebrates, gets
-  angry, sleeps, goes on adventures along the bottom of the screen, and wears
-  what you pick in her wardrobe.
-- **Three looks**: glass that bends what is behind, light glass that blurs it,
-  or classic and opaque.
-- **In [pleamar-wm]**: windows put away fall into her as drops and become little
-  stones with their app's icon; tiled or free windows from her menu.
-- **English and Spanish**, the system's language by default.
-- **Light**: the same Marea written in Quickshell used 336 MB and took 1.9 s to
-  show; this one, 81 MB and 175 ms ([`MEDIDAS.md`](MEDIDAS.md)).
-
-<br>
-
-<div align = center>
-
-# Gallery
-
-<br>
-
-![Preview Finder]
-
-<sub>Her finder, out of the ball: apps, files and folders.</sub>
-
-<br>
-<br>
-
-![Preview Desktop]
-
-<sub>At the top of a pleamar-wm desktop, peeking out over the windows.</sub>
-
-<br>
-<br>
-
-</div>
-
-# Install
-
-With [pleamar] and [pleamar-wm], in your home, from one line:
+## Run her
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/k4ditano/pleamar/main/install.sh | sh
+git clone https://github.com/ely-id/etta ~/Work/etta
+~/Work/etta/etta start            # her log goes to ~/.local/state/etta/etta.log
 ```
 
-That leaves `marea` in `~/.local/bin` and starts her with pleamar-wm. On
-**Hyprland** (or any compositor with layer-shell), start her with it and bind
-her keys:
+She needs pleamar 0.2.8 or newer on the `PATH`. On Halley she builds her small
+adapter (`halley/`) the first time she starts, if `cargo` is installed.
 
-```ini
-exec-once = marea start
-bind = SUPER, Space, exec, marea search
-bind = SUPER, L, exec, marea lock
-bind = , Print, exec, marea shot_region
-bind = SHIFT, Print, exec, marea shot_screen
-bind = CTRL, Print, exec, marea shot_window
-bind = SUPER SHIFT, C, exec, marea record_toggle
+In `halley.rune`:
+
+```rune
+autostart:
+  once "/home/YOU/Work/etta/etta start"
+end
+
+keybinds:
+  "$var.mod+space" "/home/YOU/Work/etta/etta search"
+  "$var.mod+shift+l" "/home/YOU/Work/etta/etta lock"
+  "$var.mod+shift+s" "/home/YOU/Work/etta/etta shot_region"
+  "$var.mod+shift+v" "/home/YOU/Work/etta/etta record_toggle"
+end
 ```
 
-`pleamar-update` keeps her up to date.
-
-Deriva, the page where she keeps what you drop on her, has its library in
-`deriva/` (`deriva-worker`, a local SQLite). She builds it herself the first
-time she starts, and again after an update, if Rust (`cargo`) is installed; it
-takes a minute, in the background. On Nix it comes built.
-
-On **Nix**: `nix run github:k4ditano/marea-plm -- start`, or `pkgs.marea` through
-this flake's `overlays.default`. On NixOS, [pleamar-wm]'s module brings her
-with the whole desktop.
-
-# Use
+## Talk to her
 
 ```sh
-marea start          # starts her; her log goes to ~/.local/state/marea-plm/marea.log
-marea status         # whether she is running
-marea stop
-marea report         # if she stutters: measures 30 s while you use her, writes a report to send us
-marea search         # any other word is an event she is told:
-marea lock           #   search, lock, shot_region, shot_screen, shot_window,
-marea shot_region    #   record_toggle, celebrate, rage, adventure…
+etta start | stop | status | report
+etta search | lock | shot_region | shot_screen | shot_window | record_toggle
+etta volume_up | volume_down | mute_output | mute_mic | bright_up | bright_down
 ```
 
-Click her for the control center, right-click for her menu. Her settings (look,
-home monitor, whether she follows you, language, wallpaper) are in the last
-card, and are saved in `~/.local/share/pleamar/marea/settings.json`.
+Click her for the control center, right-click for her menu. Her settings are
+saved in `~/.local/share/pleamar/etta/settings.json`.
 
-Two variables, and they are not the same:
+## How she is made
 
-- `MAREA_LOCK_WITH_EXIT=1` — the lock also opens with Esc, only after a minute,
-  and says so on screen: a way out while the lock screen is new.
-- `MAREA_TESTING=1` — locking, logging out, restarting and powering off are only
-  written to the log. For rehearsing; never on the one you use.
+One scene (`etta.plm`) and its logic (`etta.luau`); the design tokens and the
+pieces every panel is built from (`ui/`); her wardrobe (`wardrobe/`); her
+shaders (`shaders/`); wallpaper shaders for Halley (`wallpapers/`); the Halley
+adapter (`halley/`) and Deriva's library (`deriva/`).
 
-To try a change without touching the Marea you use: a copy of the scene with
-another name (so `pleamar --say` reaches the copy), and
-`pleamar --scene copy.plm --screen HDMI-A-1 --margin 390`.
+## License
 
-# How she is made
-
-One scene (`marea.plm`) and its logic (`marea.luau`), plus her translations
-(`lang/`), wardrobe (`wardrobe/`) and shaders (`shaders/`). This lives outside
-pleamar's repository on purpose: it is what anyone using pleamar would have —
-some `.plm`, their `.luau` next to them, and the program already built.
-[`ANIMACIONES.md`](ANIMACIONES.md) is how each animation is meant to feel, and
-[`MEDIDAS.md`](MEDIDAS.md) the measurements against Quickshell.
-
-# License
-
-Marea is under the [BSD 3-Clause License][License], like Hyprland.
-
-Contributions are welcome, made with AI or without it: see the [AI policy](AI_POLICY.md).
-
-Made by **[@k4ditano][X]** — follow along on X for what comes next.
-If it makes your desktop nicer, you can **[buy me a coffee on Ko-fi][Ko-fi]** ☕
-
-<!----------------------------------------------------------------------------->
-
-[Install]: #install
-[Use]: #use
-[pleamar]: https://github.com/k4ditano/pleamar
-[pleamar-wm]: https://github.com/k4ditano/pleamar-wm
-[License]: LICENSE
-[X]: https://x.com/k4ditano
-[Ko-fi]: https://ko-fi.com/k4ditano
-[Issues]: https://github.com/k4ditano/marea-plm/issues
-
-<!----------------------------------{ Images }--------------------------------->
-
-[Preview Finder]: assets/finder.png
-[Preview Desktop]: assets/desktop.png
-
-<!----------------------------------{ Badges }--------------------------------->
-
-[Badge License]: https://img.shields.io/badge/license-BSD--3--Clause-9ed6bd?style=flat-square
-[Badge Language]: https://img.shields.io/badge/made%20with-pleamar%20%2B%20Luau-2c7684?style=flat-square
-[Badge Commit]: https://img.shields.io/github/last-commit/k4ditano/marea-plm?style=flat-square&color=9ed6bd
-[Badge Issues]: https://img.shields.io/github/issues/k4ditano/marea-plm?style=flat-square&color=2c7684
-[Badge X]: https://img.shields.io/badge/follow-@k4ditano-000000?style=flat-square&logo=x
-[Badge Ko-fi]: https://img.shields.io/badge/support-Ko--fi-ff5e5b?style=flat-square&logo=ko-fi&logoColor=white
+BSD 3-Clause, keeping Marea's notice. The Halley adapter executable is
+GPL-3.0-only. Details in [`NOTICE.md`](NOTICE.md).

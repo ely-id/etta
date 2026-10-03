@@ -13,7 +13,7 @@ fact.compositor_halley = on_halley
 
 local function window_call(action, id)
     if on_halley then
-        run("marea-halley", { "window", action, tostring(id) }, function(_, code)
+        run("etta-halley", { "window", action, tostring(id) }, function(_, code)
             if code ~= 0 then log("Halley · could not " .. action .. " window " .. tostring(id)) end
         end)
     else
@@ -353,7 +353,7 @@ local function own_matches(q)
             end
         end
         if hit and #found < 3 then
-            found[#found + 1] = { name = name, kind_label = "Marea", icon = "", glyph = o[3], own = k }
+            found[#found + 1] = { name = name, kind_label = "Etta", icon = "", glyph = o[3], own = k }
         end
     end
     return found
@@ -1173,7 +1173,7 @@ if sys.watch("notifications", from_service) then
     log("notifications · the real ones: this is who receives them now")
 else
     log("demo · the notices are made up: pleamar gives up the place to whoever already has it")
-    log("demo · another batch: pleamar --say marea \"emit another_batch\"")
+    log("demo · another batch: pleamar --say etta \"emit another_batch\"")
     after(600, playBatch)
 end
 
@@ -1610,7 +1610,7 @@ on("open_page", function(k) log("page", k) end)
 --  makes powering off and rebooting only be noted down, and that has no reason
 --  to go together with the lock opening with Esc. The first real locks carry
 --  the exit; when the variable is removed, it stops being there.
-fact.with_exit = (sys.ask("env", "MAREA_LOCK_WITH_EXIT") or "") ~= "" or (sys.ask("env", "MAREA_TESTING") or "") ~= ""
+fact.with_exit = (sys.ask("env", "ETTA_LOCK_WITH_EXIT") or "") ~= "" or (sys.ask("env", "ETTA_TESTING") or "") ~= ""
 --  A rule cannot touch a text, so emptying the box is this side's business:
 --  when the lock goes on and when it comes off, let nothing be left written.
 on("fact:locked", function() text.password = "" end)
@@ -1634,7 +1634,7 @@ on("submit:password", function(value)
 end)
 
 local commands = { "session.lock", "session.suspend", "session.logout", "session.reboot", "session.poweroff" }
-local testing = sys.ask("env", "MAREA_TESTING")
+local testing = sys.ask("env", "ETTA_TESTING")
 
 on("session", function(k)
     local command = commands[k]
@@ -1734,7 +1734,7 @@ end
 -- public SDK for focus and ordinary Wayland output metadata for capture bounds.
 local function monitor_info(done)
     if on_halley then
-        run("marea-halley", { "outputs" }, function(out, code)
+        run("etta-halley", { "outputs" }, function(out, code)
             local ok, list = pcall(json.decode, out or "")
             if code ~= 0 or not ok or type(list) ~= "table" then
                 log("Halley · could not enumerate outputs")
@@ -1762,7 +1762,7 @@ end
 --  In the pictures folder the session names —`~/Pictures` in English,
 --  `~/Imágenes` in Spanish—, as the videos do.
 local PHOTOS = home_dir .. "/Imágenes/Marea"
-local FRAME = (sys.ask("env", "XDG_RUNTIME_DIR") or "/tmp") .. "/marea-plm-frame.png"
+local FRAME = (sys.ask("env", "XDG_RUNTIME_DIR") or "/tmp") .. "/etta-frame.png"
 run("xdg-user-dir", { "PICTURES" }, function(d)
     if d and d ~= "" then PHOTOS = d .. "/Marea" end
     run("mkdir", { "-p", PHOTOS })
@@ -2148,7 +2148,7 @@ end
 --  few at a time; and picking one makes two more, the old and the new one at
 --  the monitor's size and cut the way `swaybg -m fill` cuts them, so that
 --  when the tide has passed and `swaybg` takes over nothing moves.
-local WALL_CACHE = home_dir .. "/.cache/marea/walls"
+local WALL_CACHE = home_dir .. "/.cache/etta/walls"
 run("mkdir", { "-p", WALL_CACHE }, function() end)
 local wall_list, wall_offset, wall_thumbs, wall_making = {}, 0, {}, {}
 local wall_busy = false
@@ -2221,7 +2221,7 @@ local WALL_DIRS = { home_dir .. "/Imágenes", home_dir .. "/Pictures", home_dir 
 on("walls_open", function()
     local args = { "--type", "f", "--max-depth", "3", "--color", "never",
                    "-e", "png", "-e", "jpg", "-e", "jpeg", "-e", "webp",
-                   "--exclude", "Capturas", "--exclude", "Screenshots", "--exclude", "Marea", "--exclude", "pokes", ".", }
+                   "--exclude", "Capturas", "--exclude", "Screenshots", "--exclude", "Etta", "--exclude", "pokes", ".", }
     for _, d in ipairs(WALL_DIRS) do args[#args + 1] = d end
     run("fd", args, function(out)
         local list, seen_walls = {}, {}
@@ -2410,14 +2410,14 @@ local function from_window(v)
 end
 if on_halley then
     local function watch()
-        local ok = pcall(spawn, "marea-halley", { "watch" }, function(line)
+        local ok = pcall(spawn, "etta-halley", { "watch" }, function(line)
             local valid, value = pcall(json.decode, line)
             if valid and type(value) == "table" then from_window(value) end
         end, function()
             from_window(nil)
             after(1000, watch)
         end)
-        if not ok then log("Halley · marea-halley is unavailable") end
+        if not ok then log("Halley · etta-halley is unavailable") end
     end
     watch()
 elseif not sys.watch("window", from_window) then

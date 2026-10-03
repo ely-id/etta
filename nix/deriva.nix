@@ -1,4 +1,4 @@
-# Deriva: Marea's library of what is dropped on her (a local SQLite, the
+# Deriva: Etta's library of what is dropped on her (a local SQLite, the
 # files kept by their hash). Her page for it asks this program.
 { lib, rustPlatform }:
 rustPlatform.buildRustPackage {
@@ -7,8 +7,8 @@ rustPlatform.buildRustPackage {
   src = ../deriva;
   cargoLock.lockFile = ../deriva/Cargo.lock;
   meta = {
-    description = "Marea's local library: keeps what is dropped on her, and finds it again";
-    homepage = "https://github.com/k4ditano/marea-plm";
+    description = "Etta's local library: keeps what is dropped on her, and finds it again";
+    homepage = "https://github.com/ely-id/etta";
     license = lib.licenses.mit;
     mainProgram = "deriva-worker";
     platforms = lib.platforms.linux;
