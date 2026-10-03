@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44">
+  <!-- A slice of pizza, crust up. -->
+  <g id="slice">
+    <path d="M8 13 Q22 5 36 13 L22 41 Z" fill="#e8c07a"/>
+    <path d="M27 30 Q27.5 34 26 35.5" fill="none" stroke="#e8c07a" stroke-width="2" stroke-linecap="round"/>
+  </g>
+  <g id="crust">
+    <path d="M6.5 11.5 Q22 2 37.5 11.5 L36 16 Q22 7.5 8 16 Z" fill="#c98a4b"/>
+  </g>
+  <g id="pepperoni">
+    <circle cx="17.5" cy="18.5" r="3" fill="#c9563f"/>
+    <circle cx="26.5" cy="19.5" r="2.6" fill="#c9563f"/>
+    <circle cx="22" cy="28" r="2.4" fill="#c9563f"/>
+  </g>
+</svg>

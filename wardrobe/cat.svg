@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Cat ears, of her own colour, growing from her head (a 46 px ball centred at 32,32). -->
+  <g id="ears">
+    <path d="M11 22.5 L5 3.5 L22.5 10.5 Z" fill="#151616" stroke="#2c3030" stroke-width="1" stroke-linejoin="round"/>
+    <path d="M53 22.5 L59 3.5 L41.5 10.5 Z" fill="#151616" stroke="#2c3030" stroke-width="1" stroke-linejoin="round"/>
+  </g>
+  <g id="inner">
+    <path d="M12.3 18.5 L8.6 8 L18.6 12.6 Z" fill="#e89a8f"/>
+    <path d="M51.7 18.5 L55.4 8 L45.4 12.6 Z" fill="#e89a8f"/>
+  </g>
+</svg>

@@ -991,42 +991,97 @@ library Panels {
     }
 
     // ── her wardrobe ─────────────────────────────────────────────
-    //  The pieces, each drawn as itself —the same SVG she wears—, and the way
-    //  to the wallpaper. Her preview, on the left, is drawn by the scene: it
-    //  is her.
-    component Piece(name: text, how: text, on: number, press: event) {
-        size: 172, 136
-        zone box touch { from: 0, 0; size: 172, 136; corner: 16; cursor: pointer; active: page == wardrobe and paging > 0.9 }
-        box { from: 0, 0; size: 172, 136; corner: 16; color: mix(mix(tk.s1, tk.s2, touch.hover), #1b2420, on) }
-        box { from: 0, 0; size: 172, 136; corner: 16; stroke: 1.5; color: tk.mint; opacity: on }
-        children { move: 86, 46 }
-        text name { family: "Geist"; at: 86, 92; anchor: center; size: 15; weight: 600; color: tk.ink }
-        text how { family: "Geist"; at: 86, 113; anchor: center; size: 12; weight: 500; width: 156; lines: 1; align: center; color: tk.ink3 }
-        on press touch { emit press }
+    //  Five spots, one piece in each. A tab per spot, its pieces drawn as
+    //  themselves —the same SVG she wears—, and her preview on the left, which
+    //  the scene draws: it is her.
+    component WTile(i: number) {
+        size: 108, 112
+        let sel = if(ward.sel == i, 1, 0)
+        zone box touch { from: 0, 0; size: 108, 112; corner: 14; cursor: pointer; active: page == wardrobe and paging > 0.9 }
+        box { from: 0, 0; size: 108, 112; corner: 14; color: mix(mix(tk.s1, tk.s2, touch.hover), #1b2420, sel) }
+        box { from: 0, 0; size: 108, 112; corner: 14; stroke: 1.5; color: tk.mint; opacity: sel }
+        //  None: an empty ring.
+        ellipse { at: 54, 46; radius: 16; stroke: 1.6; color: tk.ink3; opacity: if(i == 0, 0.8, 0) }
+        line { from: 43, 57; to: 65, 35; width: 1.6; color: tk.ink3; opacity: if(i == 0, 0.8, 0) }
+        //  The ears and the neck are shown on a small her, to say where they go.
+        group {
+            show: i > 0 and (ward.tab == 2 or ward.tab == 3)
+            ellipse { at: 54, 46; radius: 19; color: tk.body }
+            ellipse { at: 54, 46; radius: 19; stroke: 1; color: #ffffff; opacity: 10% }
+            box { at: 50.5, 46.5; size: 3.6, 9; corner: 1.8; color: tk.ink }
+            box { at: 57.5, 46.5; size: 3.6, 9; corner: 1.8; color: tk.ink }
+        }
+        group {
+            show: ward.tab == 0
+            figure hat { at: 54, 46; size: 64, 48; show: i == 1 }
+            figure cap { at: 54, 46; size: 64, 48; show: i == 2 }
+            figure beanie { at: 54, 46; size: 64, 48; show: i == 3 }
+            figure crown { at: 54, 46; size: 64, 48; show: i == 4 }
+            figure party { at: 54, 46; size: 64, 48; show: i == 5 }
+        }
+        group {
+            show: ward.tab == 1
+            figure glasses { at: 54, 46; size: 66, 36; show: i == 1 }
+            figure shades { at: 54, 46; size: 66, 36; show: i == 2 }
+            figure stars { at: 54, 46; size: 66, 36; show: i == 3 }
+            figure monocle { at: 54, 46; size: 66, 36; show: i == 4 }
+        }
+        group {
+            show: ward.tab == 2
+            figure phones { at: 54, 46; size: 53, 53; show: i == 1 }
+            figure buds { at: 54, 46; size: 53, 53; show: i == 2 }
+            figure retro { at: 54, 46; size: 53, 53; show: i == 3 }
+            figure cat { at: 54, 46; size: 53, 53; show: i == 4 }
+        }
+        group {
+            show: ward.tab == 3
+            figure scarf { at: 54, 46; size: 53, 53; show: i == 1 }
+            figure bowtie { at: 54, 46; size: 53, 53; show: i == 2 }
+        }
+        group {
+            show: ward.tab == 4
+            figure mug { at: 54, 46; size: 50, 50; show: i == 1 }
+            figure soda { at: 54, 46; size: 50, 50; show: i == 2 }
+            figure bottle { at: 54, 46; size: 50, 50; show: i == 3 }
+            figure pizza { at: 54, 46; size: 50, 50; show: i == 4 }
+            figure icecream { at: 54, 46; size: 50, 50; show: i == 5 }
+        }
+        text pick(if(i == 0, 0, ward.tab * 5 + i), "None",
+                  "Hat", "Cap", "Beanie", "Crown", "Party hat",
+                  "Glasses", "Shades", "Stars", "Monocle", "",
+                  "Headphones", "Earbuds", "Retro", "Cat ears", "",
+                  "Scarf", "Bow tie", "", "", "",
+                  "Mug", "Soda", "Bottle", "Pizza", "Ice cream") { family: "Geist"; at: 54, 92; anchor: center; size: 13; weight: 500; color: mix(tk.ink2, tk.ink, max(sel, touch.hover)) }
+        on press touch { emit wear_pick(i) }
     }
 
     component WardrobePage() {
-        size: 620, 600
-        PageHead("Wardrobe")
+        size: 620, 500
+        PageHead("Wardrobe") {
+            group { move: 424, 16; show: wear.n > 0; Btn("Take all off", undress, w: 120, kind: 3, h: 32) }
+        }
+        //  Her preview's stage; the scene draws her on it.
         box { from: 20, 68; size: 220, 300; corner: 18; color: tk.s1 }
-        text "Preview" { family: "Geist"; at: 130, 350; anchor: center; size: 12; weight: 500; color: tk.ink3 }
-        grid {
-            at: 256, 68; columns: 2; gap: 12; width: 356; row: 136
-            Piece("Hat", "Rests, slips when she leaps", worn.1, wear_hat) { figure hat { at: 0, 0; size: 48, 36 } }
-            Piece("Glasses", "Stay put, whatever she does", worn.2, wear_glasses) { figure glasses { at: 0, 0; size: 58, 32 } }
-            Piece("Mug", "Tags along beside her", worn.3, wear_mug) { figure mug { at: 0, 0; size: 40, 40 } }
-            Piece("Headphones", "On air while sharing", worn.4, wear_phones) { figure phones { at: 0, 0; size: 44, 44 } }
+        text "{wear.n, 0} on" { family: "Geist"; at: 130, 350; anchor: center; size: 12; weight: 500; color: tk.ink3 }
+        group { move: 256, 68; Seg(ward.tab, "Head", "Face", pick_tab, c: "Ears", d: "Neck", e: "Beside", count: 5, w: 344) }
+        repeat i in 0..6 {
+            group {
+                show: i < pick(ward.tab, 6, 5, 5, 3, 6)
+                move: 256 + mod(i, 3) * 118, 118 + floor(i / 3) * 120
+                WTile(i)
+            }
         }
-        zone box wallrow { from: 20, 384; size: 580, 72; corner: 16; cursor: pointer; active: page == wardrobe and paging > 0.9 }
-        box { from: 20, 384; size: 580, 72; corner: 16; color: mix(tk.s1, tk.s2, wallrow.hover) }
+        text pick(ward.tab, "Rests on her head, and slips when she leaps.", "Stays put on her face, whatever she does.", "Round her head. The streamer ones go on air when you share.", "Round her neck, and squashes with her.", "Keeps her company at her left, clear of the clock.") { family: "Geist"; at: 258, 372; anchor: left center; size: 12; weight: 500; width: 340; lines: 1; color: tk.ink3 }
+        zone box wallrow { from: 20, 392; size: 580, 72; corner: 16; cursor: pointer; active: page == wardrobe and paging > 0.9 }
+        box { from: 20, 392; size: 580, 72; corner: 16; color: mix(tk.s1, tk.s2, wallrow.hover) }
         group {
-            clip box { from: 32, 396; size: 86, 48; corner: 8 }
-            box { from: 32, 396; size: 86, 48; color: tk.s2 }
-            for w in wallnow { image w.thumb { at: 32, 396; size: 86, 48; show: w.ready } }
+            clip box { from: 32, 404; size: 86, 48; corner: 8 }
+            box { from: 32, 404; size: 86, 48; color: tk.s2 }
+            for w in wallnow { image w.thumb { at: 32, 404; size: 86, 48; show: w.ready } }
         }
-        text "Wallpaper" { family: "Geist"; at: 134, 410; anchor: left center; size: 14; weight: 500; color: tk.ink }
-        text wall.now { family: "Geist"; at: 134, 430; anchor: left center; size: 12; weight: 500; width: 400; lines: 1; color: tk.ink3 }
-        figure Kit.i_chev_r { at: 580, 420; size: 16, 16; color: tk.ink3 }
+        text "Wallpaper" { family: "Geist"; at: 134, 418; anchor: left center; size: 14; weight: 500; color: tk.ink }
+        text wall.now { family: "Geist"; at: 134, 438; anchor: left center; size: 12; weight: 500; width: 400; lines: 1; color: tk.ink3 }
+        figure Kit.i_chev_r { at: 580, 428; size: 16, 16; color: tk.ink3 }
         on press wallrow { emit show_walls }
     }
 

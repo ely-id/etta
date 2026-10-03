@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="48" viewBox="0 0 64 48">
+  <!-- A cap, on the same canvas as the hat: her head's top sits at y 32. -->
+  <g id="crown">
+    <path d="M13 38 C13 13 51 13 51 38 Z" fill="#4a78a8"/>
+    <path d="M32 15.5 C30.5 22 29.5 30 29.5 38" fill="none" stroke="#3d6890" stroke-width="1.4"/>
+  </g>
+  <g id="visor">
+    <path d="M44 33.5 C52 32.5 60 34.5 62.5 39 C58 41.5 50 40.5 44 39.5 Z" fill="#36597f"/>
+  </g>
+  <g id="button">
+    <circle cx="32" cy="15" r="2.6" fill="#e8c07a"/>
+  </g>
+</svg>

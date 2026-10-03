@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="44" height="24" viewBox="0 0 44 24">
+  <!-- A monocle on her right eye, and its little chain. -->
+  <g id="chain">
+    <path d="M35.2 15 C37 18 37.5 21 36.5 24" fill="none" stroke="#e8c07a" stroke-width="1" stroke-dasharray="1.6 1.4"/>
+  </g>
+  <g id="lens">
+    <circle cx="28.5" cy="12" r="7.6" fill="#ffffff" fill-opacity="0.08" stroke="#e8c07a" stroke-width="1.8"/>
+    <path d="M24.6 8.6 A5 5 0 0 1 28 6.6" fill="none" stroke="#ffffff" stroke-width="1.1" stroke-linecap="round" opacity="0.45"/>
+  </g>
+</svg>

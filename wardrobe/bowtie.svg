@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- A bow tie under her chin (a 46 px ball centred at 32,32). -->
+  <g id="bow">
+    <path d="M32 54 L23 49 L23 59 Z" fill="#b5a0f2"/>
+    <path d="M32 54 L41 49 L41 59 Z" fill="#b5a0f2"/>
+    <rect x="29.6" y="51.6" width="4.8" height="4.8" rx="1.4" fill="#957fe0"/>
+  </g>
+</svg>

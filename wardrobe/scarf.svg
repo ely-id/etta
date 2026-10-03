@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- A striped scarf round the bottom of her (a 46 px ball centred at 32,32). -->
+  <g id="tail">
+    <path d="M39.5 51 L46.5 50 L49 61.5 L42 62.8 Z" fill="#d95a4c"/>
+    <path d="M42.2 62.6 L42 64 M44.6 62.2 L44.5 63.8 M47 61.8 L47.1 63.4" stroke="#d95a4c" stroke-width="1.1" stroke-linecap="round"/>
+  </g>
+  <g id="band">
+    <path d="M10.5 40.5 Q32 56 53.5 40.5 L55 47 Q32 63.5 9 47 Z" fill="#ef6b5e"/>
+    <path d="M19.4 47.6 L22.6 48.2 L22.2 55.4 L18.9 54.5 Z" fill="#f3f5f4"/>
+    <path d="M41.4 48.2 L44.6 47.6 L45.1 54.5 L41.8 55.4 Z" fill="#f3f5f4"/>
+  </g>
+</svg>

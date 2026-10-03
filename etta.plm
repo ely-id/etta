@@ -3146,23 +3146,77 @@ scene Etta {
     //  tinted, melts and turns on its pivot, and the physics is given by the
     //  SPOT: the hat rests, the glasses are stuck on, the mug keeps her company.
     figure hat = file "wardrobe/hat.svg"
+    figure cap = file "wardrobe/cap.svg"
+    figure beanie = file "wardrobe/beanie.svg"
+    figure crown = file "wardrobe/crown.svg"
+    figure party = file "wardrobe/party.svg"
     figure glasses = file "wardrobe/glasses.svg"
-    figure mug = file "wardrobe/mug.svg"
+    figure shades = file "wardrobe/shades.svg"
+    figure stars = file "wardrobe/stars.svg"
+    figure monocle = file "wardrobe/monocle.svg"
     figure phones = file "wardrobe/phones.svg"
+    figure buds = file "wardrobe/buds.svg"
+    figure retro = file "wardrobe/retro.svg"
+    figure cat = file "wardrobe/cat.svg"
+    figure scarf = file "wardrobe/scarf.svg"
+    figure bowtie = file "wardrobe/bowtie.svg"
+    figure mug = file "wardrobe/mug.svg"
+    figure soda = file "wardrobe/soda.svg"
+    figure bottle = file "wardrobe/bottle.svg"
+    figure pizza = file "wardrobe/pizza.svg"
+    figure icecream = file "wardrobe/icecream.svg"
 
-    fact wears.hat = false
-    fact wears.glasses = false
-    fact wears.mug = false
-    fact wears.phones = false
-    //  Putting it on is not switching it on: it falls on top with its spring, and
-    //  on taking it off it leaves the way it came.
-    repeat k in 1..5 {
-        prop worn.$k = 0 ~lively
-    }
-    follow worn.1 = if(wears.hat, 1, 0)
-    follow worn.2 = if(wears.glasses, 1, 0)
-    follow worn.3 = if(wears.mug, 1, 0)
-    follow worn.4 = if(wears.phones, 1, 0)
+    //  One piece per spot, and the spot is what decides how it chases: on her
+    //  head it rests, on her face and round her head it is stuck on, beside
+    //  her it keeps her company.
+    fact wear.head: none | h_hat | h_cap | h_beanie | h_crown | h_party = none
+    fact wear.face: none | f_glasses | f_shades | f_stars | f_monocle = none
+    fact wear.ears: none | e_phones | e_buds | e_retro | e_cat = none
+    fact wear.neck: none | n_scarf | n_bowtie = none
+    fact wear.side: none | s_mug | s_soda | s_bottle | s_pizza | s_cream = none
+    //  Putting it on is not switching it on: it falls on top with its spring,
+    //  and on taking it off it leaves the way it came. Changing one for another
+    //  in the same spot, one leaves while the other arrives.
+    prop w.hat = 0 ~lively
+    prop w.cap = 0 ~lively
+    prop w.beanie = 0 ~lively
+    prop w.crown = 0 ~lively
+    prop w.party = 0 ~lively
+    prop w.glasses = 0 ~lively
+    prop w.shades = 0 ~lively
+    prop w.stars = 0 ~lively
+    prop w.monocle = 0 ~lively
+    prop w.phones = 0 ~lively
+    prop w.buds = 0 ~lively
+    prop w.retro = 0 ~lively
+    prop w.cat = 0 ~lively
+    prop w.scarf = 0 ~lively
+    prop w.bowtie = 0 ~lively
+    prop w.mug = 0 ~lively
+    prop w.soda = 0 ~lively
+    prop w.bottle = 0 ~lively
+    prop w.pizza = 0 ~lively
+    prop w.cream = 0 ~lively
+    follow w.hat = if(wear.head == h_hat, 1, 0)
+    follow w.cap = if(wear.head == h_cap, 1, 0)
+    follow w.beanie = if(wear.head == h_beanie, 1, 0)
+    follow w.crown = if(wear.head == h_crown, 1, 0)
+    follow w.party = if(wear.head == h_party, 1, 0)
+    follow w.glasses = if(wear.face == f_glasses, 1, 0)
+    follow w.shades = if(wear.face == f_shades, 1, 0)
+    follow w.stars = if(wear.face == f_stars, 1, 0)
+    follow w.monocle = if(wear.face == f_monocle, 1, 0)
+    follow w.phones = if(wear.ears == e_phones, 1, 0)
+    follow w.buds = if(wear.ears == e_buds, 1, 0)
+    follow w.retro = if(wear.ears == e_retro, 1, 0)
+    follow w.cat = if(wear.ears == e_cat, 1, 0)
+    follow w.scarf = if(wear.neck == n_scarf, 1, 0)
+    follow w.bowtie = if(wear.neck == n_bowtie, 1, 0)
+    follow w.mug = if(wear.side == s_mug, 1, 0)
+    follow w.soda = if(wear.side == s_soda, 1, 0)
+    follow w.bottle = if(wear.side == s_bottle, 1, 0)
+    follow w.pizza = if(wear.side == s_pizza, 1, 0)
+    follow w.cream = if(wear.side == s_cream, 1, 0)
     //  The headphones' light: mint at rest, and on air —coral, breathing—
     //  while the screen is shared.
     prop on_air = 0 ~180ms
@@ -3172,32 +3226,46 @@ scene Etta {
     //  The sway of what keeps her company: it floats even if she keeps still.
     prop sway = 0
     wave sway = 1 at 0.9
+    //  And where it keeps her company: at her left. Her right is the clock's,
+    //  the notices' and the panels': what keeps her company never sits on
+    //  what you read.
+    //  The stones —windows put away— line up at her left too: it waits after
+    //  the last one, and moves along when another lands.
+    prop stones.n = 0 ~calm
+    follow stones.n = stone.0 + stone.1 + stone.2 + stone.3 + stone.4 + stone.5
+    let side.apart = -(r + 26 + stones.n * 34) / pk
 
     //  Everything she wears grows with her: drawn at 46, scaled around her.
     group {
         pivot: cx, cy_actual
         scale: pk, pk
         //  On top: it rests on her head, arrives late and tilts from the lag.
-        Perched(cx, cy_actual, gaze.x, worn.1, lift: 30) {
+        Perched(cx, cy_actual, gaze.x, w.hat, lift: 30) {
             figure hat.brim     { at: 0, 0; size: 58, 43 }
             figure hat.crown    { at: 0, 0; size: 58, 43 }
             figure hat.pompom   { at: 0, 0; size: 58, 43 }
         }
-        //  On her face: it chases nothing, it inherits what is hers. What is passed
-        //  to it is **her** turn and squash, with her centre as pivot, and the piece
-        //  is placed inside: that way the squash squashes it as it squashes the
-        //  face, and not around itself.
-        //
-        //  And they go where her eyes are: 2.5 px below her centre, with the same
-        //  gaze as them. Before they were 2 px ABOVE and with half the gaze, so they
-        //  stayed on her forehead and looked the other way.
-        Pinned(cx, cy_actual, tilt + lean, sx, sy, worn.2) {
+        Perched(cx, cy_actual, gaze.x, w.cap, lift: 30) { figure cap { at: 0, 0; size: 58, 43 } }
+        Perched(cx, cy_actual, gaze.x, w.beanie, lift: 30) { figure beanie { at: 0, 0; size: 58, 43 } }
+        Perched(cx, cy_actual, gaze.x, w.crown, lift: 30) { figure crown { at: 0, 0; size: 58, 43 } }
+        Perched(cx, cy_actual, gaze.x, w.party, lift: 30) { figure party { at: 0, 0; size: 58, 43 } }
+        //  On her face: it chases nothing, it inherits what is hers. They go
+        //  where her eyes are, with the same gaze as them.
+        Pinned(cx, cy_actual, tilt + lean, sx, sy, w.glasses) {
             figure glasses { at: face.dx, 2.5 + face.dy + look.y + face.sink; size: 44, 24 }
         }
-        //  Over her head and round it, stuck on as the glasses are: they squash and
-        //  turn with her. They do not follow her gaze: they are on her head, not on
-        //  her eyes.
-        Pinned(cx, cy_actual, tilt + lean, sx, sy, worn.4) {
+        Pinned(cx, cy_actual, tilt + lean, sx, sy, w.shades) {
+            figure shades { at: face.dx, 2.5 + face.dy + look.y + face.sink; size: 44, 24 }
+        }
+        Pinned(cx, cy_actual, tilt + lean, sx, sy, w.stars) {
+            figure stars { at: face.dx, 2.5 + face.dy + look.y + face.sink; size: 44, 24 }
+        }
+        Pinned(cx, cy_actual, tilt + lean, sx, sy, w.monocle) {
+            figure monocle { at: face.dx, 2.5 + face.dy + look.y + face.sink; size: 44, 24 }
+        }
+        //  Round her head, stuck on as the glasses are: they squash and turn
+        //  with her, but do not follow her gaze.
+        Pinned(cx, cy_actual, tilt + lean, sx, sy, w.phones) {
             figure phones.band   { at: 0, 0; size: 64, 64 }
             figure phones.cups   { at: 0, 0; size: 64, 64 }
             figure phones.accent { at: 0, 0; size: 64, 64 }
@@ -3205,10 +3273,54 @@ scene Etta {
             ellipse { at: -6.8, 21.2; radius: 4.5 + 1.5 * air_glow; color: #ef7a66; opacity: on_air * (22% + 18% * air_glow) }
             figure phones.led    { at: 0, 0; size: 64, 64; color: mix(#9ed6bd, #ef7a66, on_air) }
         }
+        Pinned(cx, cy_actual, tilt + lean, sx, sy, w.buds) { figure buds { at: 0, 0; size: 64, 64 } }
+        Pinned(cx, cy_actual, tilt + lean, sx, sy, w.retro) { figure retro { at: 0, 0; size: 64, 64 } }
+        Pinned(cx, cy_actual, tilt + lean, sx, sy, w.cat) { figure cat { at: 0, 0; size: 64, 64 } }
+        //  Round her neck: the same, lower down.
+        Pinned(cx, cy_actual, tilt + lean, sx, sy, w.scarf) { figure scarf { at: 0, 0; size: 64, 64 } }
+        Pinned(cx, cy_actual, tilt + lean, sx, sy, w.bowtie) { figure bowtie { at: 0, 0; size: 64, 64 } }
         //  Beside her: it keeps her company, stays behind and floats.
-        Tagalong(cx, cy_actual, worn.3, sway, apart: 42) {
-            figure mug { at: 0, 0; size: 34, 34 }
+        Tagalong(cx, cy_actual, w.mug, sway, apart: side.apart) { figure mug { at: 0, 0; size: 34, 34 } }
+        Tagalong(cx, cy_actual, w.soda, sway, apart: side.apart) { figure soda { at: 0, 0; size: 34, 34 } }
+        Tagalong(cx, cy_actual, w.bottle, sway, apart: side.apart) { figure bottle { at: 0, 0; size: 34, 34 } }
+        Tagalong(cx, cy_actual, w.pizza, sway, apart: side.apart) { figure pizza { at: 0, 0; size: 34, 34 } }
+        Tagalong(cx, cy_actual, w.cream, sway, apart: side.apart) { figure icecream { at: 0, 0; size: 34, 34 } }
+    }
+
+    //  The same outfit, still, for the wardrobe's preview: drawn at 46 around
+    //  ox, oy, and scaled by whoever places it.
+    component Outfit(ox: number, oy: number) {
+        size: 0, 0
+        group { move: ox, oy - 30; opacity: w.hat
+            figure hat.brim { at: 0, 0; size: 58, 43 }
+            figure hat.crown { at: 0, 0; size: 58, 43 }
+            figure hat.pompom { at: 0, 0; size: 58, 43 }
         }
+        group { move: ox, oy - 30; opacity: w.cap; figure cap { at: 0, 0; size: 58, 43 } }
+        group { move: ox, oy - 30; opacity: w.beanie; figure beanie { at: 0, 0; size: 58, 43 } }
+        group { move: ox, oy - 30; opacity: w.crown; figure crown { at: 0, 0; size: 58, 43 } }
+        group { move: ox, oy - 30; opacity: w.party; figure party { at: 0, 0; size: 58, 43 } }
+        group { move: ox, oy + 2.5; opacity: w.glasses; figure glasses { at: 0, 0; size: 44, 24 } }
+        group { move: ox, oy + 2.5; opacity: w.shades; figure shades { at: 0, 0; size: 44, 24 } }
+        group { move: ox, oy + 2.5; opacity: w.stars; figure stars { at: 0, 0; size: 44, 24 } }
+        group { move: ox, oy + 2.5; opacity: w.monocle; figure monocle { at: 0, 0; size: 44, 24 } }
+        group { move: ox, oy; opacity: w.phones
+            figure phones.band { at: 0, 0; size: 64, 64 }
+            figure phones.cups { at: 0, 0; size: 64, 64 }
+            figure phones.accent { at: 0, 0; size: 64, 64 }
+            figure phones.boom { at: 0, 0; size: 64, 64 }
+            figure phones.led { at: 0, 0; size: 64, 64; color: mix(#9ed6bd, #ef7a66, on_air) }
+        }
+        group { move: ox, oy; opacity: w.buds; figure buds { at: 0, 0; size: 64, 64 } }
+        group { move: ox, oy; opacity: w.retro; figure retro { at: 0, 0; size: 64, 64 } }
+        group { move: ox, oy; opacity: w.cat; figure cat { at: 0, 0; size: 64, 64 } }
+        group { move: ox, oy; opacity: w.scarf; figure scarf { at: 0, 0; size: 64, 64 } }
+        group { move: ox, oy; opacity: w.bowtie; figure bowtie { at: 0, 0; size: 64, 64 } }
+        group { move: ox - 31, oy + 8 + 2 * sway; opacity: w.mug; figure mug { at: 0, 0; size: 34, 34 } }
+        group { move: ox - 31, oy + 8 + 2 * sway; opacity: w.soda; figure soda { at: 0, 0; size: 34, 34 } }
+        group { move: ox - 31, oy + 8 + 2 * sway; opacity: w.bottle; figure bottle { at: 0, 0; size: 34, 34 } }
+        group { move: ox - 31, oy + 8 + 2 * sway; opacity: w.pizza; figure pizza { at: 0, 0; size: 34, 34 } }
+        group { move: ox - 31, oy + 8 + 2 * sway; opacity: w.cream; figure icecream { at: 0, 0; size: 34, 34 } }
     }
 
     // ── what is seen of the finder ───────────────────────────────
@@ -3553,7 +3665,7 @@ scene Etta {
     prop card.W = 620 ~240ms
     prop card.H = 700 ~240ms
     follow card.W = if(page == walls, 700, 620)
-    follow card.H = pick(pg.size, 700, 716, 560, 760, 640, 600, 520, 760)
+    follow card.H = pick(pg.size, 700, 716, 560, 760, 640, 500, 520, 760)
     let card.w = card.W * card
     let card.h = card.H * card
     //  The corner: the panel's as soon as there is a card, and rounder and
@@ -3676,10 +3788,6 @@ scene Etta {
     event pick_hcat3
     event pick_hcat4
     event walls_rescan ->
-    event wear_hat
-    event wear_glasses
-    event wear_mug
-    event wear_phones
 
     //  The quick settings that are new in Etta: keeping the screen awake,
     //  the power profile and the night light. The logic runs them
@@ -3743,7 +3851,7 @@ scene Etta {
     let size.k = if(pet.size == s46, 0, if(pet.size == s52, 1, if(pet.size == s56, 2, 3)))
     let look.k = if(skin == classic, 0, if(skin == liquid, 1, 2))
     let home.k = if(following, 2, home)
-    let wear.n = if(wears.hat, 1, 0) + if(wears.glasses, 1, 0) + if(wears.mug, 1, 0) + if(wears.phones, 1, 0)
+    let wear.n = if(wear.head != none, 1, 0) + if(wear.face != none, 1, 0) + if(wear.ears != none, 1, 0) + if(wear.neck != none, 1, 0) + if(wear.side != none, 1, 0)
     //  The calendar's field, lit while it is being written in.
     prop cal.focus = 0 ~140ms
 
@@ -3795,21 +3903,9 @@ scene Etta {
         group {
             pivot: pv.x, pv.y
             scale: 2.2, 2.2
-            group { move: pv.x, pv.y - 30; opacity: worn.1
-                figure hat.brim { at: 0, 0; size: 58, 43 }
-                figure hat.crown { at: 0, 0; size: 58, 43 }
-                figure hat.pompom { at: 0, 0; size: 58, 43 }
-            }
+            //  The ears and the neck go behind her face, as on her.
             Face(pv.x, pv.y, gaze.x * 0.4, gaze.y * 0.4, 0)
-            group { move: pv.x, pv.y + 2.5; opacity: worn.2; figure glasses { at: 0, 0; size: 44, 24 } }
-            group { move: pv.x, pv.y; opacity: worn.4
-                figure phones.band { at: 0, 0; size: 64, 64 }
-                figure phones.cups { at: 0, 0; size: 64, 64 }
-                figure phones.accent { at: 0, 0; size: 64, 64 }
-                figure phones.boom { at: 0, 0; size: 64, 64 }
-                figure phones.led { at: 0, 0; size: 64, 64; color: mix(#9ed6bd, #ef7a66, on_air) }
-            }
-            group { move: pv.x + 28, pv.y + 8 + 2 * sway; opacity: worn.3; figure mug { at: 0, 0; size: 34, 34 } }
+            Outfit(pv.x, pv.y)
         }
     }
 
@@ -3886,10 +3982,25 @@ scene Etta {
     on key Escape while sky.editing { sky.editing = false }
 
     // ── the wardrobe ─────────────────────────────────────────────
-    on wear_hat { toggle wears.hat }
-    on wear_glasses { toggle wears.glasses }
-    on wear_mug { toggle wears.mug }
-    on wear_phones { toggle wears.phones }
+    //  The wardrobe's tab (head, face, ears, neck, beside) and its pieces, by
+    //  their place in the tab: 0 is «none».
+    fact ward.tab = 0
+    let ward.sel = pick(ward.tab,
+        if(wear.head == h_hat, 1, if(wear.head == h_cap, 2, if(wear.head == h_beanie, 3, if(wear.head == h_crown, 4, if(wear.head == h_party, 5, 0))))),
+        if(wear.face == f_glasses, 1, if(wear.face == f_shades, 2, if(wear.face == f_stars, 3, if(wear.face == f_monocle, 4, 0)))),
+        if(wear.ears == e_phones, 1, if(wear.ears == e_buds, 2, if(wear.ears == e_retro, 3, if(wear.ears == e_cat, 4, 0)))),
+        if(wear.neck == n_scarf, 1, if(wear.neck == n_bowtie, 2, 0)),
+        if(wear.side == s_mug, 1, if(wear.side == s_soda, 2, if(wear.side == s_bottle, 3, if(wear.side == s_pizza, 4, if(wear.side == s_cream, 5, 0))))))
+    event undress
+    on undress { wear.head = none; wear.face = none; wear.ears = none; wear.neck = none; wear.side = none }
+    event pick_tab
+    event wear_pick
+    on pick_tab(i) { ward.tab = i }
+    on wear_pick(i) while ward.tab == 0 { wear.head = pick(i, none, h_hat, h_cap, h_beanie, h_crown, h_party) }
+    on wear_pick(i) while ward.tab == 1 { wear.face = pick(i, none, f_glasses, f_shades, f_stars, f_monocle) }
+    on wear_pick(i) while ward.tab == 2 { wear.ears = pick(i, none, e_phones, e_buds, e_retro, e_cat) }
+    on wear_pick(i) while ward.tab == 3 { wear.neck = pick(i, none, n_scarf, n_bowtie) }
+    on wear_pick(i) while ward.tab == 4 { wear.side = pick(i, none, s_mug, s_soda, s_bottle, s_pizza, s_cream) }
 
     // ── the agents ───────────────────────────────────────────────
     //  The water rises once the page can be seen, from empty, every time.

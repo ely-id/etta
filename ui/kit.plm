@@ -125,7 +125,7 @@ library Kit {
     }
 
     //  Two to four choices in one pill; the chosen one's plate slides to it.
-    component Seg(value: number, a: text, b: text, press: event, c: text = "", d: text = "", count: number = 2, w: number = 280, live: bool = true) {
+    component Seg(value: number, a: text, b: text, press: event, c: text = "", d: text = "", e: text = "", count: number = 2, w: number = 280, live: bool = true) {
         size: w, 38
         let seg = (w - 6) / count
         prop pos = 0 ~220ms
@@ -133,10 +133,10 @@ library Kit {
         box { from: 0, 0; size: w, 38; corner: 12; color: tk.s1 }
         box { from: 0, 0; size: w, 38; corner: 12; stroke: 1; color: tk.line; opacity: 7% }
         box { from: 3 + pos * seg, 3; size: seg, 32; corner: 9; color: tk.s3 }
-        repeat i in 0..4 {
+        repeat i in 0..5 {
             group {
                 show: i < count
-                text pick(i, a, b, c, d) { at: 3 + seg * (i + 0.5), 19; anchor: center; size: 13; weight: 500; family: "Geist"
+                text pick(i, a, b, c, d, e) { at: 3 + seg * (i + 0.5), 19; anchor: center; size: 13; weight: 500; family: "Geist"
                                            width: seg - 8; lines: 1; align: center
                                            color: mix(tk.ink2, tk.ink, max(if(value == i, 1, 0), opt.$i.hover)) }
                 zone box opt.$i { from: 3 + seg * i, 3; size: seg, 32; corner: 9; cursor: pointer; active: live }

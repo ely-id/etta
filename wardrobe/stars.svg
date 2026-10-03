@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="44" height="24" viewBox="0 0 44 24">
+  <!-- Star glasses, for a party: each star frames one of her eyes. -->
+  <g id="bridge">
+    <path d="M20.5 10 C21.4 9 22.6 9 23.5 10" fill="none" stroke="#e8c07a" stroke-width="1.6" stroke-linecap="round"/>
+  </g>
+  <g id="stars">
+    <path d="M15.50 3.00 L18.20 8.88 L24.63 9.63 L19.87 14.02 L21.14 20.37 L15.50 17.20 L9.86 20.37 L11.13 14.02 L6.37 9.63 L12.80 8.88 Z" fill="#e8c07a" fill-opacity="0.16" stroke="#e8c07a" stroke-width="1.7" stroke-linejoin="round"/>
+    <path d="M28.50 3.00 L31.20 8.88 L37.63 9.63 L32.87 14.02 L34.14 20.37 L28.50 17.20 L22.86 20.37 L24.13 14.02 L19.37 9.63 L25.80 8.88 Z" fill="#e8c07a" fill-opacity="0.16" stroke="#e8c07a" stroke-width="1.7" stroke-linejoin="round"/>
+  </g>
+</svg>

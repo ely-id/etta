@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="48" viewBox="0 0 64 48">
+  <!-- A small crown, because some days call for one. -->
+  <g id="points">
+    <path d="M16 35 L16 18 L24 27 L32 12 L40 27 L48 18 L48 35 Z" fill="#e8c07a"/>
+    <circle cx="16" cy="18" r="2.3" fill="#f6e7bf"/>
+    <circle cx="32" cy="12" r="2.3" fill="#f6e7bf"/>
+    <circle cx="48" cy="18" r="2.3" fill="#f6e7bf"/>
+  </g>
+  <g id="band">
+    <rect x="15" y="33" width="34" height="9" rx="2.5" fill="#d4a443"/>
+    <circle cx="32" cy="37.5" r="2.6" fill="#ef6b5e"/>
+    <circle cx="22.5" cy="37.5" r="1.9" fill="#86b6f2"/>
+    <circle cx="41.5" cy="37.5" r="1.9" fill="#86b6f2"/>
+  </g>
+</svg>

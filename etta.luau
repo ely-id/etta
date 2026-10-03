@@ -2191,8 +2191,9 @@ local function decide()
     tell_island()
 end
 
---  Her wardrobe's pieces, as the scene names them (`wears.hat`…).
-local PIECES = { "hat", "glasses", "mug", "phones" }
+--  Her wardrobe: one piece per spot, as the scene names them
+--  (`wear.head` is `h_hat`, `h_cap`… or `none`).
+local SPOTS = { "head", "face", "ears", "neck", "side" }
 
 local function save_settings()
     settings.home = monitors[(fact.home or 0) + 1] or settings.home
@@ -2204,8 +2205,8 @@ local function save_settings()
     settings.quiet_rec = fact.quiet_rec ~= false
     settings.snooze = math.floor(fact.snooze_k or 1)
     --  What she has on: it stays on through a restart.
-    settings.wears = {}
-    for _, piece in ipairs(PIECES) do settings.wears[piece] = fact["wears." .. piece] == true end
+    settings.wardrobe = {}
+    for _, spot in ipairs(SPOTS) do settings.wardrobe[spot] = fact["wear." .. spot] or "none" end
     local list = {}
     for app in pairs(muted_apps) do list[#list + 1] = app end
     table.sort(list)
@@ -2716,14 +2717,22 @@ on("submit:city_q", function(value)
     text.city_q = ""
 end)
 
---  And what she had on, as it was left: each piece that is not there, off.
-if type(settings.wears) == "table" then
-    for _, piece in ipairs(PIECES) do
-        if settings.wears[piece] == true then fact["wears." .. piece] = true end
+--  And what she had on, as it was left. Marea kept four switches —hat,
+--  glasses, mug, headphones—: they become their spots once.
+if type(settings.wardrobe) ~= "table" and type(settings.wears) == "table" then
+    local w = settings.wears
+    settings.wardrobe = { head = w.hat and "h_hat" or "none", face = w.glasses and "f_glasses" or "none",
+                          ears = w.phones and "e_phones" or "none", neck = "none", side = w.mug and "s_mug" or "none" }
+    settings.wears = nil
+end
+if type(settings.wardrobe) == "table" then
+    for _, spot in ipairs(SPOTS) do
+        local v = settings.wardrobe[spot]
+        if type(v) == "string" and v ~= "" then pcall(function() fact["wear." .. spot] = v end) end
     end
 end
-for _, piece in ipairs(PIECES) do
-    on("fact:wears." .. piece, function() save_settings() end)
+for _, spot in ipairs(SPOTS) do
+    on("fact:wear." .. spot, function() save_settings() end)
 end
 
 

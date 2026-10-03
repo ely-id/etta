@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="48" viewBox="0 0 64 48">
+  <!-- A party hat: a striped cone with its pompom. -->
+  <g id="cone">
+    <path d="M20 41 L32 7 L44 41 Z" fill="#b5a0f2"/>
+    <path d="M24.2 29 L39.8 29 L41.6 34 L22.4 34 Z" fill="#e8c07a"/>
+    <path d="M28.4 17 L35.6 17 L37 21 L27 21 Z" fill="#e8c07a"/>
+  </g>
+  <g id="pompom">
+    <circle cx="32" cy="7" r="4.2" fill="#ef6b5e"/>
+  </g>
+</svg>
