@@ -592,13 +592,14 @@ library Panels {
             }
             space 12
             SetHead("LOCK")
-            group { size: 580, 168
-                box { from: 0, 0; size: 580, 168; corner: 16; color: tk.s1 }
+            group { size: 580, 224
+                box { from: 0, 0; size: 580, 224; corner: 16; color: tk.s1 }
                 group { move: 0, 0; SetRow("Lock when idle for", "Halley says when you have been away") {
                     group { move: -300, -19; Seg(idle.k, "5 min", "10 min", pick_idle, c: "30 min", d: "Never", count: 4, w: 300) }
                 } }
                 group { move: 0, 56; SetRow("Lock before suspending", two: 0) { group { move: -40, -12; Toggle(lock.suspend, flip_locksusp) } } }
-                group { move: 0, 112; SetRow("Safety net", "Esc also opens the lock, until a restart", last: 1) { group { move: -40, -12; Toggle(with_exit, flip_safety) } } }
+                group { move: 0, 112; SetRow("Safety net", "Esc also opens the lock, until a restart") { group { move: -40, -12; Toggle(with_exit, flip_safety) } } }
+                group { move: 0, 168; SetRow("See the lock screen", "A preview: nothing is locked", last: 1) { group { move: -96, -16; Btn("Preview", preview_lock, w: 96, h: 32) } } }
             }
             space 12
             SetHead("SHORTCUTS", "Bound in Halley's config")
@@ -616,7 +617,7 @@ library Panels {
             }
         }
         //  How far down it is, as a thin bar on the right.
-        let set.total = 1186
+        let set.total = 1242
         box { from: 606, 68 + set_list.scroll / set.total * (h - 88)
               size: 4, (h - 88) * (h - 88) / set.total; corner: 2; color: tk.ink; opacity: 18% }
     }

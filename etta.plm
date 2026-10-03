@@ -3992,6 +3992,8 @@ scene Etta {
     on flip_batpct { toggle bat.shown }
     on flip_locksusp { toggle lock.suspend }
     on flip_safety { toggle with_exit }
+    event preview_lock
+    on preview_lock { open = false; lock.preview = true }
     on edit_city { page = calendar; sky.editing = true; focus city_q }
     on submit city_q { sky.editing = false }
     on key Escape while sky.editing { sky.editing = false }
@@ -4607,6 +4609,7 @@ scene Etta {
     //  back on.
     on change hint while locked and hint != lock { hint = lock }
     on wrong_password { impulse headshake 22 }
+    on submit password while lock.preview and lock.len > 0 { lock.st = l_checking }
     //  The emergency exit of the first locks. It is said on screen: one that
     //  opens with Esc without saying so is not a lock screen, it is a poster.
     on key Escape while locked and with_exit { locked = false }
@@ -4616,44 +4619,220 @@ scene Etta {
     //  machine, so while it is a test one it does not trust a single exit.
     on still locked for 60s while locked and with_exit { locked = false }
 
+    //  Her, as the padlock. One drawing for every state: the ball she is when
+    //  it locks becomes the padlock (body squarer, shackle drawn in, a
+    //  keyhole); her eyes stay hers —open, following what you type—, become
+    //  three dots while it checks, «> <» on red when it is wrong, and «^ ^»
+    //  as the shackle opens and she rises away when it is right.
+    fact lock.st: l_ball | l_idle | l_typing | l_checking | l_wrong | l_ok = l_ball
+    fact lock.len = 0                  // how many letters have been typed (the logic counts)
+    fact lock.tries = 0
+    fact lock.preview = false          // the same screen, without locking anything
+    fact lock.layout.on = true
+    text lock.layout = "US"
+    event lock_ok                      // the logic: that was it; it unlocks a moment later
+    event lock_suspend
+    event lock_poweroff
+    fact lock.off.armed = false
+    prop lk.form = 0 ~380ms
+    prop lk.shackle = 0 ~500ms
+    prop lk.open = 0 ~450ms
+    prop lk.gone = 0 ~700ms
+    prop lk.red = 0 ~250ms
+    prop lk.look = 0 ~250ms
+    prop lk.g.open = 1 ~160ms
+    prop lk.g.dots = 0 ~160ms
+    prop lk.g.wrong = 0 ~160ms
+    prop lk.g.happy = 0 ~160ms
+    prop lk.t = 0
+    spin lk.t by if(locked or lock.preview, 1, 0)
+    prop lk.blink = 1
+    blink lk.blink every 2.4s..6s for 170ms
+    follow lk.red = if(lock.st == l_wrong, 1, 0)
+    follow lk.look = if(lock.st == l_typing, 1, 0)
+    follow lk.open = if(lock.st == l_ok, 1, 0)
+    follow lk.g.open = if(lock.st == l_ball or lock.st == l_idle or lock.st == l_typing, 1, 0)
+    follow lk.g.dots = if(lock.st == l_checking, 1, 0)
+    follow lk.g.wrong = if(lock.st == l_wrong, 1, 0)
+    follow lk.g.happy = if(lock.st == l_ok, 1, 0)
+    //  Every lock starts as her, and becomes the padlock.
+    on change locked or lock.preview while locked or lock.preview {
+        lock.st = l_ball
+        lock.tries = 0
+        lk.form: 0 ~16ms
+        lk.form: 1 ~380ms after 350ms
+        lk.shackle: 0 ~16ms
+        lk.shackle: 1 ~500ms after 500ms
+        lk.gone: 0 ~16ms
+    }
+    on still lock.st for 350ms while lock.st == l_ball { lock.st = l_idle }
+    on change lock.len while (locked or lock.preview) and (lock.st == l_idle or lock.st == l_typing or lock.st == l_wrong) and lock.len > 0 { lock.st = l_typing }
+    on still lock.len for 1.2s while lock.st == l_typing { lock.st = l_idle }
+    on submit password while locked and lock.len > 0 and lock.st != l_checking and lock.st != l_ok { lock.st = l_checking }
+    on still lock.st for 8s while lock.st == l_checking { lock.st = l_idle }
+    on wrong_password { lock.st = l_wrong; lock.tries = lock.tries + 1 }
+    on still lock.st for 1.8s while lock.st == l_wrong { lock.st = l_idle }
+    on lock_ok { lock.st = l_ok; lk.gone: 1 ~700ms after 450ms }
+    //  Power off from the lock asks twice: the second press within 3 s.
+    on lock_poweroff while not lock.off.armed { lock.off.armed = true }
+    on lock_poweroff while lock.off.armed and locked { emit session(5) }
+    on still lock.off.armed for 3s while lock.off.armed { lock.off.armed = false }
+    on lock_suspend while locked { emit session(2) }
+    on key Escape while lock.preview { lock.preview = false }
+    on change lock.preview while lock.preview { focus password }
+
+    component LockUI(w: number, h: number) {
+        size: 0, 0
+        let ex = w / 2
+        let ey = h * 0.47
+        let S = 2.6
+        //  The background: almost black, still, a little lighter where she is.
+        box { from: 0, 0; size: w, h; color: #07080a }
+        body {
+            gradient: radial ex, ey radius 0.6 * h, #15181b, #07080a
+            ellipse { at: ex, ey; radius: 0.6 * h }
+        }
+        //  The time, the date.
+        text now.time { family: "Geist"; at: ex, ey - 262; anchor: center; size: 96; weight: 300; color: tk.ink }
+        row {
+            at: ex, ey - 196
+            anchor: center middle
+            gap: 0
+            text pick(now.weekday, "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday") { family: "Geist"; size: 18; weight: 500; color: tk.ink2 }
+            text ", {now.day, 0} " { family: "Geist"; size: 18; weight: 500; color: tk.ink2 }
+            text pick(now.month - 1, "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December") { family: "Geist"; size: 18; weight: 500; color: tk.ink2 }
+        }
+        //  What is going on, top right: battery, network, keyboard.
+        group {
+            move: w - 28, 36
+            group {
+                show: bat.present
+                text "{bat.percent, 0}%" { family: "Geist"; at: -128, 0; anchor: right center; size: 13; weight: 600; color: tk.ink2 }
+                box { from: -122, -6; size: 18, 12; corner: 3; stroke: 1.4; color: tk.ink2 }
+                box { from: -120, -4; size: max(1, 14 * bat.percent / 100), 8; corner: 1.6; color: tk.ink2 }
+                box { from: -103.5, -2; size: 1.8, 4; corner: 0.9; color: tk.ink2 }
+            }
+            figure Kit.i_ethernet { at: -76, 0; size: 18, 18; color: tk.ink2; show: net.kind == wired }
+            figure Kit.i_wifi { at: -76, 0; size: 18, 18; color: tk.ink2; show: net.kind == wifi }
+            figure Kit.i_globe { at: -76, 0; size: 18, 18; color: tk.ink3; show: net.kind == none }
+            group { move: -48, -11; Kbd(lock.layout, w: 48) }
+        }
+
+        //  Her.
+        group {
+            move: ex + headshake * 0.6, ey - 140 * lk.gone
+            opacity: 1 - clamp(lk.gone * 1.4 - 0.4, 0, 1)
+            scale: S * (1 - 0.4 * lk.gone), S * (1 - 0.4 * lk.gone)
+            //  The red glow of a wrong one.
+            group {
+                blur: 7
+                ellipse { at: 0, 2; radius: 34; color: tk.red; opacity: 0.55 * lk.red }
+            }
+            ellipse { at: 0, 36; radius: 26; scale: 1, 0.16; color: #000000; opacity: 45% }
+            //  The shackle: drawn in from inside her body, and open at the end.
+            group {
+                opacity: lk.shackle * lk.form
+                move: 0, (1 - lk.shackle) * 12 - 8 * lk.open
+                pivot: 14, -12
+                rotate: -32deg * lk.open
+                arc { at: 0, -25; radius: 14; span: 180deg; width: 7; color: mix(#2e3439, #7a3a33, lk.red) }
+                box { at: -14, -18.5; size: 7, 13; corner: 2; color: mix(#2e3439, #7a3a33, lk.red) }
+                box { at: 14, -18.5; size: 7, 13; corner: 2; color: mix(#2e3439, #7a3a33, lk.red) }
+            }
+            //  The body: her circle, squaring into the padlock's.
+            body {
+                color: mix(#151616, #3b1715, lk.red)
+                rim: 14%
+                box { at: 0, lk.form; size: 46 + 4 * lk.form, 46 - 4 * lk.form; corner: 23 - 10 * lk.form }
+            }
+            box { at: 0, lk.form; size: 45 + 4 * lk.form, 45 - 4 * lk.form; corner: 22.5 - 10 * lk.form; stroke: 1.2; color: tk.red; opacity: 0.9 * lk.red }
+            //  Her eyes, in each state.
+            group {
+                move: 0, 2.5 * lk.look
+                group {
+                    opacity: lk.g.open
+                    pivot: 0, -1
+                    scale: 1, lk.blink
+                    box { at: -6.5, -1; size: 5, 13; corner: 2.5; color: mix(tk.ink, #ffc2ba, lk.red) }
+                    box { at: 6.5, -1; size: 5, 13; corner: 2.5; color: mix(tk.ink, #ffc2ba, lk.red) }
+                }
+                group {
+                    opacity: lk.g.dots
+                    repeat d in 0..3 {
+                        ellipse { at: -6.5 + d * 6.5, -1; radius: 2.1; color: tk.ink; opacity: 0.35 + 0.65 * (0.5 + 0.5 * sin((lk.t * 2 - d * 0.15) * 360)) }
+                    }
+                }
+                path { at: 0, 0; stroke: 2.6; color: #ffc2ba; opacity: lk.g.wrong
+                       move -11, -5; line -4.5, -1; line -11, 3 }
+                path { at: 0, 0; stroke: 2.6; color: #ffc2ba; opacity: lk.g.wrong
+                       move 11, -5; line 4.5, -1; line 11, 3 }
+                path { at: 0, 0; stroke: 2.4; color: tk.ink; opacity: lk.g.happy
+                       move -10, 1; curve -3, 1 via -6.5, -5 }
+                path { at: 0, 0; stroke: 2.4; color: tk.ink; opacity: lk.g.happy
+                       move 3, 1; curve 10, 1 via 6.5, -5 }
+            }
+            //  The keyhole, below her eyes.
+            group {
+                opacity: 0.9 * lk.form * (1 - lk.open)
+                ellipse { at: 0, 12; radius: 2.4; color: #0a0b0b }
+                box { at: 0, 14.5; size: 2, 5; corner: 1; color: #0a0b0b }
+            }
+        }
+
+        //  Who, and the box. It has the whole keyboard: you just type.
+        text pick(if(lock.st == l_ok, 1, 0), "{session.user}", "Welcome back, {session.user}") { family: "Geist"; at: ex, ey + 128; anchor: center; size: 16; weight: 600; color: tk.ink }
+        box { at: ex, ey + 172; size: 340, 52; corner: 16; color: #121416 }
+        box { at: ex, ey + 172; size: 340, 52; corner: 16; stroke: 1.5
+              color: if(lock.st == l_wrong, tk.red, if(lock.st == l_typing or lock.st == l_checking, tk.mint, #ffffff))
+              opacity: if(lock.st == l_wrong, 0.9, if(lock.st == l_typing or lock.st == l_checking, 0.7, 0.1)) }
+        figure Kit.i_lock { at: ex - 146, ey + 172; size: 18, 18; color: tk.ink3 }
+        input password { family: "Geist"; at: ex - 126, ey + 172; width: 236; size: 16; color: tk.ink; placeholder: "Password"; secret: true; selection: #2f5f52 }
+        box { at: ex + 144, ey + 172; size: 36, 36; corner: 10; color: tk.s2 }
+        figure Kit.i_chev_r { at: ex + 144, ey + 172; size: 18, 18; color: tk.ink2 }
+        //  What it says: Caps Lock first, then the state.
+        group {
+            show: caps.on
+            move: ex - 150, ey + 214
+            Tag("Caps Lock is on", w: 120, tone: 2)
+        }
+        text pick(if(lock.st == l_checking, 1, if(lock.st == l_wrong, 2, if(lock.st == l_ok, 3, 0))), "Enter to unlock", "Checking…", "Wrong password · try again", "Welcome back") { family: "Geist"; at: ex + if(caps.on, 66, 0), ey + 225; anchor: center; size: 13; weight: 500
+              color: if(lock.st == l_wrong, tk.red, if(lock.st == l_ok, tk.mint, tk.ink3)) }
+        text "Attempt {lock.tries, 0}" { family: "Geist"; at: ex, ey + 246; anchor: center; size: 12; weight: 500; color: tk.ink3; show: lock.tries > 1 and lock.st == l_wrong }
+        text "Esc opens it · safety net, until a restart" { family: "Geist"; at: ex, ey + 272; anchor: center; size: 12; weight: 500; color: tk.mint; show: with_exit }
+        //  Kept while locked: said at the bottom.
+        group {
+            show: pending > 0.5
+            box { at: ex, h - 44; size: 220, 32; corner: 16; color: tk.s1 }
+            figure Kit.i_bell { at: ex - 86, h - 44; size: 16, 16; color: tk.ink2 }
+            text "{pending, 0} notifications kept" { family: "Geist"; at: ex + 8, h - 44; anchor: center; size: 13; weight: 500; color: tk.ink2 }
+        }
+        //  Suspend and power off, bottom right. Power off asks twice.
+        group { move: w - 120, h - 64; Ib(lock_suspend, d: 40) { figure Kit.i_moon { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+        group { move: w - 72, h - 64; Ib(lock_poweroff, d: 40) { figure Kit.i_power { at: 0, 0; size: 20, 20; color: if(lock.off.armed, tk.red, tk.ink2) } } }
+        text "Press again to power off" { family: "Geist"; at: w - 136, h - 44; anchor: right center; size: 12; weight: 500; color: tk.red; show: lock.off.armed }
+    }
+
     surface lockscreen {
         kind: lock
         size: 640, 440
         open: locked
+        //  The plane is centred on each monitor; the drawing takes all of it.
+        let lw = max(lockscreen.width, 640)
+        let lh = max(lockscreen.height, 440)
+        group { move: 320 - lw / 2, 220 - lh / 2; LockUI(lw, lh) }
+    }
 
-        box { from: -4000, -4000; size: 8640, 8440; color: #07080a }
-        //  Almost black, but not quite in the centre: she is a very dark grey and
-        //  on pure black she would get lost.
-        body {
-            gradient: radial 320, 236 radius 260, #14171a, #07080a
-            ellipse { at: 320, 236; radius: 260 }
-        }
-
-        text now.time { family: "Geist"; at: 320, 58; anchor: center; size: 68; weight: 300; color: #f6f6f5 }
-        text "{upper(now.date)}" { family: "Geist"; at: 320, 112; anchor: center; size: 12; weight: 600; color: #8b8f95 }
-
-        //  Her, at a size that can be seen from the door.
-        group {
-            pivot: 320, 214
-            scale: 2.1, 2.1
-            move: headshake, 0
-            body {
-                color: coal
-                rim: 14%
-                ellipse { at: 320, 214; radius: 23 }
-            }
-            Face(320, 214, 0, 0)
-        }
-
-        //  The box. It has the whole keyboard —it is `kind: lock`—, so there is
-        //  no need to press it: you just type.
-        box { at: 320, 346; size: 300, 46; corner: 14; color: mix(#15171a, #1b1e22, lock.glow) }
-        box { at: 320, 346; size: 300, 46; corner: 14; stroke: 1.2; color: mix(mint, #e0655a, clamp(abs(headshake) / 6, 0, 1)); opacity: 35% + lock.glow * 40% }
-        input password { family: "Geist"; at: 188, 335; width: 264; size: 16; color: #f6f6f5; placeholder: "Password"; secret: true }
-
-        text "Checking…" { family: "Geist"; at: 320, 392; anchor: center; size: 11.5; color: #8b8f95; show: checking }
-        text "Enter to unlock" { family: "Geist"; at: 320, 392; anchor: center; size: 11.5; color: #8b8f95; opacity: 60%; show: not checking and lock.held > 0.5 }
-        text "Esc to exit · test lock" { family: "Geist"; at: 320, 420; anchor: center; size: 11; color: mint; opacity: 80%; show: with_exit }
+    //  The same screen, to see it without locking anything (Settings).
+    surface lockpreview {
+        size: full, full
+        anchor: top_left
+        level: overlay
+        screens: each max 2
+        open: lock.preview and screen.index == home
+        keyboard: exclusive while lock.preview
+        LockUI(lockpreview.width, lockpreview.height)
+        zone box lockpreview_close { from: 0, 0; size: lockpreview.width, lockpreview.height }
+        on press lockpreview_close { lock.preview = false }
     }
 
     // ── the adventure's stage ────────────────────────────────────

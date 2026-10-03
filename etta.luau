@@ -1771,7 +1771,15 @@ fact.with_exit = (sys.ask("env", "ETTA_LOCK_WITH_EXIT") or "") ~= "" or (sys.ask
 --  A rule cannot touch a text, so emptying the box is this side's business:
 --  when the lock goes on and when it comes off, let nothing be left written.
 on("fact:locked", function() text.password = "" end)
+--  How many letters there are, for her eyes to follow the typing: never
+--  what they are.
+on("text:password", function(v) fact["lock.len"] = #tostring(v or "") end)
 on("submit:password", function(value)
+    --  The preview checks nothing: it shows what a wrong one looks like.
+    if fact["lock.preview"] == true and fact.locked ~= true then
+        after(700, function() text.password = ""; emit("wrong_password") end)
+        return
+    end
     if fact.locked ~= true or fact.checking == true then return end
     if value == nil or value == "" then return end
     fact.checking = true
@@ -1783,7 +1791,10 @@ on("submit:password", function(value)
     text.password = ""
     fact.checking = false
     if ok and valid == true then
-        fact.locked = false
+        --  She says so first —«^ ^», the shackle opens— and the lock lets go
+        --  a moment later.
+        emit("lock_ok")
+        after(900, function() fact.locked = false end)
     else
         if not ok then log("lock · the password could not be checked:", valid) end
         emit("wrong_password")
@@ -3266,3 +3277,9 @@ end
     after(1500, scan)
 end
 if on_halley then halley_wallpaper() end
+
+--  The keyboard layout, for the lock screen's corner: Halley's own.
+run("cat", { (sys.ask("env", "HOME") or ".") .. "/.config/halley/halley.rune" }, function(out)
+    local layout = tostring(out or ""):match('\n%s*layout%s+"([%w%-]+)"')
+    if layout and layout ~= "" then text["lock.layout"] = string.upper(layout:sub(1, 3)) end
+end)
