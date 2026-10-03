@@ -79,6 +79,16 @@ local function shorten(name)
     return clean
 end
 
+local function friendly(name, fallback)
+    local n = tostring(name or "")
+    local low = n:lower()
+    if low:find("headphone") or low:find("headset") then return "Headphones" end
+    if n:find("HDMI") or n:find("DisplayPort") or low:find("digital") then return "Monitor" end
+    if low:find("analog") or low:find("speaker") or low:find("built") then return fallback end
+    if n == "" then return fallback end
+    return shorten(n)
+end
+
 local function devices(state)
     local outputs, mics = {}, {}
     for _, a in ipairs(state.outputs or {}) do
@@ -89,6 +99,13 @@ local function devices(state)
     end
     model.outputs = outputs
     model.mics = mics
+    --  And what the OSD calls them: the one in use, said the way you would.
+    for _, a in ipairs(state.outputs or {}) do
+        if a.default == true then text["osd.out"] = friendly(a.name, "Speakers") end
+    end
+    for _, a in ipairs(state.inputs or {}) do
+        if a.default == true then text["osd.in"] = friendly(a.name, "Microphone") end
+    end
 end
 
 sys.watch("audio", devices)
@@ -1977,23 +1994,9 @@ do
 end
 local WALLPAPER = settings.wallpaper or "/usr/share/wallpapers/cachyos-wallpapers/GreenFeathers.png"
 
---  Only the `swaybg` of HER desktop (her `WAYLAND_DISPLAY`): one painting
---  another session's —Hyprland's, beside a pleamar-wm on another TTY— is not hers.
+--  Etta does not start `swaybg`: on Halley the wallpaper is the
+--  compositor's own field shader, which her Wallpaper page chooses.
 local OUR_DISPLAY = "WAYLAND_DISPLAY=" .. tostring(sys.ask("env", "WAYLAND_DISPLAY") or "")
-run("pgrep", { "-x", "swaybg", "--env", OUR_DISPLAY }, function(_, code)
-    if code == 0 then return end                        -- someone is already painting it
-    monitor_info(function(mons)
-        local args = {}
-        for _, monitor in ipairs(mons) do
-            for _, a in ipairs({ "-o", monitor.name, "-i", WALLPAPER, "-m", "fill" }) do args[#args + 1] = a end
-        end
-        if #args == 0 then return end
-        --  With `run` and without collecting its output: that way it does not
-        --  die with her, which is exactly what you want from a wallpaper.
-        run("swaybg", args, nil, { output = false })
-        log("wallpaper ·", WALLPAPER)
-    end)
-end)
 
 -- ── her home: which monitor she lives on ───────────────────────────
 --  One copy per monitor, and here it is decided which one is seen. Two ways: a
@@ -2552,3 +2555,144 @@ end
 for _, piece in ipairs(PIECES) do
     on("fact:wears." .. piece, function() save_settings() end)
 end
+
+
+-- ── Etta: the clock's card, the OSD's words, the battery ─────────────
+--  What the scene shows beside her and does not know by itself: how long
+--  the battery lasts, what comes next today, a device or a network that has
+--  just joined, and the Caps Lock light.
+local etta_started = os.time()
+
+--  Her own settings, kept with the rest.
+local SIZES = { s46 = true, s52 = true, s56 = true, s64 = true }
+if SIZES[settings.size] then fact["pet.size"] = settings.size end
+if settings.clock24 ~= nil then fact.clock24 = settings.clock24 == true end
+if settings.seconds ~= nil then fact["clock.secs"] = settings.seconds == true end
+if settings.battery_pct ~= nil then fact["bat.shown"] = settings.battery_pct == true end
+local function save_etta()
+    settings.size = fact["pet.size"]
+    settings.clock24 = fact.clock24 == true
+    settings.seconds = fact["clock.secs"] == true
+    settings.battery_pct = fact["bat.shown"] == true
+    save_settings()
+end
+for _, f in ipairs({ "pet.size", "clock24", "clock.secs", "bat.shown" }) do on("fact:" .. f, save_etta) end
+
+--  The battery: pleamar says how full and whether it charges; how long it
+--  lasts comes from the kernel's own report, every minute.
+local BAT = nil
+local function span(secs)
+    local m = math.floor(secs / 60 + 0.5)
+    local h = math.floor(m / 60)
+    m = m % 60
+    if h > 0 then return string.format("%d h %02d min", h, m) end
+    return string.format("%d min", m)
+end
+local function read_battery()
+    if BAT == nil then return end
+    run("cat", { BAT .. "/uevent" }, function(out, code)
+        if code ~= 0 or out == nil then return end
+        local v = {}
+        for k, val in tostring(out):gmatch("POWER_SUPPLY_([%w_]+)=([^\n]*)") do v[k] = val end
+        local status = v.STATUS or ""
+        local now = tonumber(v.ENERGY_NOW or v.CHARGE_NOW)
+        local full = tonumber(v.ENERGY_FULL or v.CHARGE_FULL)
+        local rate = tonumber(v.POWER_NOW or v.CURRENT_NOW)
+        local txt
+        if status == "Full" then
+            txt = "Fully charged · on power"
+        elseif status == "Charging" then
+            if now and full and rate and rate > 0 then txt = "Full in " .. span((full - now) / rate * 3600) else txt = "Charging" end
+        elseif status == "Not charging" then
+            txt = "Plugged in · holding the charge"
+        elseif now and rate and rate > 0 then
+            txt = span(now / rate * 3600) .. " left"
+        else
+            txt = "On battery"
+        end
+        text["bat.txt"] = txt
+    end)
+end
+run("ls", { "/sys/class/power_supply" }, function(out)
+    for name in tostring(out or ""):gmatch("[^\n]+") do
+        if BAT == nil and name:match("^BAT") then BAT = "/sys/class/power_supply/" .. name end
+    end
+    read_battery()
+end)
+every(60 * 1000, read_battery)
+
+--  What comes next today, for the time card.
+local function paint_next()
+    local y, m, d = today()
+    local nowhm = os.date("%H:%M")
+    local best = nil
+    for _, e in ipairs(on_day(key(y, m, d))) do
+        local t = e.time or ""
+        if t == "" then
+            if best == nil then best = e end
+        elseif t >= nowhm and (best == nil or (best.time or "") == "" or t < best.time) then
+            best = e
+        end
+    end
+    if best == nil then
+        text["next.event"] = "Nothing scheduled today"
+    elseif (best.time or "") == "" then
+        text["next.event"] = "Today · " .. best.title
+    else
+        text["next.event"] = best.time .. " · " .. best.title
+    end
+end
+paint_next()
+every(60 * 1000, paint_next)
+on("fact:page", function() paint_next() end)
+
+--  A device that has just connected, or a network just joined: the OSD
+--  says it. Not in the first seconds, when everything reports at once.
+local bt_seen = nil
+sys.watch("bluetooth", function(state)
+    local now = {}
+    for _, d in ipairs((state or {}).devices or {}) do
+        if d.connected then now[d.address or d.name or "?"] = d end
+    end
+    if bt_seen ~= nil and os.time() - etta_started > 8 then
+        for addr, d in pairs(now) do
+            if not bt_seen[addr] then
+                text["osd.dev"] = d.name or "Device"
+                local b = tonumber(d.battery) or -1
+                if b >= 0 and b <= 1 then b = b * 100 end
+                fact["osd.dev.batt"] = b
+                emit("osd_dev")
+            end
+        end
+    end
+    bt_seen = now
+end)
+local net_seen = nil
+sys.watch("network", function(state)
+    local active = ""
+    for _, n in ipairs((state or {}).networks or {}) do
+        if n.active then active = n.ssid or "" end
+    end
+    if net_seen ~= nil and active ~= "" and active ~= net_seen and os.time() - etta_started > 8 then
+        text["osd.net"] = "Connected to " .. active
+        emit("osd_net")
+    end
+    net_seen = active
+end)
+
+--  The Caps Lock light, read from the kernel: the keyboard's state is not
+--  something a Wayland client is told.
+local CAPS = nil
+run("ls", { "/sys/class/leds" }, function(out)
+    for name in tostring(out or ""):gmatch("[^\n]+") do
+        if CAPS == nil and name:match("capslock$") then CAPS = "/sys/class/leds/" .. name .. "/brightness" end
+    end
+end)
+every(300, function()
+    if CAPS == nil then return end
+    run("cat", { CAPS }, function(out, code)
+        if code ~= 0 then return end
+        local on = (tonumber(tostring(out or ""):match("%d+")) or 0) > 0
+        if fact["caps.on"] ~= on then fact["caps.on"] = on end
+    end)
+end)

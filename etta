@@ -65,7 +65,7 @@ case "${1:-}" in
         [ -f "$STATE_DIR/etta.log" ] && mv -f "$STATE_DIR/etta.log" "$STATE_DIR/etta.log.1"
         build_halley
         build_deriva
-        exec "$PLEAMAR" --scene etta.plm --no-hud "$@" > "$STATE_DIR/etta.log" 2>&1
+        exec "$PLEAMAR" --scene etta.plm --no-hud --stall 0 "$@" > "$STATE_DIR/etta.log" 2>&1
         ;;
     stop)
         exec "$PLEAMAR" --say etta quit
