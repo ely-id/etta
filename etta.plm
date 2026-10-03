@@ -1764,15 +1764,15 @@ scene Etta {
             group {
                 clip inset 0 box { at: dx, ty; size: 14, 23 }
                 repeat n in 0..20 {
-                    text number(mod(n, 10), 0) { at: dx, ty + (n - roll.$d) * 24; anchor: center; size: 21; weight: 600; color: #f6f6f5
+                    text number(mod(n, 10), 0) { family: "Geist"; at: dx, ty + (n - roll.$d) * 24; anchor: center; size: 21; weight: 600; color: #f6f6f5
                                                  opacity: clamp(1 - abs(n - roll.$d) * 1.4, 0, 1) }
                 }
             }
         }
-        text ":" { at: tx + 28.2, ty - 1; anchor: center; size: 21; weight: 600; color: #f6f6f5 }
-        text "{upper(now.date)}" { at: tx, cy_actual + 13; anchor: left center; size: 10; color: #c2c7cc }
+        text ":" { family: "Geist"; at: tx + 28.2, ty - 1; anchor: center; size: 21; weight: 600; color: #f6f6f5 }
+        text "{upper(now.date)}" { family: "Geist"; at: tx, cy_actual + 13; anchor: left center; size: 10; color: #c2c7cc }
         //  And how warm it is there.
-        text "{wx.temp, 0}°" { at: notecard.x + 47, cy_actual + 13; anchor: right center; size: 10; weight: 600
+        text "{wx.temp, 0}°" { family: "Geist"; at: notecard.x + 47, cy_actual + 13; anchor: right center; size: 10; weight: 600
                                color: mix(mix(#dfe3e6, #a8d8ff, wx.cold), #ffbb85, wx.heat); show: wx.ok }
     }
 
@@ -2137,7 +2137,7 @@ scene Etta {
             //  The level's percentage, on the forehead. It rises the last three
             //  pixels while it appears: it comes in with the bar instead of
             //  switching on on top.
-            text number(sound.volume * 100, 0, " %") {
+            text number(sound.volume * 100, 0, " %") { family: "Geist";
                 at: x, y - 9 + (1 - meter) * 3
                 anchor: center
                 size: 9
@@ -2152,7 +2152,7 @@ scene Etta {
             group {
                 pivot: x, eye.y
                 scale: 1 + pop, 1 + pop
-                text number(max(left, 1), 0) {
+                text number(max(left, 1), 0) { family: "Geist";
                     //  A digit's ink sits lower than its line's middle: raised so
                     //  the number is centred, not its box.
                     at: x, eye.y - 1.8
@@ -2199,15 +2199,15 @@ scene Etta {
         opacity: capsule.reveal
         move: (1 - capsule.reveal) * -8, 0
         arc { at: capsule.x - 76, capsule.y - 22; radius: 7.5; span: 210deg; width: 5; rotate: 145deg; color: #8fa2e8 }
-        text "Do not disturb · {remaining, 0} min" { at: capsule.x - 60, capsule.y - 26; anchor: left center; size: 12; weight: 500; color: ink }
-        text "{pending, 0} notices kept" { at: capsule.x - 60, capsule.y - 9; anchor: left center; size: 10.5; color: #8b8f95 }
+        text "Do not disturb · {remaining, 0} min" { family: "Geist"; at: capsule.x - 60, capsule.y - 26; anchor: left center; size: 12; weight: 500; color: ink }
+        text "{pending, 0} notices kept" { family: "Geist"; at: capsule.x - 60, capsule.y - 9; anchor: left center; size: 10.5; color: #8b8f95 }
         prop end_haven.glow = 0 ~140ms
         prop rules.glow = 0 ~140ms
         box { at: capsule.x - 52, capsule.y + 22; size: 96, 30; corner: 10; color: mix(#2a1b1b, #3a2424, end_haven.glow) }
         box { at: capsule.x - 84, capsule.y + 22; size: 11, 11; corner: 3; color: #e0655a }
-        text "End" { at: capsule.x - 44, capsule.y + 22; anchor: center; size: 11.5; weight: 500; color: ink }
+        text "End" { family: "Geist"; at: capsule.x - 44, capsule.y + 22; anchor: center; size: 11.5; weight: 500; color: ink }
         box { at: capsule.x + 52, capsule.y + 22; size: 96, 30; corner: 10; color: mix(#1b1b1c, #232425, rules.glow) }
-        text "View rules" { at: capsule.x + 52, capsule.y + 22; anchor: center; size: 11.5; color: #8b8f95 }
+        text "View rules" { family: "Geist"; at: capsule.x + 52, capsule.y + 22; anchor: center; size: 11.5; color: #8b8f95 }
         zone box end_haven { at: capsule.x - 52, capsule.y + 22; size: 96, 30; corner: 10; cursor: pointer; active: capsule > 0.8 }
         zone box rules { at: capsule.x + 52, capsule.y + 22; size: 96, 30; corner: 10; cursor: pointer; active: capsule > 0.8 }
         on enter end_haven { end_haven.glow: 1 }
@@ -2231,8 +2231,8 @@ scene Etta {
         ellipse { at: reel.x - 130, reel.y - 26; radius: 8; color: mint; opacity: 18% }
         path { at: reel.x - 134, reel.y - 27; color: mint; stroke: 1.8
                move 0, 0; line 3, 3; line 8, -3 }
-        text "Recording saved" { at: reel.x - 116, reel.y - 29; anchor: left center; size: 12; weight: 500; color: ink }
-        text reel.name { at: reel.x - 116, reel.y - 13; anchor: left center; size: 10.5; width: 230; lines: 1; color: #8b8f95 }
+        text "Recording saved" { family: "Geist"; at: reel.x - 116, reel.y - 29; anchor: left center; size: 12; weight: 500; color: ink }
+        text reel.name { family: "Geist"; at: reel.x - 116, reel.y - 13; anchor: left center; size: 10.5; width: 230; lines: 1; color: #8b8f95 }
         prop reel_x.glow = 0 ~140ms
         line { from: reel.x + 126, reel.y - 33; to: reel.x + 134, reel.y - 25; width: 1.6; color: ink; opacity: 45% + reel_x.glow * 55% }
         line { from: reel.x + 134, reel.y - 33; to: reel.x + 126, reel.y - 25; width: 1.6; color: ink; opacity: 45% + reel_x.glow * 55% }
@@ -2246,9 +2246,9 @@ scene Etta {
             prop reel_b.glow.$b = 0 ~140ms
             box { at: bx, reel.y + 22; size: 88, 30; corner: 10
                   color: mix(mix(#1b1b1c, #242526, reel_b.glow.$b), mix(#1f3a34, #25483f, reel_b.glow.$b), b == 0) }
-            text "Watch" { at: bx, reel.y + 22; anchor: center; size: 11.5; weight: 500; color: mint; show: b == 0 }
-            text "Folder" { at: bx, reel.y + 22; anchor: center; size: 11.5; color: ink; show: b == 1 }
-            text "Copy path" { at: bx, reel.y + 22; anchor: center; size: 11.5; color: ink; show: b == 2 }
+            text "Watch" { family: "Geist"; at: bx, reel.y + 22; anchor: center; size: 11.5; weight: 500; color: mint; show: b == 0 }
+            text "Folder" { family: "Geist"; at: bx, reel.y + 22; anchor: center; size: 11.5; color: ink; show: b == 1 }
+            text "Copy path" { family: "Geist"; at: bx, reel.y + 22; anchor: center; size: 11.5; color: ink; show: b == 2 }
             zone box reel_b.$b { at: bx, reel.y + 22; size: 88, 30; corner: 10; cursor: pointer; active: reel > 0.8 }
             on enter reel_b.$b { reel_b.glow.$b: 1 }
             on leave reel_b.$b { reel_b.glow.$b: 0 }
@@ -2266,7 +2266,7 @@ scene Etta {
         opacity: summary.reveal
         move: (1 - summary.reveal) * -10, 0
         ellipse { at: summary.x - 78, cy_actual; radius: 8; color: blue }
-        text "{pending, 0} important updates" { at: summary.x - 62, cy_actual; anchor: left center; size: 11.5; color: ink }
+        text "{pending, 0} important updates" { family: "Geist"; at: summary.x - 62, cy_actual; anchor: left center; size: 11.5; color: ink }
         path { at: summary.x + 86, cy_actual - 5; color: #8b8f95; stroke: 1.6; move 0, 0; line 5, 5; line 0, 10 }
     }
 
@@ -2397,8 +2397,8 @@ scene Etta {
             //  many there are; open, from whom.
             group {
                 opacity: 1 - fan
-                text number(n.$k, 0) { at: gx.$k, gy.$k + 0.5; anchor: center; size: 8.5; weight: 700; color: #0a0c10; opacity: if(n.$k < 10, 1, 0) }
-                text "9+" { at: gx.$k, gy.$k + 0.5; anchor: center; size: 7.5; weight: 700; color: #0a0c10; opacity: if(n.$k < 10, 0, 1) }
+                text number(n.$k, 0) { family: "Geist"; at: gx.$k, gy.$k + 0.5; anchor: center; size: 8.5; weight: 700; color: #0a0c10; opacity: if(n.$k < 10, 1, 0) }
+                text "9+" { family: "Geist"; at: gx.$k, gy.$k + 0.5; anchor: center; size: 7.5; weight: 700; color: #0a0c10; opacity: if(n.$k < 10, 0, 1) }
             }
             group {
                 opacity: clamp(fan * 2 - 1, 0, 1)
@@ -2488,7 +2488,7 @@ scene Etta {
             ellipse { at: sx.$k - 5 + 2 * stir.$k, sy.$k - 7; radius: 3; scale: 1.4, 0.7; color: ink; opacity: 14% + 18% * near.stone.$k }
             //  An image's `at` is its corner.
             image stones.$k.icon { at: sx.$k - 9, sy.$k - 9 + 1.2 * stir.$k; size: 18, 18 }
-            text stones.$k.letter { at: sx.$k, sy.$k + 0.5 + 1.2 * stir.$k; anchor: center; size: 12; weight: 700; color: ink }
+            text stones.$k.letter { family: "Geist"; at: sx.$k, sy.$k + 0.5 + 1.2 * stir.$k; anchor: center; size: 12; weight: 700; color: ink }
         }
         //  The rings, spreading out of it while the mouse is on it.
         group {
@@ -2507,7 +2507,7 @@ scene Etta {
                 shadow: 0, 6, 16, 40%
                 box { at: sx.$k, sy.$k + 34; size: 180, 24; corner: 12; opacity: 94% }
             }
-            text stones.$k.title { at: sx.$k, sy.$k + 34.5; anchor: center; size: 11.5; weight: 500; width: 164; lines: 1; color: ink }
+            text stones.$k.title { family: "Geist"; at: sx.$k, sy.$k + 34.5; anchor: center; size: 11.5; weight: 500; width: 164; lines: 1; color: ink }
         }
         zone ellipse stone_zone.$k { at: sx.$k, sy.$k; radius: 16; cursor: pointer; active: stone.$k > 0.6 }
         on enter stone_zone.$k { impulse touch.stone.$k 9; near.stone.$k: 1 }
@@ -2536,8 +2536,8 @@ scene Etta {
         opacity: clamp(fan * 3 - 2, 0, 1)
         move: 0, (1 - preview.reveal) * 6
         box { at: preview.x - 116, preview.y; size: 3, 26; corner: 1.5; color: hue }
-        text who { at: preview.x - 106, preview.y - 8; anchor: left center; size: 11.5; weight: 600; width: 200; lines: 1; color: #f6f6f5 }
-        text line { at: preview.x - 106, preview.y + 8; anchor: left center; size: 10.5; width: 200; lines: 1; color: #a9adb3 }
+        text who { family: "Geist"; at: preview.x - 106, preview.y - 8; anchor: left center; size: 11.5; weight: 600; width: 200; lines: 1; color: #f6f6f5 }
+        text line { family: "Geist"; at: preview.x - 106, preview.y + 8; anchor: left center; size: 10.5; width: 200; lines: 1; color: #a9adb3 }
     }
     //  The whole —her, the fan and the preview— for the grace on leaving: the gap
     //  between the three is real and must not be lost while crossing it.
@@ -2650,13 +2650,13 @@ scene Etta {
         }
         //  The words, written by a wave passing left to right: each letter rises
         //  into its place as it arrives.
-        text who { at: f.left + 42, f.top + 14; anchor: left center; size: 11.5; weight: 600; width: 160; lines: 1; color: #f6f6f5
+        text who { family: "Geist"; at: f.left + 42, f.top + 14; anchor: left center; size: 11.5; weight: 600; width: 160; lines: 1; color: #f6f6f5
                    letter_opacity: clamp(write * (letters + 8) - letter, 0, 1)
                    letter_move: 0, (1 - clamp(write * (letters + 8) - letter, 0, 1)) * 6 }
-        text line { at: f.left + 42, f.top + 30; anchor: left center; size: 10.5; width: 196; lines: 1; color: #a9adb3
+        text line { family: "Geist"; at: f.left + 42, f.top + 30; anchor: left center; size: 10.5; width: 196; lines: 1; color: #a9adb3
                     letter_opacity: clamp((write * 1.4 - 0.4) * (letters + 8) - letter, 0, 1)
                     letter_move: 0, (1 - clamp((write * 1.4 - 0.4) * (letters + 8) - letter, 0, 1)) * 6 }
-        text "now" { at: f.left + 238, f.top + 14; anchor: right center; size: 9.5; color: #8b8f95; opacity: 1 - chips }
+        text "now" { family: "Geist"; at: f.left + 238, f.top + 14; anchor: right center; size: 9.5; color: #8b8f95; opacity: 1 - chips }
         //  Under the pointer, two small drops take its place: «later», a clock
         //  that brings it back in a while, and «mute», a bell that is crossed
         //  out, for the app that sent it.
@@ -2688,11 +2688,11 @@ scene Etta {
                 group {
                     show: chip.on.$i
                     box { at: cx.i, f.top + 58; size: 54, 22; corner: 11; color: #ffffff; opacity: 9% + chip.glow.$i * 12% }
-                    text "Open" { at: cx.i, f.top + 58; anchor: center; size: 10.5; weight: 500; color: #f6f6f5; show: i == 0 }
-                    text "Done" { at: cx.i, f.top + 58; anchor: center; size: 10.5; weight: 500; color: #f6f6f5; show: i == 1 }
-                    text act.1 { at: cx.i, f.top + 58; anchor: center; size: 10.5; weight: 500; width: 48; lines: 1; color: #f6f6f5; show: i == 2 }
-                    text act.2 { at: cx.i, f.top + 58; anchor: center; size: 10.5; weight: 500; width: 48; lines: 1; color: #f6f6f5; show: i == 3 }
-                    text "All" { at: cx.i, f.top + 58; anchor: center; size: 10.5; weight: 500; color: #f6f6f5; show: i == 4 }
+                    text "Open" { family: "Geist"; at: cx.i, f.top + 58; anchor: center; size: 10.5; weight: 500; color: #f6f6f5; show: i == 0 }
+                    text "Done" { family: "Geist"; at: cx.i, f.top + 58; anchor: center; size: 10.5; weight: 500; color: #f6f6f5; show: i == 1 }
+                    text act.1 { family: "Geist"; at: cx.i, f.top + 58; anchor: center; size: 10.5; weight: 500; width: 48; lines: 1; color: #f6f6f5; show: i == 2 }
+                    text act.2 { family: "Geist"; at: cx.i, f.top + 58; anchor: center; size: 10.5; weight: 500; width: 48; lines: 1; color: #f6f6f5; show: i == 3 }
+                    text "All" { family: "Geist"; at: cx.i, f.top + 58; anchor: center; size: 10.5; weight: 500; color: #f6f6f5; show: i == 4 }
                 }
             }
         }
@@ -2701,7 +2701,7 @@ scene Etta {
                     gravity: 0, -60; size: 3, 0.5; colors: #ffffff, hue; opacity: 60%, 0%; burst: notice_puff }
     }
     //  And the ones that do not fit, said and not drawn: «+N more» below the pile.
-    text "+{burst - 3, 0} more" {
+    text "+{burst - 3, 0} more" { family: "Geist";
         at: arrival.x0 + 113, cy_actual + 40
         anchor: right center
         size: 9.5
@@ -2735,7 +2735,7 @@ scene Etta {
         let tx0 = tray.x - 232
         let ty0 = tray.y - 198
 
-        text "SWELL" { at: tx0, ty0; anchor: left center; size: 9.5; weight: 600; color: ink; opacity: 35% }
+        text "SWELL" { family: "Geist"; at: tx0, ty0; anchor: left center; size: 9.5; weight: 600; color: ink; opacity: 35% }
         // ── the header, by columns ───────────────────────────────
         //  The title on the left, the lane of pills in the middle and «View all»
         //  on the right. The three places come from ONE sum, from the right edge
@@ -2747,14 +2747,14 @@ scene Etta {
         //  And what is being shown: «Now» is everything, and with a filter, the
         //  name of its category. You asked about the blue drop; it answers the
         //  question you asked.
-        text "Now" { at: tx0, ty0 + 24; anchor: left center; size: 19; weight: 500; color: ink; show: filter < 0.5 }
-        text "Messages" { at: tx0, ty0 + 24; anchor: left center; size: 19; weight: 500; color: ink; show: filter == 1 }
-        text "Work" { at: tx0, ty0 + 24; anchor: left center; size: 19; weight: 500; color: ink; show: filter == 2 }
-        text "Calendar" { at: tx0, ty0 + 24; anchor: left center; size: 19; weight: 500; color: ink; show: filter == 3 }
-        text "System" { at: tx0, ty0 + 24; anchor: left center; size: 19; weight: 500; color: ink; show: filter == 4 }
+        text "Now" { family: "Geist"; at: tx0, ty0 + 24; anchor: left center; size: 19; weight: 500; color: ink; show: filter < 0.5 }
+        text "Messages" { family: "Geist"; at: tx0, ty0 + 24; anchor: left center; size: 19; weight: 500; color: ink; show: filter == 1 }
+        text "Work" { family: "Geist"; at: tx0, ty0 + 24; anchor: left center; size: 19; weight: 500; color: ink; show: filter == 2 }
+        text "Calendar" { family: "Geist"; at: tx0, ty0 + 24; anchor: left center; size: 19; weight: 500; color: ink; show: filter == 3 }
+        text "System" { family: "Geist"; at: tx0, ty0 + 24; anchor: left center; size: 19; weight: 500; color: ink; show: filter == 4 }
         //  And how to see everything again, or else it is a dead end.
         box { at: header.button, ty0 + 24; size: 78, 26; corner: 13; color: #202021; opacity: if(filter > 0.5, 1, 0) }
-        text "View all" { at: header.button, ty0 + 24; anchor: center; size: 11.5; color: #8b8f95; show: filter > 0.5 }
+        text "View all" { family: "Geist"; at: header.button, ty0 + 24; anchor: center; size: 11.5; color: #8b8f95; show: filter > 0.5 }
         zone box show_all { at: header.button, ty0 + 24; size: 78, 26; corner: 13; cursor: pointer; active: tray > 0.9 and filter > 0.5 }
         on press show_all { filter = 0 }
 
@@ -2776,7 +2776,7 @@ scene Etta {
             group {
                 opacity: shown.$k
                 ellipse { at: px, py; radius: 7 + 4 * lane; color: mix(mix(mix(blue, lilac, k > 1.5), green, k > 2.5), amber, k > 3.5) }
-                text number(n.$k, 0) { at: px, py + 0.5; anchor: center; size: 8.5 + 2 * lane; weight: 700; color: #0a0c10; opacity: if(n.$k < 10, 1, 0) }
+                text number(n.$k, 0) { family: "Geist"; at: px, py + 0.5; anchor: center; size: 8.5 + 2 * lane; weight: 700; color: #0a0c10; opacity: if(n.$k < 10, 1, 0) }
             }
         }
 
@@ -2820,12 +2820,12 @@ scene Etta {
                 group {
                     opacity: clamp((pull.$k + flung.$k * 520) / 40, 0, 1)
                     box { at: fx0 - 160, fy; size: 130, 58; corner: 14; color: #1b2a22 }
-                    text "Done" { at: fx0 - 160, fy; anchor: center; size: 12; weight: 600; color: mint }
+                    text "Done" { family: "Geist"; at: fx0 - 160, fy; anchor: center; size: 12; weight: 600; color: mint }
                 }
                 group {
                     opacity: clamp((0 - pull.$k - flung.$k * 520) / 40, 0, 1)
                     box { at: fx0 + 160, fy; size: 130, 58; corner: 14; color: #2a1b1b }
-                    text "Dismiss" { at: fx0 + 160, fy; anchor: center; size: 12; weight: 600; color: #e0655a }
+                    text "Dismiss" { family: "Geist"; at: fx0 + 160, fy; anchor: center; size: 12; weight: 600; color: #e0655a }
                 }
                 //  Pulling a row stretches it: it lengthens where you pull, thins a
                 //  little and rounds off, like a drop you are stretching. On
@@ -2838,10 +2838,10 @@ scene Etta {
                 //  Its category's bar, on the left: it is where the drop will come
                 //  out of when it is resolved.
                 box { at: fx - 214, fy; size: 4, if(row_urgent.$k, 46, 34); corner: 2; color: color.$k }
-                text row.$k.app { at: fx - 200, fy - 18; anchor: left center; size: 8.5; weight: 700; color: color.$k }
-                text row.$k.title { at: fx - 200, fy - 1; anchor: left center; size: 12.5; weight: 500; width: 300; lines: 1; color: ink }
-                text row.$k.detail { at: fx - 200, fy + 17; anchor: left center; size: 10.5; width: 300; lines: 1; color: #8b8f95 }
-                text row.$k.age { at: fx + 208, fy - 18; anchor: right center; size: 9.5; color: #8b8f95 }
+                text row.$k.app { family: "Geist"; at: fx - 200, fy - 18; anchor: left center; size: 8.5; weight: 700; color: color.$k }
+                text row.$k.title { family: "Geist"; at: fx - 200, fy - 1; anchor: left center; size: 12.5; weight: 500; width: 300; lines: 1; color: ink }
+                text row.$k.detail { family: "Geist"; at: fx - 200, fy + 17; anchor: left center; size: 10.5; width: 300; lines: 1; color: #8b8f95 }
+                text row.$k.age { family: "Geist"; at: fx + 208, fy - 18; anchor: right center; size: 9.5; color: #8b8f95 }
             }
             zone box row_zone.$k { at: fx, fy; size: 456, 58; corner: 14; cursor: pointer; active: tray > 0.9 and visible.$k > 0.5 }
             on enter row_zone.$k { touch.$k: 1 }
@@ -2867,9 +2867,9 @@ scene Etta {
         //  its place belongs to the fuse, which is more urgent than a link.
         group {
             show: not undoable
-            text "History" { at: tx0, tray.y + 198; anchor: left center; size: 11.5; color: mix(#8b8f95, ink, hist_link.glow) }
+            text "History" { family: "Geist"; at: tx0, tray.y + 198; anchor: left center; size: 11.5; color: mix(#8b8f95, ink, hist_link.glow) }
             zone box hist_link { from: tx0 - 6, tray.y + 186; size: 80, 24; corner: 8; cursor: pointer; active: tray > 0.9 and not undoable }
-            text "Settings" { at: tray.x + 232, tray.y + 198; anchor: right center; size: 11.5; color: #8b8f95 }
+            text "Settings" { family: "Geist"; at: tray.x + 232, tray.y + 198; anchor: right center; size: 11.5; color: #8b8f95 }
         }
 
         // ── undo, with its fuse ──────────────────────────────────
@@ -2883,8 +2883,8 @@ scene Etta {
             box { at: tray.x, undo.y; size: 456, 40; corner: 12; color: mix(#1b1b1c, #232425, undo.glow) }
             //  The fuse, stuck to the bottom edge of its pill.
             box { from: tray.x - 228, undo.y + 16; size: 456 * fuse, 4; corner: 2; color: mint }
-            text "Done. Undo it?" { at: tray.x - 208, undo.y - 3; anchor: left center; size: 11.5; color: #8b8f95 }
-            text "Undo" { at: tray.x + 192, undo.y - 3; anchor: right center; size: 12; weight: 600; color: mint }
+            text "Done. Undo it?" { family: "Geist"; at: tray.x - 208, undo.y - 3; anchor: left center; size: 11.5; color: #8b8f95 }
+            text "Undo" { family: "Geist"; at: tray.x + 192, undo.y - 3; anchor: right center; size: 12; weight: 600; color: mint }
             zone box undo_zone { at: tray.x, undo.y; size: 456, 40; corner: 12; cursor: pointer; active: undoable }
             on enter undo_zone { undo.glow: 1 }
             on leave undo_zone { undo.glow: 0 }
@@ -2926,7 +2926,7 @@ scene Etta {
     //  And it goes beside her, not on top: up there is the edge of the screen,
     //  which is the same reason the drops go down her shoulder. Over her head the
     //  «z» came out half cut off and could not be seen.
-    text "z" { at: cx + 26 + zee * 7, cy_actual - 6 - zee * 15; anchor: center
+    text "z" { family: "Geist"; at: cx + 26 + zee * 7, cy_actual - 6 - zee * 15; anchor: center
                size: 10 + zee * 7; weight: 600; color: #dfe6e2
                opacity: drowsy * clamp(zee * 6, 0, 1) * (1 - zee * 0.9) * 95% }
 
@@ -3065,9 +3065,9 @@ scene Etta {
                     arc { at: 21 + e * 8, 21.4; radius: 1.7; span: 170deg; width: 1.5; rotate: 180deg; color: #9ed6bd; show: h.glyph == 4 }
                 }
             }
-            text h.name { at: 48, 22; anchor: left center; size: 14; width: 400; lines: 1
+            text h.name { family: "Geist"; at: 48, 22; anchor: left center; size: 14; width: 400; lines: 1
                             color: mix(#dfe1e3, #f6f6f5, glow) }
-            text h.kind_label { at: 592, 22; anchor: right center; size: 11.5; color: #8b8f95 }
+            text h.kind_label { family: "Geist"; at: 592, 22; anchor: right center; size: 11.5; color: #8b8f95 }
         }
         on enter touch { glow: 1 }
         on leave touch { glow: 0 }
@@ -3234,19 +3234,19 @@ scene Etta {
     group {
         opacity: finder_content
         move: 0, (1 - finder_content) * 10
-        text "MAREA" { at: bx0, by0 + 22; anchor: left center; size: 9; weight: 600; color: mint; opacity: 80% }
+        text "MAREA" { family: "Geist"; at: bx0, by0 + 22; anchor: left center; size: 9; weight: 600; color: mint; opacity: 80% }
         //  The field's magnifying glass: the same one she wears on her face.
         arc { at: bx0 + 14, by0 + 54; radius: 8; span: 360deg; width: 2.2; color: ink; opacity: 75% }
         line { from: bx0 + 20, by0 + 60; to: bx0 + 26, by0 + 66; width: 2.4; color: ink; opacity: 75% }
-        input query { at: bx0 + 40, by0 + 54; width: 470; size: 21; color: ink
+        input query { family: "Geist"; at: bx0 + 40, by0 + 54; width: 470; size: 21; color: ink
                          placeholder: "What do you want to find?"; selection: #2f5f52 }
         box { at: bx0 + 570, by0 + 54; size: 44, 26; corner: 8; color: #202021 }
-        text "Esc" { at: bx0 + 570, by0 + 54; anchor: center; size: 11.5; color: #8b8f95 }
-        text "Apps, windows, files and folders" { at: bx0 + 40, by0 + 86; anchor: left center; size: 11.5; color: #8b8f95 }
+        text "Esc" { family: "Geist"; at: bx0 + 570, by0 + 54; anchor: center; size: 11.5; color: #8b8f95 }
+        text "Apps, windows, files and folders" { family: "Geist"; at: bx0 + 40, by0 + 86; anchor: left center; size: 11.5; color: #8b8f95 }
         line { from: bx0, by0 + 108; to: bx0 + 600, by0 + 108; width: 1; color: ink; opacity: 10% }
-        text "At hand" { at: bx0 + 8, by0 + 126; anchor: left center; size: 11; weight: 600; color: #8b8f95
+        text "At hand" { family: "Geist"; at: bx0 + 8, by0 + 126; anchor: left center; size: 11; weight: 600; color: #8b8f95
                         show: not typing }
-        text "Results" { at: bx0 + 8, by0 + 126; anchor: left center; size: 11; weight: 600; color: #8b8f95
+        text "Results" { family: "Geist"; at: bx0 + 8, by0 + 126; anchor: left center; size: 11; weight: 600; color: #8b8f95
                             show: typing }
         //  The selection is ONE single one that travels between rows with its
         //  spring, not one per row lighting up and going out. It is what makes
@@ -3258,8 +3258,8 @@ scene Etta {
             gap: 2
             for h in results { ResultRow(h, pick: open_result, cue: stagger) }
         }
-        text "↑↓ choose · Enter open" { at: finder.x, by0 + finder_h - 20; anchor: center; size: 11; color: #8b8f95; opacity: 70% }
-        text "Nothing here" { at: finder.x, by0 + 164; anchor: center; size: 12.5; color: #8b8f95
+        text "↑↓ choose · Enter open" { family: "Geist"; at: finder.x, by0 + finder_h - 20; anchor: center; size: 11; color: #8b8f95; opacity: 70% }
+        text "Nothing here" { family: "Geist"; at: finder.x, by0 + 164; anchor: center; size: 12.5; color: #8b8f95
                                show: results.count < 1 }
     }
     }
@@ -3278,7 +3278,7 @@ scene Etta {
         let fy = e.first * 16
         let is_marked = if(marked == e.index, 1, 0)
         //  The name of whoever brings it, only above the first of its group.
-        text e.group_name { at: 8, 8; anchor: left center; size: 9.5; weight: 600; color: #6f7378
+        text e.group_name { family: "Geist"; at: 8, 8; anchor: left center; size: 9.5; weight: 600; color: #6f7378
                        width: 139; lines: 1; show: e.first }
         //  At rest the row has no background: the box's is hers, since the box is
         //  hers. The only thing painted is what is pointed at.
@@ -3288,7 +3288,7 @@ scene Etta {
         box { from: 0, fy; size: 155, 23; corner: 7; stroke: 1; color: mint; opacity: is_marked * (1 - glow) }
         //  Without an icon catalogue, an entry's glyph is its little square.
         box { at: 13, fy + 11.5; size: 9, 9; corner: 2.5; stroke: 1.4; color: mix(#8b8f95, #f6f6f5, glow) }
-        text e.title { at: 26, fy + 11.5; anchor: left center; size: 12; width: 122; lines: 1
+        text e.title { family: "Geist"; at: 26, fy + 11.5; anchor: left center; size: 12; width: 122; lines: 1
                         color: mix(#dfe1e3, #f6f6f5, glow) }
         zone box touch { from: 0, fy; size: 155, 23; corner: 7; cursor: pointer }
         on enter touch { glow: 1 }
@@ -3317,26 +3317,26 @@ scene Etta {
         //  magnifying glass, the same one that appears on her face.
         arc { at: mx0 + 12, ry.search - 1; radius: 4.6; span: 360deg; width: 1.5; color: mix(#8b8f95, #f6f6f5, own.0) }
         line { from: mx0 + 15, ry.search + 2; to: mx0 + 18, ry.search + 5; width: 1.6; color: mix(#8b8f95, #f6f6f5, own.0) }
-        text "Search…" { at: mx0 + 26, ry.search; anchor: left center; size: 12; color: mix(#dfe1e3, #f6f6f5, own.0) }
+        text "Search…" { family: "Geist"; at: mx0 + 26, ry.search; anchor: left center; size: 12; color: mix(#dfe1e3, #f6f6f5, own.0) }
         //  The Settings gear, the same one as in the panel's header.
         arc { at: mx0 + 13, ry.settings; radius: 5; span: 300deg; width: 1.4; color: mix(#8b8f95, #f6f6f5, own.1) }
         ellipse { at: mx0 + 13, ry.settings; radius: 1.9; color: mix(#8b8f95, #f6f6f5, own.1) }
-        text "Settings" { at: mx0 + 26, ry.settings; anchor: left center; size: 12; color: mix(#dfe1e3, #f6f6f5, own.1) }
+        text "Settings" { family: "Geist"; at: mx0 + 26, ry.settings; anchor: left center; size: 12; color: mix(#dfe1e3, #f6f6f5, own.1) }
         //  And Customize's sparkle: a four-pointed star, which is a square whose
         //  sides have been eaten away.
         path { at: mx0 + 13, ry.custom; color: mix(#8b8f95, #f6f6f5, own.2)
                move 0, -5.5; curve 5.5, 0 via 1.2, -1.2; curve 0, 5.5 via 1.2, 1.2
                curve -5.5, 0 via -1.2, 1.2; curve 0, -5.5 via -1.2, -1.2; close }
-        text "Customize" { at: mx0 + 26, ry.custom; anchor: left center; size: 12; color: mix(#dfe1e3, #f6f6f5, own.2) }
+        text "Customize" { family: "Geist"; at: mx0 + 26, ry.custom; anchor: left center; size: 12; color: mix(#dfe1e3, #f6f6f5, own.2) }
         //  And the third house one: sleep. In Marea these are the control
         //  center's «zZ»; here the center is the sheet's —three cards, and none of
         //  them is this one—, so it goes with hers, which is where the things
         //  SHE does are.
-        text "z" { at: mx0 + 10, ry.sleep - 3; anchor: center; size: 9; weight: 600
+        text "z" { family: "Geist"; at: mx0 + 10, ry.sleep - 3; anchor: center; size: 9; weight: 600
                    color: mix(#8b8f95, #f6f6f5, own.3) }
-        text "z" { at: mx0 + 16, ry.sleep + 3; anchor: center; size: 12; weight: 600
+        text "z" { family: "Geist"; at: mx0 + 16, ry.sleep + 3; anchor: center; size: 12; weight: 600
                    color: mix(#8b8f95, #f6f6f5, own.3) }
-        text "Sleep" { at: mx0 + 26, ry.sleep; anchor: left center; size: 12; color: mix(#dfe1e3, #f6f6f5, own.3) }
+        text "Sleep" { family: "Geist"; at: mx0 + 26, ry.sleep; anchor: left center; size: 12; color: mix(#dfe1e3, #f6f6f5, own.3) }
         //  The line, and below it the add-ons' stuff.
         line { from: mx0 + 8, menu.y0 + 99; to: mx0 + 147, menu.y0 + 99; width: 1; color: #1f2226 }
         column menu_col {
@@ -3393,7 +3393,7 @@ scene Etta {
             let t = fract(pool.t + w / 3)
             ellipse { at: pool.x, pool.y; radius: 10 + 50 * t; scale: 1, 0.42; stroke: 1.4; color: mint; opacity: (1 - t) * 60% }
         }
-        text "Drop it in Deriva" { at: pool.x, pool.y + 42; anchor: center; size: 11.5; weight: 600; color: mint }
+        text "Drop it in Deriva" { family: "Geist"; at: pool.x, pool.y + 42; anchor: center; size: 11.5; weight: 600; color: mint }
         //  Its two places, drops that swell under the pointer.
         body {
             gradient: radial pool.x - 124, pool.y - 6 radius 30, #e8f3ff, blue 55%, #3d6f9c
@@ -3411,8 +3411,8 @@ scene Etta {
         line { from: pool.x - 121, pool.y - 4; to: pool.x - 121, pool.y + 7; width: 1.6; color: #0c0f12 }
         path { at: pool.x + 113, pool.y - 8; color: #0c0f12
                move 7, 0; line 9, 6; line 15, 8; line 9, 10; line 7, 16; line 5, 10; line 0, 8; line 5, 6; close }
-        text "Read later" { at: pool.x - 120, pool.y + 36; anchor: center; size: 10.5; color: ink; opacity: 60% + 40% * later.hl }
-        text "Inspiration" { at: pool.x + 120, pool.y + 36; anchor: center; size: 10.5; color: ink; opacity: 60% + 40% * insp.hl }
+        text "Read later" { family: "Geist"; at: pool.x - 120, pool.y + 36; anchor: center; size: 10.5; color: ink; opacity: 60% + 40% * later.hl }
+        text "Inspiration" { family: "Geist"; at: pool.x + 120, pool.y + 36; anchor: center; size: 10.5; color: ink; opacity: 60% + 40% * insp.hl }
     }
     //  Sharing the screen: the ring that breathes around her.
     ellipse { at: cx, cy_actual; radius: r + 6 + 1.5 * sin(share.breath * 360); stroke: 1.8; color: #ef7a66
@@ -3429,7 +3429,7 @@ scene Etta {
             box { at: cx, cy_actual + 62; size: 190, 30; corner: 15 }
         }
         ellipse { at: cx - 78, cy_actual + 62; radius: 4; color: mix(mint, amber, drift.result == 2) }
-        text drift.toast { at: cx + 6, cy_actual + 62; anchor: center; size: 11.5; weight: 500; color: ink; width: 160; lines: 1 }
+        text drift.toast { family: "Geist"; at: cx + 6, cy_actual + 62; anchor: center; size: 11.5; weight: 500; color: ink; width: 160; lines: 1 }
     }
 
     clip inset 2 box { at: card.x, card.y; size: card.w, card.h; corner: card.corner }
@@ -3443,11 +3443,11 @@ scene Etta {
         let overview = 1 - clamp(paging * 1.6, 0, 1)
         let y0 = card.top + 23
 
-        text "MAREA" { at: x0, y0; anchor: left center; size: 9; weight: 600; color: ink; opacity: 38% }
+        text "MAREA" { family: "Geist"; at: x0, y0; anchor: left center; size: 9; weight: 600; color: ink; opacity: 38% }
         //  The big title says where you are: «Control center» on the front
         //  page, and the page's own name —with its way back beside it— on the
         //  others (see the page's header, below).
-        text "Control center" { at: x0 + 22 * paging, y0 + 22; anchor: left center; size: 18; weight: 500; color: ink; opacity: 1 - clamp(paging * 2, 0, 1) }
+        text "Control center" { family: "Geist"; at: x0 + 22 * paging, y0 + 22; anchor: left center; size: 18; weight: 500; color: ink; opacity: 1 - clamp(paging * 2, 0, 1) }
         //  The gear and the cross, top right.
         prop gear.glow = 0 ~140ms
         prop cross.glow = 0 ~140ms
@@ -3586,12 +3586,12 @@ scene Etta {
                 group {
                     pivot: sx, iy + 24
                     scale: 1 - 0.14 * four
-                    text "Brightness" { at: sx, iy + 24; anchor: center; size: 11.5; color: ink; show: k == 0 }
-                    text "Volume" { at: sx, iy + 24; anchor: center; size: 11.5; color: ink; show: k == 1 }
-                    text "Microphone" { at: sx, iy + 24; anchor: center; size: 11.5; color: ink; show: k == 2 }
-                    text "Rain" { at: sx, iy + 24; anchor: center; size: 11.5; color: ink; show: k == 3 }
+                    text "Brightness" { family: "Geist"; at: sx, iy + 24; anchor: center; size: 11.5; color: ink; show: k == 0 }
+                    text "Volume" { family: "Geist"; at: sx, iy + 24; anchor: center; size: 11.5; color: ink; show: k == 1 }
+                    text "Microphone" { family: "Geist"; at: sx, iy + 24; anchor: center; size: 11.5; color: ink; show: k == 2 }
+                    text "Rain" { family: "Geist"; at: sx, iy + 24; anchor: center; size: 11.5; color: ink; show: k == 3 }
                 }
-                text "{val * 100, 0}%" { at: sx, iy + 42; anchor: center; size: 11.5; weight: 500; color: mint }
+                text "{val * 100, 0}%" { family: "Geist"; at: sx, iy + 42; anchor: center; size: 11.5; weight: 500; color: mint }
               }
                 //  Drag the track, and press the icon to mute.
                 zone box track.$k { at: sx, track_top + track_h / 2; size: 34 - 6 * four, track_h + 18; corner: 17; cursor: pointer; active: content > 0.9 and (k < 3 or rain_on) }
@@ -3713,15 +3713,15 @@ scene Etta {
                         }
                         //  What is read, with whatever room is left. No widths.
                         column { grow: 1; gap: 2
-                            text title.$k { size: 13; lines: 1; color: ink }
-                            text sub.$k { size: 11.5; lines: 1; color: mix(#8b8f95, faint, glassiness); show: k > 3 }
-                            text bt.sub { size: 11.5; lines: 1; color: mix(#8b8f95, faint, glassiness); show: k == 2 }
-                            text net.name { size: 11.5; lines: 1; color: mix(#8b8f95, faint, glassiness); show: k == 1 }
+                            text title.$k { family: "Geist"; size: 13; lines: 1; color: ink }
+                            text sub.$k { family: "Geist"; size: 11.5; lines: 1; color: mix(#8b8f95, faint, glassiness); show: k > 3 }
+                            text bt.sub { family: "Geist"; size: 11.5; lines: 1; color: mix(#8b8f95, faint, glassiness); show: k == 2 }
+                            text net.name { family: "Geist"; size: 11.5; lines: 1; color: mix(#8b8f95, faint, glassiness); show: k == 1 }
                             //  The Focus one tells what it has left, not what it
                             //  would last: when it is on, what you need to know is
                             //  when she comes back.
-                            text "On · {remaining, 0} min" { size: 11.5; lines: 1; color: mint; show: k == 3 and haven }
-                            text sub.3 { size: 11.5; lines: 1; color: mix(#8b8f95, faint, glassiness); show: k == 3 and not haven }
+                            text "On · {remaining, 0} min" { family: "Geist"; size: 11.5; lines: 1; color: mint; show: k == 3 and haven }
+                            text sub.3 { family: "Geist"; size: 11.5; lines: 1; color: mix(#8b8f95, faint, glassiness); show: k == 3 and not haven }
                         }
                         //  The switch, or the arrow of those that open a page.
                         //  The one that opens a page only carries an arrow, so it
@@ -3779,21 +3779,21 @@ scene Etta {
             //  The page's header, in the card's own: back, and where you are.
             path { at: card.x - 228, card.top + 40; color: ink; stroke: 1.8; opacity: 70%
                    move 5, 0; line 0, 5; line 5, 10 }
-            text "Wi-Fi" { at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == wifi }
-            text "Bluetooth" { at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == bluetooth }
-            text "Focus" { at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == concentration }
-            text "Her wardrobe" { at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == wardrobe }
-            text "Sound" { at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == sound }
-            text pick(section, "Settings", "Where she lives", "Her look", "Language", "The lock", "Notices") { at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == settings }
-            text "Agents" { at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == agents }
-            text "History" { at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == history }
-            text "Deriva" { at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == drift }
-            text "Wallpapers" { at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == walls }
-            text "{drift.kept, 0} kept" { at: card.x + 150, card.top + 45; anchor: right center; size: 11; color: #8b8f95; show: page == drift }
-            text cal.month { at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == calendar }
-            text systray.title { at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; width: 300; lines: 1; color: ink; show: page == systray }
-            text "Shall we take a break?" { at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == session and confirming == none }
-            text "Confirm" { at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == session and confirming != none }
+            text "Wi-Fi" { family: "Geist"; at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == wifi }
+            text "Bluetooth" { family: "Geist"; at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == bluetooth }
+            text "Focus" { family: "Geist"; at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == concentration }
+            text "Her wardrobe" { family: "Geist"; at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == wardrobe }
+            text "Sound" { family: "Geist"; at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == sound }
+            text pick(section, "Settings", "Where she lives", "Her look", "Language", "The lock", "Notices") { family: "Geist"; at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == settings }
+            text "Agents" { family: "Geist"; at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == agents }
+            text "History" { family: "Geist"; at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == history }
+            text "Deriva" { family: "Geist"; at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == drift }
+            text "Wallpapers" { family: "Geist"; at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == walls }
+            text "{drift.kept, 0} kept" { family: "Geist"; at: card.x + 150, card.top + 45; anchor: right center; size: 11; color: #8b8f95; show: page == drift }
+            text cal.month { family: "Geist"; at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == calendar }
+            text systray.title { family: "Geist"; at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; width: 300; lines: 1; color: ink; show: page == systray }
+            text "Shall we take a break?" { family: "Geist"; at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == session and confirming == none }
+            text "Confirm" { family: "Geist"; at: px0, card.top + 45; anchor: left center; size: 18; weight: 500; color: ink; show: page == session and confirming != none }
             zone box back_arrow { at: card.x - 224, card.top + 45; size: 34, 34; corner: 17; cursor: pointer; active: paging > 0.9 }
             //  A step back is ONE step: from the question you go back to the list,
             //  not to the control center. The guards read the previous frame, so
@@ -3840,7 +3840,7 @@ scene Etta {
                     arc { at: 20, 17; radius: 6.4; span: 180deg; width: 1.5; color: tone }
                     box { at: 20, 27.5; size: 1.5, 3.5; color: tone }
                 }
-                text f.name { at: 42, 19; anchor: left center; size: 12; width: 300; lines: 1
+                text f.name { family: "Geist"; at: 42, 19; anchor: left center; size: 12; width: 300; lines: 1
                                 color: mix(#dfe1e3, #f6f6f5, glow) }
                 ellipse { at: 438, 19; radius: 4; color: mint; opacity: current * 100% }
                 //  The padlock: it asks for a password the first time.
@@ -3861,7 +3861,7 @@ scene Etta {
                           color: mix(#e0655a, mint, clamp(battery * 3 - 0.3, 0, 1)) }
                 }
                 //  One just found, not paired: pressing it pairs it.
-                text "Pair" { at: 428, 19; anchor: right center; size: 11; weight: 600; color: mint; show: fresh > 0.5 }
+                text "Pair" { family: "Geist"; at: 428, 19; anchor: right center; size: 11; weight: 600; color: mint; show: fresh > 0.5 }
                 on enter touch { glow: 1 }
                 on leave touch { glow: 0 }
                 on press touch { emit pick(f.index + base) }
@@ -3885,11 +3885,11 @@ scene Etta {
                 let ay = card.top + 109 + networks.count * 42 + 16
                 box { from: card.x - 228, ay; size: 456, 78; corner: 12; color: mix(#202021, ink, glassiness * 0.06); stroke: 1; opacity: 100% }
                 box { from: card.x - 228, ay; size: 456, 78; corner: 12; stroke: 1.2; color: mint; opacity: 35% }
-                text "Password for «{ask.name}»" { at: card.x - 212, ay + 18; anchor: left center; size: 11.5; color: #8b8f95; width: 420; lines: 1 }
+                text "Password for «{ask.name}»" { family: "Geist"; at: card.x - 212, ay + 18; anchor: left center; size: 11.5; color: #8b8f95; width: 420; lines: 1 }
                 box { from: card.x - 212, ay + 32; size: 320, 32; corner: 9; color: #141415 }
-                input wifi_pw { at: card.x - 202, ay + 48; width: 300; size: 13; color: ink; placeholder: "Password"; secret: true; selection: #2f5f52 }
+                input wifi_pw { family: "Geist"; at: card.x - 202, ay + 48; width: 300; size: 13; color: ink; placeholder: "Password"; secret: true; selection: #2f5f52 }
                 box { from: card.x + 118, ay + 32; size: 94, 32; corner: 9; color: mint; opacity: 85% + 15% * join_btn.glow }
-                text "Join" { at: card.x + 165, ay + 48; anchor: center; size: 12; weight: 600; color: #0c0f12 }
+                text "Join" { family: "Geist"; at: card.x + 165, ay + 48; anchor: center; size: 12; weight: 600; color: #0c0f12 }
                 zone box join_btn { from: card.x + 118, ay + 32; size: 94, 32; corner: 9; cursor: pointer; active: page == wifi and asking >= 0 }
             }
             on enter join_btn { join_btn.glow: 1 }
@@ -3897,7 +3897,7 @@ scene Etta {
             on press join_btn { emit join }
             on submit wifi_pw { emit join }
             on key Escape while page == wifi and asking >= 0 { emit forget_ask }
-            text "Looking for networks…" { at: card.x, card.y + 20; anchor: center; size: 11.5; color: #8b8f95
+            text "Looking for networks…" { family: "Geist"; at: card.x, card.y + 20; anchor: center; size: 11.5; color: #8b8f95
                                      show: page == wifi and networks.count < 1 }
 
             //  And the headphones and the rest, from `bluetoothctl`.
@@ -3921,11 +3921,11 @@ scene Etta {
                 ellipse { at: rx, ry; radius: 13; color: mix(#202021, #1a241f, if(bt_scanning, 1, 0)) }
                 path { at: rx - 4, ry - 7; color: mix(ink, mint, if(bt_scanning, 1, 0)); stroke: 1.5
                        move 0, 3.5; line 8, 10.5; line 4, 14; line 4, 0; line 8, 3.5; line 0, 10.5 }
-                text pick(bt_scanning, "Search", "Searching…") { at: rx - 22, ry; anchor: right center; size: 11.5; color: mix(#8b8f95, mint, if(bt_scanning, 1, 0)) }
+                text pick(bt_scanning, "Search", "Searching…") { family: "Geist"; at: rx - 22, ry; anchor: right center; size: 11.5; color: mix(#8b8f95, mint, if(bt_scanning, 1, 0)) }
                 zone box radar_btn { at: rx - 30, ry; size: 110, 32; corner: 16; cursor: pointer; active: page == bluetooth and paging > 0.9 }
             }
             on press radar_btn { emit bt_scan }
-            text pick(bt_scanning, "Nothing paired", "Looking around…") { at: card.x, card.y + 20; anchor: center; size: 11.5; color: #8b8f95
+            text pick(bt_scanning, "Nothing paired", "Looking around…") { family: "Geist"; at: card.x, card.y + 20; anchor: center; size: 11.5; color: #8b8f95
                                      show: page == bluetooth and gadgets.count < 1 }
 
             // ── the history: what has washed up ──────────────────
@@ -3946,13 +3946,13 @@ scene Etta {
                             size: 456, if(h.head, 26, 44)
                             opacity: (1 - clamp(hist.wash * 1.6 - h.index * 0.07, 0, 1)) * if(h.head, 1, 1 - 0.45 * h.age)
                             move: 120 * pow(clamp(hist.wash * 1.6 - h.index * 0.07, 0, 1), 2), 0
-                            text h.day { at: 6, 16; anchor: left center; size: 10.5; weight: 700; color: #8b8f95; show: h.head }
+                            text h.day { family: "Geist"; at: 6, 16; anchor: left center; size: 10.5; weight: 700; color: #8b8f95; show: h.head }
                             box { from: 0, 0; size: 456, 44; corner: 11; color: #1f2021; show: not h.head }
                             ellipse { at: 16, 22; radius: 4.5; color: mix(mix(blue, lilac, h.cat == 2), mix(green, amber, h.cat == 4), h.cat >= 3); show: not h.head }
-                            text h.app { at: 32, 14; anchor: left center; size: 8.5; weight: 700; color: mix(mix(blue, lilac, h.cat == 2), mix(green, amber, h.cat == 4), h.cat >= 3); show: not h.head }
-                            text h.title { at: 32, 29; anchor: left center; size: 12; weight: 500; width: 250; lines: 1; color: ink; show: not h.head }
-                            text h.detail { at: 292, 29; anchor: left center; size: 10.5; width: 110; lines: 1; color: #8b8f95; show: not h.head }
-                            text h.when { at: 446, 14; anchor: right center; size: 9.5; color: #8b8f95; show: not h.head }
+                            text h.app { family: "Geist"; at: 32, 14; anchor: left center; size: 8.5; weight: 700; color: mix(mix(blue, lilac, h.cat == 2), mix(green, amber, h.cat == 4), h.cat >= 3); show: not h.head }
+                            text h.title { family: "Geist"; at: 32, 29; anchor: left center; size: 12; weight: 500; width: 250; lines: 1; color: ink; show: not h.head }
+                            text h.detail { family: "Geist"; at: 292, 29; anchor: left center; size: 10.5; width: 110; lines: 1; color: #8b8f95; show: not h.head }
+                            text h.when { family: "Geist"; at: 446, 14; anchor: right center; size: 9.5; color: #8b8f95; show: not h.head }
                         }
                     }
                 }
@@ -3963,10 +3963,10 @@ scene Etta {
                     repeat d in 0..3 {
                         ellipse { at: card.x - 20 + d * 20, card.y + 24 - 2 * sin(tide.t * 360 + d * 120); radius: 4; color: mix(mix(blue, lilac, d == 1), green, d == 2); opacity: 70% }
                     }
-                    text "Nothing has washed up yet" { at: card.x, card.y + 52; anchor: center; size: 11.5; color: #8b8f95 }
+                    text "Nothing has washed up yet" { family: "Geist"; at: card.x, card.y + 52; anchor: center; size: 11.5; color: #8b8f95 }
                 }
                 //  «Clear», top right, and the wheel to go back in time.
-                text "Clear" { at: card.x + 150, card.top + 45; anchor: right center; size: 11.5; weight: 600
+                text "Clear" { family: "Geist"; at: card.x + 150, card.top + 45; anchor: right center; size: 11.5; weight: 600
                                color: mix(#8b8f95, #ef7a66, clear.glow); show: past.count > 0 }
                 zone box clear_btn { at: card.x + 128, card.top + 45; size: 70, 30; corner: 15; cursor: pointer; active: page == history and paging > 0.9 and past.count > 0 }
                 zone box history_area { from: hx, hy; size: 456, 300; active: page == history and paging > 0.9 }
@@ -4006,7 +4006,7 @@ scene Etta {
                     }
                     box { from: 0, 0; size: 144, 81; corner: 10; stroke: 2; color: mint; opacity: if(w.current, 1, 0) }
                     box { from: 0, 0; size: 144, 81; corner: 10; stroke: 1.2; color: ink; opacity: lift * 45% * if(w.current, 0, 1) }
-                    text w.name { at: 72, 95; anchor: center; size: 10.5; width: 140; lines: 1; color: mix(#8b8f95, ink, max(lift, if(w.current, 1, 0))) }
+                    text w.name { family: "Geist"; at: 72, 95; anchor: center; size: 10.5; width: 140; lines: 1; color: mix(#8b8f95, ink, max(lift, if(w.current, 1, 0))) }
                 }
                 on enter touch { lift: 1 }
                 on leave touch { lift: 0 }
@@ -4042,13 +4042,13 @@ scene Etta {
                         //  With no picture: a calm sea of its kind's colour, and its initial.
                         box { from: 0, 0; size: 222, 92; color: #1a2a26; show: not d.has_preview }
                         ellipse { at: 111, 110; radius: 90; color: mint; opacity: 10%; show: not d.has_preview }
-                        text d.kind { at: 111, 46; anchor: center; size: 11; weight: 700; color: mint; opacity: 70%; show: not d.has_preview }
+                        text d.kind { family: "Geist"; at: 111, 46; anchor: center; size: 11; weight: 700; color: mint; opacity: 70%; show: not d.has_preview }
                         image d.preview { at: 0, 0; size: 222, 92; show: d.has_preview }
                         box { from: 0, 0; size: 222, 92; color: #000; opacity: glow * 12% }
                     }
-                    text d.title { at: 12, 108; anchor: left center; size: 12; weight: 500; width: 198; lines: 1; color: ink }
-                    text d.source { at: 12, 130; anchor: left center; size: 10.5; weight: 600; width: 120; lines: 1; color: mint; opacity: 85% }
-                    text d.date { at: 210, 130; anchor: right center; size: 10; color: #8b8f95 }
+                    text d.title { family: "Geist"; at: 12, 108; anchor: left center; size: 12; weight: 500; width: 198; lines: 1; color: ink }
+                    text d.source { family: "Geist"; at: 12, 130; anchor: left center; size: 10.5; weight: 600; width: 120; lines: 1; color: mint; opacity: 85% }
+                    text d.date { family: "Geist"; at: 210, 130; anchor: right center; size: 10; color: #8b8f95 }
                     box { from: 0, 0; size: 222, 150; corner: 14; stroke: 1.2; color: mint; opacity: glow * 45% }
                 }
                 on enter touch { glow: 1 }
@@ -4064,7 +4064,7 @@ scene Etta {
                     box { from: dx0, dy0; size: 456, 36; corner: 12; color: #141415 }
                     arc { at: dx0 + 18, dy0 + 17; radius: 6; span: 360deg; width: 1.8; color: ink; opacity: 60% }
                     line { from: dx0 + 22.5, dy0 + 21.5; to: dx0 + 27, dy0 + 26; width: 2; color: ink; opacity: 60% }
-                    input drift_q { at: dx0 + 36, dy0 + 18; width: 400; size: 13; color: ink; placeholder: "Search what she keeps"; selection: #2f5f52 }
+                    input drift_q { family: "Geist"; at: dx0 + 36, dy0 + 18; width: 400; size: 13; color: ink; placeholder: "Search what she keeps"; selection: #2f5f52 }
                     grid {
                         at: dx0, dy0 + 50; columns: 2; gap: 12; width: 456; row: 150
                         for d in drift { DriftCard(d, pick: drift_pick) }
@@ -4073,12 +4073,12 @@ scene Etta {
                 zone box drift_area { from: dx0, dy0 + 50; size: 456, 312; active: page == drift and paging > 0.9 and not drift.missing }
                 group {
                     show: drift.kept < 1 and not drift.missing
-                    text "Carry anything over her: a link, a file, an image." { at: card.x, card.y + 30; anchor: center; size: 11.5; color: #8b8f95 }
+                    text "Carry anything over her: a link, a file, an image." { family: "Geist"; at: card.x, card.y + 30; anchor: center; size: 11.5; color: #8b8f95 }
                 }
                 group {
                     show: drift.missing
-                    text "Deriva needs its library, deriva-worker." { at: card.x, card.y + 20; anchor: center; size: 12.5; weight: 500; color: ink }
-                    text "She builds it herself when she starts, if Rust (cargo) is installed." { at: card.x, card.y + 42; anchor: center; size: 11.5; color: #8b8f95 }
+                    text "Deriva needs its library, deriva-worker." { family: "Geist"; at: card.x, card.y + 20; anchor: center; size: 12.5; weight: 500; color: ink }
+                    text "She builds it herself when she starts, if Rust (cargo) is installed." { family: "Geist"; at: card.x, card.y + 42; anchor: center; size: 11.5; color: #8b8f95 }
                 }
             }
             on scroll drift_area { emit drift_scroll(wheel) }
@@ -4089,7 +4089,7 @@ scene Etta {
             //  another one it appears here without touching this.
             group {
                 show: page == wardrobe
-                text "Each piece chases in its own way: the hat rests, the glasses stay stuck on, the mug keeps her company and the headphones go on air when the screen is shared." {
+                text "Each piece chases in its own way: the hat rests, the glasses stay stuck on, the mug keeps her company and the headphones go on air when the screen is shared." { family: "Geist";
                     at: card.x - 228, card.top + 121; anchor: left center; size: 11.5; width: 456; lines: 2; color: #8b8f95 }
                 repeat a in 1..5 {
                     let ax = card.x - 171 + (a - 1) * 114
@@ -4108,14 +4108,14 @@ scene Etta {
                 figure glasses  { at: card.x - 57,  card.top + 177; size: 54, 25 }
                 figure mug      { at: card.x + 57,  card.top + 177; size: 40, 40 }
                 figure phones   { at: card.x + 171, card.top + 177; size: 52, 52 }
-                text "Hat"      { at: card.x - 171, card.top + 221; anchor: center; size: 12; color: ink }
-                text "Glasses"  { at: card.x - 57,  card.top + 221; anchor: center; size: 12; color: ink }
-                text "Mug"      { at: card.x + 57,  card.top + 221; anchor: center; size: 12; color: ink }
-                text "Headphones" { at: card.x + 171, card.top + 221; anchor: center; size: 12; color: ink }
-                text "rests"     { at: card.x - 171, card.top + 235; anchor: center; size: 10; color: #8b8f95 }
-                text "stuck on"  { at: card.x - 57,  card.top + 235; anchor: center; size: 10; color: #8b8f95 }
-                text "tags along" { at: card.x + 57, card.top + 235; anchor: center; size: 10; color: #8b8f95 }
-                text "on air"    { at: card.x + 171, card.top + 235; anchor: center; size: 10; color: #8b8f95 }
+                text "Hat"      { family: "Geist"; at: card.x - 171, card.top + 221; anchor: center; size: 12; color: ink }
+                text "Glasses"  { family: "Geist"; at: card.x - 57,  card.top + 221; anchor: center; size: 12; color: ink }
+                text "Mug"      { family: "Geist"; at: card.x + 57,  card.top + 221; anchor: center; size: 12; color: ink }
+                text "Headphones" { family: "Geist"; at: card.x + 171, card.top + 221; anchor: center; size: 12; color: ink }
+                text "rests"     { family: "Geist"; at: card.x - 171, card.top + 235; anchor: center; size: 10; color: #8b8f95 }
+                text "stuck on"  { family: "Geist"; at: card.x - 57,  card.top + 235; anchor: center; size: 10; color: #8b8f95 }
+                text "tags along" { family: "Geist"; at: card.x + 57, card.top + 235; anchor: center; size: 10; color: #8b8f95 }
+                text "on air"    { family: "Geist"; at: card.x + 171, card.top + 235; anchor: center; size: 10; color: #8b8f95 }
                 on press piece_zone.1 { toggle wears.hat }
                 on press piece_zone.2 { toggle wears.glasses }
                 on press piece_zone.3 { toggle wears.mug }
@@ -4123,7 +4123,7 @@ scene Etta {
 
                 //  And the wallpaper: the one on now, small, and pressing it
                 //  opens the page where a new one is picked.
-                text "WALLPAPER" { at: card.x - 228, card.top + 284; anchor: left center; size: 9.5; weight: 700; color: #8b8f95 }
+                text "WALLPAPER" { family: "Geist"; at: card.x - 228, card.top + 284; anchor: left center; size: 9.5; weight: 700; color: #8b8f95 }
                 prop wallrow_glow = 0 ~140ms
                 box { from: card.x - 228, card.top + 298; size: 456, 116; corner: 14
                       color: mix(#202021, #262728, wallrow_glow) }
@@ -4141,9 +4141,9 @@ scene Etta {
                                   color: #e8f6ff; opacity: 50% * wallrow_glow * (1 - wallrow_glow * 0.6) }
                     }
                     box { from: card.x - 216, card.top + 311; size: 160, 90; corner: 10; stroke: 1.5; color: mint }
-                    text w.name { at: card.x - 40, card.top + 342; anchor: left center; size: 13; weight: 500; width: 230; lines: 1; color: ink }
+                    text w.name { family: "Geist"; at: card.x - 40, card.top + 342; anchor: left center; size: 13; weight: 500; width: 230; lines: 1; color: ink }
                 }
-                text "Pick another one: the tide brings it" { at: card.x - 40, card.top + 364; anchor: left center; size: 11; width: 230; lines: 2; color: #8b8f95 }
+                text "Pick another one: the tide brings it" { family: "Geist"; at: card.x - 40, card.top + 364; anchor: left center; size: 11; width: 230; lines: 2; color: #8b8f95 }
                 path { at: card.x + 206, card.top + 356; stroke: 2; color: mix(#8b8f95, mint, wallrow_glow)
                        move -3 - 3 * wallrow_glow, -6; line 3 - 3 * wallrow_glow, 0; line -3 - 3 * wallrow_glow, 6 }
                 zone box wallrow_zone { from: card.x - 228, card.top + 298; size: 456, 116; corner: 14; cursor: pointer
@@ -4164,7 +4164,7 @@ scene Etta {
             //  single line here that knows about PipeWire.
             group {
                 show: page == sound
-                text "OUTPUT" { at: card.x - 228, card.top + 118; anchor: left center; size: 9.5; weight: 700; color: #8b8f95 }
+                text "OUTPUT" { family: "Geist"; at: card.x - 228, card.top + 118; anchor: left center; size: 9.5; weight: 700; color: #8b8f95 }
                 column output_list {
                     at: card.x - 228, card.top + 132
                     gap: 4
@@ -4172,13 +4172,13 @@ scene Etta {
                 }
                 //  The input goes right below whatever the output takes up, not in
                 //  a fixed place: with two speakers a hole was left in the middle.
-                text "INPUT" { at: card.x - 228, card.top + 150 + output_list.height; anchor: left center; size: 9.5; weight: 700; color: #8b8f95 }
+                text "INPUT" { family: "Geist"; at: card.x - 228, card.top + 150 + output_list.height; anchor: left center; size: 9.5; weight: 700; color: #8b8f95 }
                 column mic_list {
                     at: card.x - 228, card.top + 164 + output_list.height
                     gap: 4
                     for a in mics { ListRow(a, pick: pick_device, glyph: 4, base: outputs.count) }
                 }
-                text "Nothing to choose" { at: card.x, card.top + 200; anchor: center; size: 11.5; color: #8b8f95
+                text "Nothing to choose" { family: "Geist"; at: card.x, card.top + 200; anchor: center; size: 11.5; color: #8b8f95
                                          show: outputs.count < 1 and mics.count < 1 }
             }
 
@@ -4236,7 +4236,7 @@ scene Etta {
                                 }
                             }
                             Tile("Language", pick(language, "System", "English", "Español"), to_language, cell.w) {
-                                text "Aa" { size: 17; weight: 700; color: ink }
+                                text "Aa" { family: "Geist"; size: 17; weight: 700; color: ink }
                             }
                             Tile("The lock", pick(with_exit, "Password only", "Safety net on"), to_lock, cell.w) {
                                 group { size: 20, 24
@@ -4269,12 +4269,12 @@ scene Etta {
                     //  names, and her swimming in the one she is in; pressing a pool
                     //  sends her there. «Follow me» sets her to go wherever the focus is.
                     page home "Where she lives" {
-                        text "Choose her monitor, or let her follow you." { at: card.x - 228, card.top + 122; anchor: left center; size: 12; color: st.faint }
+                        text "Choose her monitor, or let her follow you." { family: "Geist"; at: card.x - 228, card.top + 122; anchor: left center; size: 12; color: st.faint }
                         repeat m in 0..2 {
                             let px = card.x - 114 + m * 228
                             let py = card.top + 222
                             let is_home.$m = if(not following and home == m, 1, 0)
-                            text screen.$m.name { at: px, py - 76; anchor: center; size: 12; weight: 600; color: mix(st.faint, ink, is_home.$m) }
+                            text screen.$m.name { family: "Geist"; at: px, py - 76; anchor: center; size: 12; weight: 600; color: mix(st.faint, ink, is_home.$m) }
                             box { at: px, py; size: 208, 118; corner: 12; color: mix(mix(#1b1f22, #202528, pool_zone.$m.hover), #1a2a25, is_home.$m) }
                             box { at: px, py; size: 208, 118; corner: 12; stroke: 1.4; color: mint; opacity: is_home.$m * 85% + pool_zone.$m.hover * 25% }
                             group {
@@ -4291,22 +4291,22 @@ scene Etta {
                                 box { at: px - 4 + 3 * sway, py + 26 + 1.5 * sway; size: 3, 6; corner: 1.5; color: ink }
                                 box { at: px + 4 + 3 * sway, py + 26 + 1.5 * sway; size: 3, 6; corner: 1.5; color: ink }
                             }
-                            text "Her home" { at: px, py + 76; anchor: center; size: 10.5; weight: 600; color: mint; opacity: is_home.$m }
+                            text "Her home" { family: "Geist"; at: px, py + 76; anchor: center; size: 10.5; weight: 600; color: mint; opacity: is_home.$m }
                             zone box pool_zone.$m { at: px, py; size: 208, 118; corner: 12; cursor: pointer }
                             on press pool_zone.$m { home = m; following = false }
                         }
                         box { at: card.x, card.top + 360; size: 456, 64; corner: 16; color: mix(#202021, #1a2a25, following) }
                         box { at: card.x, card.top + 360; size: 456, 64; corner: 16; stroke: 1.2; color: mint; opacity: following * 70% }
-                        text "Follow me" { at: card.x - 206, card.top + 350; anchor: left center; size: 13; weight: 600; color: ink }
-                        text "She goes to the monitor where you are working" { at: card.x - 206, card.top + 369; anchor: left center; size: 11; color: st.faint }
+                        text "Follow me" { family: "Geist"; at: card.x - 206, card.top + 350; anchor: left center; size: 13; weight: 600; color: ink }
+                        text "She goes to the monitor where you are working" { family: "Geist"; at: card.x - 206, card.top + 369; anchor: left center; size: 11; color: st.faint }
                         column { at: card.x + 174, card.top + 348
                             Switch(following, flip_follow)
                         }
                         //  And whether windows go under her or leave her the strip at the top.
                         box { at: card.x, card.top + 436; size: 456, 64; corner: 16; color: mix(#202021, #1a2a25, taking_room) }
                         box { at: card.x, card.top + 436; size: 456, 64; corner: 16; stroke: 1.2; color: mint; opacity: taking_room * 70% }
-                        text "Her own strip" { at: card.x - 206, card.top + 426; anchor: left center; size: 13; weight: 600; color: ink }
-                        text "Windows leave her the top, instead of going under her" { at: card.x - 206, card.top + 445; anchor: left center; size: 11; color: st.faint }
+                        text "Her own strip" { family: "Geist"; at: card.x - 206, card.top + 426; anchor: left center; size: 13; weight: 600; color: ink }
+                        text "Windows leave her the top, instead of going under her" { family: "Geist"; at: card.x - 206, card.top + 445; anchor: left center; size: 11; color: st.faint }
                         column { at: card.x + 174, card.top + 424
                             Switch(taking_room, flip_room)
                         }
@@ -4316,7 +4316,7 @@ scene Etta {
                     //  Three swatches, and in each one she herself painted that way:
                     //  not a photo of how it would be, but really her.
                     page look "Her look" {
-                        text "Made of glass like Apple's, or the usual one." { at: card.x - 228, card.top + 122; anchor: left center; size: 12; color: st.faint }
+                        text "Made of glass like Apple's, or the usual one." { family: "Geist"; at: card.x - 228, card.top + 122; anchor: left center; size: 12; color: st.faint }
                         repeat t in 0..3 {
                             let fx = card.x - 152 + t * 152
                             let fy = card.top + 250
@@ -4332,30 +4332,30 @@ scene Etta {
                             }
                             box { at: fx - 7 + 3 * sway, fy - 26 + 1.5 * sway; size: 5, 11; corner: 2.5; color: ink }
                             box { at: fx + 7 + 3 * sway, fy - 26 + 1.5 * sway; size: 5, 11; corner: 2.5; color: ink }
-                            text pick(t, "Liquid", "Light liquid", "Classic") { at: fx, fy + 38; anchor: center; size: 13; weight: 600; color: ink }
-                            text pick(t, "Bends what's behind", "Blurs it", "Opaque, no glass") { at: fx, fy + 58; anchor: center; size: 10.5; color: st.faint }
+                            text pick(t, "Liquid", "Light liquid", "Classic") { family: "Geist"; at: fx, fy + 38; anchor: center; size: 13; weight: 600; color: ink }
+                            text pick(t, "Bends what's behind", "Blurs it", "Opaque, no glass") { family: "Geist"; at: fx, fy + 58; anchor: center; size: 10.5; color: st.faint }
                             ellipse { at: fx, fy + 76; radius: 4; color: mint; opacity: chosen.$t }
                             zone box swatch.$t { at: fx, fy; size: 140, 180; corner: 18; cursor: pointer }
                         }
                         on press swatch.0 { skin = lens }
                         on press swatch.1 { skin = liquid }
                         on press swatch.2 { skin = classic }
-                        text "Liquid reads the screen behind her to bend it: it costs a little more." { at: card.x, card.top + 372; anchor: center; size: 11; width: 440; lines: 1; color: st.faint; opacity: 85% }
+                        text "Liquid reads the screen behind her to bend it: it costs a little more." { family: "Geist"; at: card.x, card.top + 372; anchor: center; size: 11; width: 440; lines: 1; color: st.faint; opacity: 85% }
                     }
 
                     // ── the language ──
                     //  Three rows, each name written in its own language.
                     page language "Language" {
-                        text "The language she speaks in." { at: card.x - 228, card.top + 122; anchor: left center; size: 12; color: st.faint }
+                        text "The language she speaks in." { family: "Geist"; at: card.x - 228, card.top + 122; anchor: left center; size: 12; color: st.faint }
                         repeat l in 0..3 {
                             let ly = card.top + 178 + l * 74
                             let lang.on.$l = if(l == 0, language == system, if(l == 1, language == english, language == spanish))
                             box { at: card.x, ly; size: 456, 64; corner: 16; color: mix(mix(#25282b, #2c3033, lang_zone.$l.hover), #1a2a25, lang.on.$l) }
                             box { at: card.x, ly; size: 456, 64; corner: 16; stroke: 1.3; color: mint; opacity: lang.on.$l * 80% + lang_zone.$l.hover * 20% }
                             ellipse { at: card.x - 196, ly; radius: 20; color: ink; opacity: 8% }
-                            text pick(l, "Aa", "EN", "ES") { at: card.x - 196, ly; anchor: center; size: 13; weight: 700; color: ink }
-                            text pick(l, "System", "English", "Español") { at: card.x - 164, ly - 9; anchor: left center; size: 13.5; weight: 600; color: ink }
-                            text pick(l, "The one your session speaks", "Always in English", "Siempre en español") { at: card.x - 164, ly + 10; anchor: left center; size: 11; color: st.faint }
+                            text pick(l, "Aa", "EN", "ES") { family: "Geist"; at: card.x - 196, ly; anchor: center; size: 13; weight: 700; color: ink }
+                            text pick(l, "System", "English", "Español") { family: "Geist"; at: card.x - 164, ly - 9; anchor: left center; size: 13.5; weight: 600; color: ink }
+                            text pick(l, "The one your session speaks", "Always in English", "Siempre en español") { family: "Geist"; at: card.x - 164, ly + 10; anchor: left center; size: 11; color: st.faint }
                             ellipse { at: card.x + 200, ly; radius: 9; stroke: 1.6; color: mix(st.faint, mint, lang.on.$l) }
                             ellipse { at: card.x + 200, ly; radius: 5 * lang.on.$l; color: mint }
                             zone box lang_zone.$l { at: card.x, ly; size: 456, 64; corner: 16; cursor: pointer }
@@ -4377,12 +4377,12 @@ scene Etta {
                         box { at: card.x, card.top + 206; size: 54, 40; corner: 9; color: mix(ink, mint, safety.pos) }
                         ellipse { at: card.x, card.top + 202; radius: 4.5; color: coal }
                         box { at: card.x, card.top + 211; size: 3.5, 9; corner: 1.5; color: coal }
-                        text "Her lock screen opens with your password." { at: card.x, card.top + 256; anchor: center; size: 12.5; weight: 500; color: ink }
-                        text "While you try it out, a safety net: Esc also opens it, and it opens by itself after a minute." { at: card.x, card.top + 284; anchor: center; size: 11; width: 400; lines: 2; align: center; color: st.faint }
+                        text "Her lock screen opens with your password." { family: "Geist"; at: card.x, card.top + 256; anchor: center; size: 12.5; weight: 500; color: ink }
+                        text "While you try it out, a safety net: Esc also opens it, and it opens by itself after a minute." { family: "Geist"; at: card.x, card.top + 284; anchor: center; size: 11; width: 400; lines: 2; align: center; color: st.faint }
                         box { at: card.x, card.top + 360; size: 456, 64; corner: 16; color: mix(#202021, #1a2a25, safety.pos) }
                         box { at: card.x, card.top + 360; size: 456, 64; corner: 16; stroke: 1.2; color: mint; opacity: safety.pos * 70% }
-                        text "Safety net" { at: card.x - 206, card.top + 350; anchor: left center; size: 13; weight: 600; color: ink }
-                        text "Remove it once you trust your password. It lasts until a restart" { at: card.x - 206, card.top + 369; anchor: left center; size: 11; width: 370; lines: 1; color: st.faint }
+                        text "Safety net" { family: "Geist"; at: card.x - 206, card.top + 350; anchor: left center; size: 13; weight: 600; color: ink }
+                        text "Remove it once you trust your password. It lasts until a restart" { family: "Geist"; at: card.x - 206, card.top + 369; anchor: left center; size: 11; width: 370; lines: 1; color: st.faint }
                         column { at: card.x + 174, card.top + 348
                             Switch(with_exit, flip_safety)
                         }
@@ -4393,36 +4393,36 @@ scene Etta {
                     //  their drop; how long «later» keeps one away; and the apps
                     //  muted from a notice's bell, each with its way back.
                     page notices "Notices" {
-                        text "Quiet ones still arrive: they go to their drop, without a card." { at: card.x - 228, card.top + 116; anchor: left center; size: 12; color: st.faint }
+                        text "Quiet ones still arrive: they go to their drop, without a card." { family: "Geist"; at: card.x - 228, card.top + 116; anchor: left center; size: 12; color: st.faint }
                         box { at: card.x, card.top + 164; size: 456, 60; corner: 16; color: mix(#202021, #1f1d2a, dnd) }
                         box { at: card.x, card.top + 164; size: 456, 60; corner: 16; stroke: 1.2; color: lilac; opacity: dnd * 70% }
-                        text "Do not disturb" { at: card.x - 206, card.top + 155; anchor: left center; size: 13; weight: 600; color: ink }
-                        text "Only the urgent ones get through" { at: card.x - 206, card.top + 173; anchor: left center; size: 11; color: st.faint }
+                        text "Do not disturb" { family: "Geist"; at: card.x - 206, card.top + 155; anchor: left center; size: 13; weight: 600; color: ink }
+                        text "Only the urgent ones get through" { family: "Geist"; at: card.x - 206, card.top + 173; anchor: left center; size: 11; color: st.faint }
                         column { at: card.x + 174, card.top + 152
                             Switch(dnd, flip_dnd, accent: lilac)
                         }
                         box { at: card.x, card.top + 232; size: 456, 60; corner: 16; color: mix(#202021, #1a2a25, quiet_rec) }
                         box { at: card.x, card.top + 232; size: 456, 60; corner: 16; stroke: 1.2; color: mint; opacity: quiet_rec * 70% }
-                        text "Quiet while recording or sharing" { at: card.x - 206, card.top + 223; anchor: left center; size: 13; weight: 600; color: ink }
-                        text "None of them ends up in your video or your call. Locked, always quiet" { at: card.x - 206, card.top + 241; anchor: left center; size: 11; width: 360; lines: 1; color: st.faint }
+                        text "Quiet while recording or sharing" { family: "Geist"; at: card.x - 206, card.top + 223; anchor: left center; size: 13; weight: 600; color: ink }
+                        text "None of them ends up in your video or your call. Locked, always quiet" { family: "Geist"; at: card.x - 206, card.top + 241; anchor: left center; size: 11; width: 360; lines: 1; color: st.faint }
                         column { at: card.x + 174, card.top + 220
                             Switch(quiet_rec, flip_quiet_rec)
                         }
                         //  How long «later» is: three drops to choose from.
-                        text "LATER BRINGS IT BACK IN" { at: card.x - 228, card.top + 288; anchor: left center; size: 9.5; weight: 700; color: #8b8f95 }
+                        text "LATER BRINGS IT BACK IN" { family: "Geist"; at: card.x - 228, card.top + 288; anchor: left center; size: 9.5; weight: 700; color: #8b8f95 }
                         repeat k in 0..3 {
                             let lx = card.x - 228 + 76 + k * 152
                             prop later_pick.glow.$k = 0 ~140ms
                             box { at: lx, card.top + 318; size: 144, 34; corner: 17; color: mix(mix(#202021, #262728, later_pick.glow.$k), #1a2a25, snooze_k == k) }
                             box { at: lx, card.top + 318; size: 144, 34; corner: 17; stroke: 1.2; color: mint; opacity: if(snooze_k == k, 70%, 0) }
-                            text pick(k, "15 minutes", "An hour", "Three hours") { at: lx, card.top + 318; anchor: center; size: 12; weight: 500; color: mix(#a9adb3, ink, snooze_k == k) }
+                            text pick(k, "15 minutes", "An hour", "Three hours") { family: "Geist"; at: lx, card.top + 318; anchor: center; size: 12; weight: 500; color: mix(#a9adb3, ink, snooze_k == k) }
                             zone box later_pick.$k { at: lx, card.top + 318; size: 144, 34; corner: 17; cursor: pointer }
                             on enter later_pick.$k { later_pick.glow.$k: 1 }
                             on leave later_pick.$k { later_pick.glow.$k: 0 }
                             on press later_pick.$k { snooze_k = k }
                         }
                         //  The muted apps: a pill each, and its cross unmutes it.
-                        text "MUTED APPS" { at: card.x - 228, card.top + 362; anchor: left center; size: 9.5; weight: 700; color: #8b8f95 }
+                        text "MUTED APPS" { family: "Geist"; at: card.x - 228, card.top + 362; anchor: left center; size: 9.5; weight: 700; color: #8b8f95 }
                         component MutedPill(m: record, drop: event) {
                             size: 144, 34
                             prop glow = 0 ~140ms
@@ -4430,7 +4430,7 @@ scene Etta {
                             group {
                                 show: m.index < muted.count
                                 box { from: 0, 0; size: 144, 34; corner: 17; color: mix(#202021, #2a2222, glow) }
-                                text m.app { at: 14, 17; anchor: left center; size: 11.5; weight: 500; width: 100; lines: 1; color: ink }
+                                text m.app { family: "Geist"; at: 14, 17; anchor: left center; size: 11.5; weight: 500; width: 100; lines: 1; color: ink }
                                 line { from: 122, 12; to: 132, 22; width: 1.5; color: mix(#8b8f95, #ef7a66, glow) }
                                 line { from: 132, 12; to: 122, 22; width: 1.5; color: mix(#8b8f95, #ef7a66, glow) }
                                 zone box touch { from: 0, 0; size: 144, 34; corner: 17; cursor: pointer }
@@ -4443,7 +4443,7 @@ scene Etta {
                             at: card.x - 228, card.top + 378; columns: 3; gap: 12; width: 456; row: 42
                             for m in muted { MutedPill(m, drop: unmute) }
                         }
-                        text "None. The bell on a notice mutes its app." { at: card.x - 228, card.top + 394; anchor: left center; size: 11.5; color: st.faint; show: muted.count < 1 }
+                        text "None. The bell on a notice mutes its app." { family: "Geist"; at: card.x - 228, card.top + 394; anchor: left center; size: 11.5; color: st.faint; show: muted.count < 1 }
                     }
                 }
             }
@@ -4511,7 +4511,7 @@ scene Etta {
                 on leave refresh_btn { refresh.glow: 0 }
                 on press refresh_btn { refresh.turn: refresh.turn + 360; emit agents_refresh }
 
-                text "Reading your windows…" { at: card.x, card.top + 250; anchor: center; size: 11.5; color: #8b8f95
+                text "Reading your windows…" { family: "Geist"; at: card.x, card.top + 250; anchor: center; size: 11.5; color: #8b8f95
                                               show: ag.kind.1 < 1 and ag.kind.2 < 1 }
 
                 repeat a in 1..3 {
@@ -4540,8 +4540,8 @@ scene Etta {
                             path { at: ax0 + 22, ay + 24; stroke: 1.6; color: ink; move 0, -3.5; line 3.5, 0; line 0, 3.5 }
                             line { from: ax0 + 27, ay + 27.5; to: ax0 + 31, ay + 27.5; width: 1.6; color: ink }
                         }
-                        text ag.name.$a { at: ax0 + 46, ay + 17; anchor: left center; size: 15; weight: 600; color: ink }
-                        text ag.sub.$a { at: ax0 + 46, ay + 35; anchor: left center; size: 11; width: 380; lines: 1; color: faint; opacity: 75% }
+                        text ag.name.$a { family: "Geist"; at: ax0 + 46, ay + 17; anchor: left center; size: 15; weight: 600; color: ink }
+                        text ag.sub.$a { family: "Geist"; at: ax0 + 46, ay + 35; anchor: left center; size: 11; width: 380; lines: 1; color: faint; opacity: 75% }
 
                         repeat l in 1..4 {
                             let sx = ax0 + 16 + (l - 1) * 146
@@ -4637,11 +4637,11 @@ scene Etta {
                                             life: 0.2s .. 0.45s; speed: 30 .. 90; direction: -90deg; spread: 100deg
                                             gravity: 0, 600; size: 2.2, 0.8; colors: #ffffff, tone; opacity: 85%, 0%
                                             emit: pour.$a.$l > 0.01 and pour.$a.$l < 0.45 }
-                                text ag.lname.$a.$l { at: sx + 58, ay + 62; anchor: left center; size: 11; weight: 500; width: 76; lines: 1; color: faint }
-                                text number(avail * eased, 0, "%") { at: sx + 58, ay + 90; anchor: left center; size: 26; weight: 700; color: tone; show: known > 0.5 }
-                                text "—" { at: sx + 58, ay + 90; anchor: left center; size: 26; weight: 700; color: #8b8f95; show: known < 0.5 }
-                                text "left" { at: sx + 58, ay + 112; anchor: left center; size: 10.5; color: faint; opacity: 70% }
-                                text ag.lrenew.$a.$l { at: sx + 58, ay + 134; anchor: left center; size: 10.5; width: 76; lines: 1; color: faint; opacity: 80% }
+                                text ag.lname.$a.$l { family: "Geist"; at: sx + 58, ay + 62; anchor: left center; size: 11; weight: 500; width: 76; lines: 1; color: faint }
+                                text number(avail * eased, 0, "%") { family: "Geist"; at: sx + 58, ay + 90; anchor: left center; size: 26; weight: 700; color: tone; show: known > 0.5 }
+                                text "—" { family: "Geist"; at: sx + 58, ay + 90; anchor: left center; size: 26; weight: 700; color: #8b8f95; show: known < 0.5 }
+                                text "left" { family: "Geist"; at: sx + 58, ay + 112; anchor: left center; size: 10.5; color: faint; opacity: 70% }
+                                text ag.lrenew.$a.$l { family: "Geist"; at: sx + 58, ay + 134; anchor: left center; size: 10.5; width: 76; lines: 1; color: faint; opacity: 80% }
                                 //  How far into its window it is, and a dot at
                                 //  how much it has used: a dot ahead of the bar
                                 //  is spending faster than time goes.
@@ -4702,7 +4702,7 @@ scene Etta {
                 path { at: card.x + 92, card.top + 32; color: ink; stroke: 1.8; opacity: 55% + cal.prev.glow * 45%
                        move 5, 0; line 0, 5; line 5, 10 }
                 box { at: card.x + 128, card.top + 37; size: 46, 24; corner: 12; color: ink; opacity: 8% + cal.today.glow * 10% }
-                text "Today" { at: card.x + 128, card.top + 37; anchor: center; size: 11; weight: 500; color: ink }
+                text "Today" { family: "Geist"; at: card.x + 128, card.top + 37; anchor: center; size: 11; weight: 500; color: ink }
                 path { at: card.x + 160, card.top + 32; color: ink; stroke: 1.8; opacity: 55% + cal.next.glow * 45%
                        move 0, 0; line 5, 5; line 0, 10 }
                 zone box cal_prev_btn { at: card.x + 95, card.top + 37; size: 28, 28; corner: 14; cursor: pointer; active: page == calendar and paging > 0.9 }
@@ -4751,16 +4751,16 @@ scene Etta {
                     ellipse { at: sg.x + 3.5, sg.y + 9.5; radius: 1.2; color: #ffffff; show: wx.snow > 0.05 }
                     path { at: sg.x + 1, sg.y + 5; color: #ffd36b; show: wx.storm > 0.5
                            move 1, 0; line -1.5, 4; line 1, 4; line -1, 8; line 3, 3; line 0.5, 3; line 2, 0; close }
-                    text wx.place { at: card.x - 186, card.top + 86; anchor: left center; size: 12.5; weight: 600; width: 150; lines: 1; color: ink; show: wx.ok }
-                    text "{wx.temp, 0}°" { at: card.x - 20, card.top + 86; anchor: left center; size: 17; weight: 600
+                    text wx.place { family: "Geist"; at: card.x - 186, card.top + 86; anchor: left center; size: 12.5; weight: 600; width: 150; lines: 1; color: ink; show: wx.ok }
+                    text "{wx.temp, 0}°" { family: "Geist"; at: card.x - 20, card.top + 86; anchor: left center; size: 17; weight: 600
                                            color: mix(mix(ink, #a8d8ff, wx.cold), #ffbb85, wx.heat); show: wx.ok }
-                    text wx.summary { at: card.x + 24, card.top + 86; anchor: left center; size: 11.5; width: 120; lines: 1; color: faint; show: wx.ok }
-                    text "{wx.hi, 0}° · {wx.lo, 0}°" { at: card.x + 214, card.top + 86; anchor: right center; size: 11; color: faint; opacity: 75%; show: wx.ok }
-                    text "Your city, for her sky" { at: card.x - 186, card.top + 86; anchor: left center; size: 12; color: faint; show: not wx.ok }
+                    text wx.summary { family: "Geist"; at: card.x + 24, card.top + 86; anchor: left center; size: 11.5; width: 120; lines: 1; color: faint; show: wx.ok }
+                    text "{wx.hi, 0}° · {wx.lo, 0}°" { family: "Geist"; at: card.x + 214, card.top + 86; anchor: right center; size: 11; color: faint; opacity: 75%; show: wx.ok }
+                    text "Your city, for her sky" { family: "Geist"; at: card.x - 186, card.top + 86; anchor: left center; size: 12; color: faint; show: not wx.ok }
                 }
                 group {
                     show: sky.editing
-                    input city_q { at: card.x - 206, card.top + 86; width: 400; size: 13; color: ink; placeholder: "A city · Enter keeps it"; selection: #2f5f52 }
+                    input city_q { family: "Geist"; at: card.x - 206, card.top + 86; width: 400; size: 13; color: ink; placeholder: "A city · Enter keeps it"; selection: #2f5f52 }
                 }
                 on press sky_strip {
                     sky.editing = true
@@ -4771,7 +4771,7 @@ scene Etta {
 
                 //  The weekdays.
                 repeat w in 1..8 {
-                    text cal.wd.$w { at: cal.gx + (w - 1) * cal.cw, card.top + 124; anchor: center; size: 10; weight: 600; color: faint; opacity: 60% }
+                    text cal.wd.$w { family: "Geist"; at: cal.gx + (w - 1) * cal.cw, card.top + 124; anchor: center; size: 10; weight: 600; color: faint; opacity: 60% }
                 }
                 //  The days.
                 repeat k in 0..42 {
@@ -4801,7 +4801,7 @@ scene Etta {
                             ellipse { at: dx, dy; radius: 14.5; stroke: 1.6; color: mint; show: cal.today.$k }
                         }
                         ellipse { at: dx, dy; radius: 13.5; stroke: 1.6; color: ink; opacity: cal.pick.$k * 90% }
-                        text number(cal.day.$k, 0) { at: dx, dy; anchor: center; size: 12; weight: 500 + 200 * if(cal.today.$k, 1, 0); color: ink }
+                        text number(cal.day.$k, 0) { family: "Geist"; at: dx, dy; anchor: center; size: 12; weight: 500 + 200 * if(cal.today.$k, 1, 0); color: ink }
                     }
                     zone box cal_cell.$k { at: dx, dy; size: 30, 30; corner: 15; cursor: pointer; active: page == calendar and paging > 0.9 }
                     on press cal_cell.$k { emit cal_pick(k) }
@@ -4812,17 +4812,17 @@ scene Etta {
                             gravity: 0, 420; size: 3, 1; colors: #ffffff, mint; opacity: 90%, 0%; burst: cal_splash }
 
                 //  The chosen day, big, and what it holds.
-                text cal.sel_day { at: card.x + 14, card.top + 138; anchor: left center; size: 34; weight: 700; color: ink }
-                text cal.sel_title { at: card.x + 66, card.top + 130; anchor: left center; size: 12; weight: 500; width: 150; lines: 1; color: ink }
-                text cal.sel_sub { at: card.x + 66, card.top + 148; anchor: left center; size: 10.5; width: 150; lines: 1; color: faint; opacity: 75% }
+                text cal.sel_day { family: "Geist"; at: card.x + 14, card.top + 138; anchor: left center; size: 34; weight: 700; color: ink }
+                text cal.sel_title { family: "Geist"; at: card.x + 66, card.top + 130; anchor: left center; size: 12; weight: 500; width: 150; lines: 1; color: ink }
+                text cal.sel_sub { family: "Geist"; at: card.x + 66, card.top + 148; anchor: left center; size: 10.5; width: 150; lines: 1; color: faint; opacity: 75% }
                 component CalRow(e: record, drop: event) {
                     size: 212, 30
                     prop glow = 0 ~140ms
                     zone box touch { from: 0, 0; size: 212, 30; corner: 9 }
                     box { from: 0, 0; size: 212, 30; corner: 9; color: #23272b; opacity: 70% + glow * 30% }
                     box { from: 5, 8; size: 3, 14; corner: 1.5; color: #9ed6bd }
-                    text e.time { at: 15, 15; anchor: left center; size: 11; weight: 600; width: 44; lines: 1; color: #9ed6bd }
-                    text e.title { at: 62, 15; anchor: left center; size: 12; width: 124; lines: 1; color: #f5f7f5 }
+                    text e.time { family: "Geist"; at: 15, 15; anchor: left center; size: 11; weight: 600; width: 44; lines: 1; color: #9ed6bd }
+                    text e.title { family: "Geist"; at: 62, 15; anchor: left center; size: 12; width: 124; lines: 1; color: #f5f7f5 }
                     line { from: 194, 11; to: 202, 19; width: 1.6; color: #f5f7f5; opacity: 25% + glow * 60% }
                     line { from: 202, 11; to: 194, 19; width: 1.6; color: #f5f7f5; opacity: 25% + glow * 60% }
                     zone box gone { at: 198, 15; size: 24, 24; corner: 12; cursor: pointer; active: page == calendar }
@@ -4835,13 +4835,13 @@ scene Etta {
                     gap: 6
                     for e in cal_events { CalRow(e, drop: cal_delete) }
                 }
-                text "Nothing yet." { at: card.x + 118, card.top + 220; anchor: center; size: 11.5; color: faint; opacity: 60%; show: cal_events.count < 1 }
+                text "Nothing yet." { family: "Geist"; at: card.x + 118, card.top + 220; anchor: center; size: 11.5; color: faint; opacity: 60%; show: cal_events.count < 1 }
 
                 //  Writing one: the field, and the drop it becomes.
                 box { at: card.x, card.top + 380; size: 456, 44; corner: 14; color: mix(#202122, ink, glassiness); opacity: mix(1, veil, glassiness) }
                 ellipse { at: card.x - 206, card.top + 380; radius: 6; color: mint; opacity: 80% }
-                input cal_new { at: card.x - 190, card.top + 380; width: 380; size: 13; color: ink; placeholder: "New event: 10:30 Dentist"; selection: #2f5f52 }
-                text "Start with a time, or leave it for the whole day. Enter saves it." { at: card.x, card.top + 414; anchor: center; size: 10; color: faint; opacity: 55% }
+                input cal_new { family: "Geist"; at: card.x - 190, card.top + 380; width: 380; size: 13; color: ink; placeholder: "New event: 10:30 Dentist"; selection: #2f5f52 }
+                text "Start with a time, or leave it for the whole day. Enter saves it." { family: "Geist"; at: card.x, card.top + 414; anchor: center; size: 10; color: faint; opacity: 55% }
                 let fall.x0 = card.x - 206
                 let fall.y0 = card.top + 380
                 ellipse { at: fall.x0 + (cal.sx - fall.x0) * cal.fall, fall.y0 + (cal.sy - fall.y0) * cal.fall - 110 * sin(cal.fall * 180)
@@ -4860,7 +4860,7 @@ scene Etta {
                 box touch { from: 0, 0; size: 456, 32 - r.separator * 22; corner: 9; color: #262728; opacity: glow
                            cursor: pointer; active: r.enabled and not r.separator and page == systray and paging > 0.9 }
                 box { from: 8, 4; size: 440, 1; color: ink; opacity: r.separator * 12% }
-                text r.label { at: 14, 16; anchor: left center; size: 12.5; width: 390; lines: 1; color: ink
+                text r.label { family: "Geist"; at: 14, 16; anchor: left center; size: 12.5; width: 390; lines: 1; color: ink
                                opacity: (1 - r.separator) * (0.45 + r.enabled * 0.55) }
                 //  Checkbox: filled if it is ticked, the ring if it is a checkbox and
                 //  is not ticked.
@@ -4878,7 +4878,7 @@ scene Etta {
                 show: page == systray
                 for r in options { MenuOption(r, pick: systray_pick) }
             }
-            text "Asking it for its menu…" { at: card.x, card.top + 200; anchor: center; size: 11.5; color: #8b8f95
+            text "Asking it for its menu…" { family: "Geist"; at: card.x, card.top + 200; anchor: center; size: 11.5; color: #8b8f95
                                             show: page == systray and options.count < 1 }
             //  The scene opens the page, on the spot; the logic fills it. If it
             //  turns out there is no menu to read, it is the logic that closes it.
@@ -4908,16 +4908,16 @@ scene Etta {
                 //  The lock's padlock: the body and its shackle.
                 box { at: card.x - 161, card.top + 152; size: 15, 12; corner: 3; color: ink }
                 arc { at: card.x - 161, card.top + 142; radius: 5; span: 180deg; width: 1.8; color: ink }
-                text "Lock" { at: card.x - 141, card.top + 142; anchor: left center; size: 13; color: ink }
-                text "Protect the session" { at: card.x - 141, card.top + 160; anchor: left center; size: 11; color: #8b8f95 }
+                text "Lock" { family: "Geist"; at: card.x - 141, card.top + 142; anchor: left center; size: 13; color: ink }
+                text "Protect the session" { family: "Geist"; at: card.x - 141, card.top + 160; anchor: left center; size: 11; color: #8b8f95 }
                 //  And the suspend moon, the same as the Haven's.
                 ellipse { at: card.x + 75, card.top + 150; radius: 8.6; color: ink }
                 ellipse { at: card.x + 79.5, card.top + 145.5; radius: 7.4; color: mix(#202021, #1e2a25, pause.1) }
-                text "Suspend" { at: card.x + 93, card.top + 142; anchor: left center; size: 13; color: ink }
-                text "Go into standby" { at: card.x + 93, card.top + 160; anchor: left center; size: 11; color: #8b8f95 }
+                text "Suspend" { family: "Geist"; at: card.x + 93, card.top + 142; anchor: left center; size: 13; color: ink }
+                text "Go into standby" { family: "Geist"; at: card.x + 93, card.top + 160; anchor: left center; size: 11; color: #8b8f95 }
 
                 line { from: card.x - 228, card.top + 200; to: card.x + 228, card.top + 200; width: 1; color: ink; opacity: 12% }
-                text "When you're done" { at: card.x - 228, card.top + 220; anchor: left center; size: 11; weight: 600; color: #8b8f95 }
+                text "When you're done" { family: "Geist"; at: card.x - 228, card.top + 220; anchor: left center; size: 11; weight: 600; color: #8b8f95 }
 
                 //  The three that cannot be undone. Each one with its arrow, and the
                 //  power-off one in coral: the colour marks what does not come back.
@@ -4935,17 +4935,17 @@ scene Etta {
                 //  Log out: a door and the arrow going out.
                 box { at: card.x - 208, card.top + 252; size: 11, 15; corner: 2; stroke: 1.6; color: ink }
                 path { at: card.x - 198, card.top + 247; color: ink; stroke: 1.6; move 0, 0; line 5, 5; line 0, 10 }
-                text "Log out" { at: card.x - 184, card.top + 252; anchor: left center; size: 12.5; color: ink }
+                text "Log out" { family: "Geist"; at: card.x - 184, card.top + 252; anchor: left center; size: 12.5; color: ink }
                 //  Reboot: the arrow that goes all the way round.
                 arc { at: card.x - 208, card.top + 298; radius: 7; span: 280deg; width: 1.7; rotate: 20deg; color: ink }
                 path { at: card.x - 204, card.top + 289; color: ink; stroke: 1.6; move 0, 0; line 4, 3; line 0, 6 }
-                text "Restart" { at: card.x - 184, card.top + 298; anchor: left center; size: 12.5; color: ink }
+                text "Restart" { family: "Geist"; at: card.x - 184, card.top + 298; anchor: left center; size: 12.5; color: ink }
                 //  Power off: the power symbol, and in coral.
                 arc { at: card.x - 208, card.top + 344; radius: 7; span: 280deg; width: 1.7; rotate: 180deg; color: #e0655a }
                 box { at: card.x - 208, card.top + 336; size: 1.7, 7; corner: 0.9; color: #e0655a }
-                text "Power off" { at: card.x - 184, card.top + 344; anchor: left center; size: 12.5; color: #e0655a }
+                text "Power off" { family: "Geist"; at: card.x - 184, card.top + 344; anchor: left center; size: 12.5; color: #e0655a }
 
-                text "Esc to go back" { at: card.x, card.top + 400; anchor: center; size: 11; color: #8b8f95; opacity: 70% }
+                text "Esc to go back" { family: "Geist"; at: card.x, card.top + 400; anchor: center; size: 11; color: #8b8f95; opacity: 70% }
             }
 
             // ── and the confirmation, which is something else ────
@@ -4957,21 +4957,21 @@ scene Etta {
                 show: page == session and question > 0.01
                 opacity: question
                 move: 26 * (1 - question), 0
-                text "Log out?" { at: card.x - 228, card.top + 146; anchor: left center; size: 19; weight: 500; color: ink; show: confirming == logout }
-                text "Restart the computer?" { at: card.x - 228, card.top + 146; anchor: left center; size: 19; weight: 500; color: ink; show: confirming == reboot }
-                text "Shut down the computer?" { at: card.x - 228, card.top + 146; anchor: left center; size: 19; weight: 500; color: ink; show: confirming == poweroff }
-                text "Applications will be closed." { at: card.x - 228, card.top + 186; anchor: left center; size: 12; color: #8b8f95 }
-                text "Save your changes before continuing." { at: card.x - 228, card.top + 208; anchor: left center; size: 12; color: #8b8f95 }
+                text "Log out?" { family: "Geist"; at: card.x - 228, card.top + 146; anchor: left center; size: 19; weight: 500; color: ink; show: confirming == logout }
+                text "Restart the computer?" { family: "Geist"; at: card.x - 228, card.top + 146; anchor: left center; size: 19; weight: 500; color: ink; show: confirming == reboot }
+                text "Shut down the computer?" { family: "Geist"; at: card.x - 228, card.top + 146; anchor: left center; size: 19; weight: 500; color: ink; show: confirming == poweroff }
+                text "Applications will be closed." { family: "Geist"; at: card.x - 228, card.top + 186; anchor: left center; size: 12; color: #8b8f95 }
+                text "Save your changes before continuing." { family: "Geist"; at: card.x - 228, card.top + 208; anchor: left center; size: 12; color: #8b8f95 }
 
                 prop back.glow = 0 ~140ms
                 prop do_it.glow = 0 ~140ms
                 box { at: card.x - 128, card.top + 264; size: 200, 44; corner: 11; color: mix(mix(#1b1b1c, #232425, back.glow), ink, glassiness); opacity: mix(1, veil + back.glow * veil.glow, glassiness) }
                 box { at: card.x - 128, card.top + 264; size: 200, 44; corner: 11; stroke: 1.4; color: mint }
-                text "Back" { at: card.x - 128, card.top + 264; anchor: center; size: 13; color: ink }
+                text "Back" { family: "Geist"; at: card.x - 128, card.top + 264; anchor: center; size: 13; color: ink }
                 box { at: card.x + 118, card.top + 264; size: 220, 44; corner: 11; color: mix(#e0655a, #f0796a, do_it.glow) }
-                text "Log out" { at: card.x + 118, card.top + 264; anchor: center; size: 13; weight: 600; color: #200705; show: confirming == logout }
-                text "Restart" { at: card.x + 118, card.top + 264; anchor: center; size: 13; weight: 600; color: #200705; show: confirming == reboot }
-                text "Shut down" { at: card.x + 118, card.top + 264; anchor: center; size: 13; weight: 600; color: #200705; show: confirming == poweroff }
+                text "Log out" { family: "Geist"; at: card.x + 118, card.top + 264; anchor: center; size: 13; weight: 600; color: #200705; show: confirming == logout }
+                text "Restart" { family: "Geist"; at: card.x + 118, card.top + 264; anchor: center; size: 13; weight: 600; color: #200705; show: confirming == reboot }
+                text "Shut down" { family: "Geist"; at: card.x + 118, card.top + 264; anchor: center; size: 13; weight: 600; color: #200705; show: confirming == poweroff }
                 zone box back { at: card.x - 128, card.top + 264; size: 200, 44; corner: 11; cursor: pointer
                                   active: page == session and confirming != none and paging > 0.9 }
                 zone box do_it { at: card.x + 118, card.top + 264; size: 220, 44; corner: 11; cursor: pointer
@@ -4980,7 +4980,7 @@ scene Etta {
                 on leave back { back.glow: 0 }
                 on enter do_it { do_it.glow: 1 }
                 on leave do_it { do_it.glow: 0 }
-                text "Esc to go back" { at: card.x, card.top + 320; anchor: center; size: 11; color: #8b8f95; opacity: 70% }
+                text "Esc to go back" { family: "Geist"; at: card.x, card.top + 320; anchor: center; size: 11; color: #8b8f95; opacity: 70% }
             }
 
             //  Pointing is not doing. Hovering only tells what it would do: the
@@ -5048,13 +5048,13 @@ scene Etta {
             //  Focus: what it does, said. There is no list to bring.
             group {
                 show: page == concentration
-                text "While it lasts, notices are kept and not shown." {
+                text "While it lasts, notices are kept and not shown." { family: "Geist";
                     at: card.x - 228, card.top + 119; anchor: left center; size: 12; width: 456; lines: 2; color: #8b8f95 }
                 repeat m in 0..3 {
                     let mx = card.x - 158 + m * 158
                     prop mins_glow.$m = 0 ~140ms
                     box { at: mx, card.top + 185; size: 140, 44; corner: 12; color: mix(#202021, #262728, mins_glow.$m) }
-                    text "{25 + m * 20} min" { at: mx, card.top + 185; anchor: center; size: 12.5; color: ink }
+                    text "{25 + m * 20} min" { family: "Geist"; at: mx, card.top + 185; anchor: center; size: 12.5; color: ink }
                     zone box mins_zone.$m { at: mx, card.top + 185; size: 140, 44; corner: 12; cursor: pointer; active: page == concentration and paging > 0.9 }
                     on enter mins_zone.$m { mins_glow.$m: 1 }
                     on leave mins_zone.$m { mins_glow.$m: 0 }
@@ -5080,8 +5080,8 @@ scene Etta {
                     gradient: radial x0 + 28, by - 6 radius 44, #e8c9a8, #6f8f7d
                     box { at: x0 + 28, by; size: 56, 56; corner: 12 }
                 }
-                text playback.title { at: x0 + 66, by - 9; anchor: left center; size: 12.5; width: 130; lines: 1; color: ink }
-                text playback.artist { at: x0 + 66, by + 10; anchor: left center; size: 11; width: 130; lines: 1; color: #8b8f95 }
+                text playback.title { family: "Geist"; at: x0 + 66, by - 9; anchor: left center; size: 12.5; width: 130; lines: 1; color: ink }
+                text playback.artist { family: "Geist"; at: x0 + 66, by + 10; anchor: left center; size: 11; width: 130; lines: 1; color: #8b8f95 }
                 //  Previous, pause and next. The pause goes in its filled disc.
                 let bx1 = card.x + 126
                 let bx3 = card.x + 206
@@ -5099,7 +5099,7 @@ scene Etta {
                 on press play_btn { emit play_pause }
                 on press next_btn { emit next }
             }
-            text "Nothing playing" { at: card.x, by; anchor: center; size: 11.5; color: #8b8f95; show: not playback.playing }
+            text "Nothing playing" { family: "Geist"; at: card.x, by; anchor: center; size: 11.5; color: #8b8f95; show: not playback.playing }
         }
 
     }
@@ -5674,8 +5674,8 @@ scene Etta {
             ellipse { at: 320, 236; radius: 260 }
         }
 
-        text now.time { at: 320, 58; anchor: center; size: 68; weight: 300; color: #f6f6f5 }
-        text "{upper(now.date)}" { at: 320, 112; anchor: center; size: 12; weight: 600; color: #8b8f95 }
+        text now.time { family: "Geist"; at: 320, 58; anchor: center; size: 68; weight: 300; color: #f6f6f5 }
+        text "{upper(now.date)}" { family: "Geist"; at: 320, 112; anchor: center; size: 12; weight: 600; color: #8b8f95 }
 
         //  Her, at a size that can be seen from the door.
         group {
@@ -5694,11 +5694,11 @@ scene Etta {
         //  no need to press it: you just type.
         box { at: 320, 346; size: 300, 46; corner: 14; color: mix(#15171a, #1b1e22, lock.glow) }
         box { at: 320, 346; size: 300, 46; corner: 14; stroke: 1.2; color: mix(mint, #e0655a, clamp(abs(headshake) / 6, 0, 1)); opacity: 35% + lock.glow * 40% }
-        input password { at: 188, 335; width: 264; size: 16; color: #f6f6f5; placeholder: "Password"; secret: true }
+        input password { family: "Geist"; at: 188, 335; width: 264; size: 16; color: #f6f6f5; placeholder: "Password"; secret: true }
 
-        text "Checking…" { at: 320, 392; anchor: center; size: 11.5; color: #8b8f95; show: checking }
-        text "Enter to unlock" { at: 320, 392; anchor: center; size: 11.5; color: #8b8f95; opacity: 60%; show: not checking and lock.held > 0.5 }
-        text "Esc to exit · test lock" { at: 320, 420; anchor: center; size: 11; color: mint; opacity: 80%; show: with_exit }
+        text "Checking…" { family: "Geist"; at: 320, 392; anchor: center; size: 11.5; color: #8b8f95; show: checking }
+        text "Enter to unlock" { family: "Geist"; at: 320, 392; anchor: center; size: 11.5; color: #8b8f95; opacity: 60%; show: not checking and lock.held > 0.5 }
+        text "Esc to exit · test lock" { family: "Geist"; at: 320, 420; anchor: center; size: 11; color: mint; opacity: 80%; show: with_exit }
     }
 
     // ── the adventure's stage ────────────────────────────────────
@@ -5926,10 +5926,10 @@ scene Etta {
             //  button would sit below her face.
             opacity: clamp(near * 5 - 4, 0, 1)
             move: (1 - near) * 14, 0
-            text "{secs, time}" { at: p.x - 46, p.y; anchor: left center; size: 13; weight: 600; color: ink }
+            text "{secs, time}" { family: "Geist"; at: p.x - 46, p.y; anchor: left center; size: 13; weight: 600; color: ink }
             prop hot = 0 ~140ms
             box { at: p.x + 22, p.y; size: 64, 26; corner: 8; color: mix(#e0655a, #f0796a, hot) }
-            text "Stop" { at: p.x + 22, p.y; anchor: center; size: 12; weight: 600; color: #060000 }
+            text "Stop" { family: "Geist"; at: p.x + 22, p.y; anchor: center; size: 12; weight: 600; color: #060000 }
             zone box stop_btn { at: p.x + 22, p.y; size: 64, 26; corner: 8; cursor: pointer; active: near > 0.8 }
             on enter stop_btn { hot: 1 }
             on leave stop_btn { hot: 0 }
