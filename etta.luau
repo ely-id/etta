@@ -2051,7 +2051,6 @@ local function save_settings()
     settings.follow = fact.following == true
     settings.room = fact.taking_room == true
     settings.skin = fact.skin
-    settings.language = fact.language
     settings.wallpaper = WALLPAPER
     settings.dnd = fact.dnd == true
     settings.quiet_rec = fact.quiet_rec ~= false
@@ -2512,7 +2511,7 @@ end
 local function sky_find(name)
     local q = tostring(name or ""):match("^%s*(.-)%s*$")
     if q == "" then return end
-    local lang = fact.locale == "es" and "es" or "en"
+    local lang = "en"
     run("curl", { "-s", "--max-time", "10", "https://geocoding-api.open-meteo.com/v1/search?count=1&format=json&language=" .. lang .. "&name=" .. url_encode(q) }, function(out)
         local ok, v = pcall(json.decode, tostring(out or ""))
         local r = ok and type(v) == "table" and type(v.results) == "table" and v.results[1] or nil
@@ -2543,7 +2542,6 @@ on("submit:city_q", function(value)
     sky_find(value)
     text.city_q = ""
 end)
-on("fact:locale", sky_words)
 
 --  And what she had on, as it was left: each piece that is not there, off.
 if type(settings.wears) == "table" then
@@ -2554,39 +2552,3 @@ end
 for _, piece in ipairs(PIECES) do
     on("fact:wears." .. piece, function() save_settings() end)
 end
-
--- ── the language ───────────────────────────────────────────────────
---  What the scene writes changes language by itself; what this logic wrote
---  stays in the language it was written in until it is written again. So when
---  `locale` changes, the texts that are Marea's own words are written again:
---  the rows of the swell, her menu and the finder's list (only if it is open:
---  otherwise it is filled again when it opens).
-on("fact:locale", function()
-    render()
-    set_menu()
-    if fact.searching == true then search() end
-end)
-
---  Which one. «System» is what the session says —`LC_ALL`, `LC_MESSAGES`,
---  `LANG`, the first one that says something, as pleamar reads it—, asked here
---  and not remembered from the `locale` it started with: if only the logic is
---  reloaded, `locale` may already be one chosen by hand. Anything that is not
---  Spanish is English, which is the language the scene is written in.
-local function system_locale()
-    for _, v in ipairs({ "LC_ALL", "LC_MESSAGES", "LANG" }) do
-        local ok, value = pcall(sys.ask, "env", v)
-        if ok and type(value) == "string" and value ~= "" and value ~= "C" and value ~= "POSIX" then
-            return value:sub(1, 2):lower() == "es" and "es" or "en"
-        end
-    end
-    return "en"
-end
-local LOCALES = { english = "en", spanish = "es" }
-local function speak()
-    fact.locale = LOCALES[fact.language] or system_locale()
-end
-if settings.language == "system" or settings.language == "english" or settings.language == "spanish" then
-    fact.language = settings.language
-end
-speak()
-on("fact:language", function() speak(); save_settings() end)

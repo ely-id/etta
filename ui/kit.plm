@@ -84,10 +84,10 @@ library Kit {
         size: w, h
         zone box touch { from: 0, 0; size: w, h; corner: min(12, h / 2); cursor: pointer; active: live }
         box { from: 0, 0; size: w, h; corner: min(12, h / 2)
-              color: mix(pick(kind, k.s2, k.mint, k.red, k.s2, k.red_soft), pick(kind, k.s3, k.mint_hi, #f2867b, k.s2, #42282a), touch.hover)
+              color: mix(pick(kind, tk.s2, tk.mint, tk.red, tk.s2, tk.red_soft), pick(kind, tk.s3, tk.mint_hi, #f2867b, tk.s2, #42282a), touch.hover)
               opacity: if(kind == 3, touch.hover, 1) * (1 - 0.12 * touch.pressed) * if(live, 1, 0.5) }
         text label { at: w / 2, h / 2; anchor: center; size: 14; weight: 600; family: "Geist"; width: w - 16; lines: 1; align: center
-                     color: pick(kind, k.ink, k.mint_ink, k.red_ink, mix(k.ink2, k.ink, touch.hover), #ffb3aa) }
+                     color: pick(kind, tk.ink, tk.mint_ink, tk.red_ink, mix(tk.ink2, tk.ink, touch.hover), #ffb3aa) }
         on press touch { emit press }
     }
 
@@ -95,7 +95,7 @@ library Kit {
     component Ib(press: event, d: number = 36, live: bool = true) {
         size: d, d
         zone box touch { from: 0, 0; size: d, d; corner: 10; cursor: pointer; active: live }
-        box { from: 0, 0; size: d, d; corner: 10; color: k.s2; opacity: touch.hover * (1 - 0.3 * touch.pressed) }
+        box { from: 0, 0; size: d, d; corner: 10; color: tk.s2; opacity: touch.hover * (1 - 0.3 * touch.pressed) }
         children { move: d / 2, d / 2 }
     }
 
@@ -105,17 +105,17 @@ library Kit {
         prop pos = 0 ~200ms
         follow pos = if(on, 1, 0)
         zone box touch { from: -6, -6; size: 52, 36; corner: 18; cursor: pointer; active: live }
-        box { from: 0, 0; size: 40, 24; corner: 12; color: mix(mix(k.s3, #3b4043, touch.hover), k.mint, pos) }
+        box { from: 0, 0; size: 40, 24; corner: 12; color: mix(mix(tk.s3, #3b4043, touch.hover), tk.mint, pos) }
         ellipse { at: 12 + 16 * pos, 12; radius: 9; color: #f4f4f2 }
         on press touch { emit press }
     }
 
     //  A level: the track, its fill and the handle. Pressing or dragging says
     //  where, from 0 to 1.
-    component Slider(v: number, set: event, w: number = 240, muted: number = 0, tone: color = k.mint, live: bool = true) {
+    component Slider(v: number, set: event, w: number = 240, muted: number = 0, tone: color = tk.mint, live: bool = true) {
         size: w, 24
         let vv = clamp(v, 0, 1)
-        box { from: 0, 9; size: w, 6; corner: 3; color: k.s3 }
+        box { from: 0, 9; size: w, 6; corner: 3; color: tk.s3 }
         box { from: 0, 9; size: max(6, w * vv), 6; corner: 3; color: mix(tone, #5d6461, muted) }
         ellipse { at: w * vv, 12; radius: 9 + 1.5 * touch.hover; color: #f4f2ec }
         zone box touch { from: -10, -4; size: w + 20, 32; corner: 16; cursor: pointer; active: live }
@@ -129,15 +129,15 @@ library Kit {
         let seg = (w - 6) / count
         prop pos = 0 ~220ms
         follow pos = value
-        box { from: 0, 0; size: w, 38; corner: 12; color: k.s1 }
-        box { from: 0, 0; size: w, 38; corner: 12; stroke: 1; color: k.line; opacity: 7% }
-        box { from: 3 + pos * seg, 3; size: seg, 32; corner: 9; color: k.s3 }
+        box { from: 0, 0; size: w, 38; corner: 12; color: tk.s1 }
+        box { from: 0, 0; size: w, 38; corner: 12; stroke: 1; color: tk.line; opacity: 7% }
+        box { from: 3 + pos * seg, 3; size: seg, 32; corner: 9; color: tk.s3 }
         repeat i in 0..4 {
             group {
                 show: i < count
                 text pick(i, a, b, c, d) { at: 3 + seg * (i + 0.5), 19; anchor: center; size: 13; weight: 500; family: "Geist"
                                            width: seg - 8; lines: 1; align: center
-                                           color: mix(k.ink2, k.ink, max(if(value == i, 1, 0), opt.$i.hover)) }
+                                           color: mix(tk.ink2, tk.ink, max(if(value == i, 1, 0), opt.$i.hover)) }
                 zone box opt.$i { from: 3 + seg * i, 3; size: seg, 32; corner: 9; cursor: pointer; active: live }
                 on press opt.$i { emit press(i) }
             }
@@ -145,45 +145,45 @@ library Kit {
     }
 
     //  A chip: a choice that filters. `on` lights it.
-    component Chip(label: text, press: event, w: number = 96, on: number = 0, dot: color = k.ink3, hasdot: number = 0) {
+    component Chip(label: text, press: event, w: number = 96, on: number = 0, dot: color = tk.ink3, hasdot: number = 0) {
         size: w, 30
         zone box touch { from: 0, 0; size: w, 30; corner: 15; cursor: pointer }
-        box { from: 0, 0; size: w, 30; corner: 15; color: mix(mix(k.s1, k.s2, touch.hover), k.mint_soft, on) }
-        box { from: 0, 0; size: w, 30; corner: 15; stroke: 1; color: mix(k.line, k.mint, on); opacity: 7% + 30% * on }
+        box { from: 0, 0; size: w, 30; corner: 15; color: mix(mix(tk.s1, tk.s2, touch.hover), tk.mint_soft, on) }
+        box { from: 0, 0; size: w, 30; corner: 15; stroke: 1; color: mix(tk.line, tk.mint, on); opacity: 7% + 30% * on }
         ellipse { at: 15, 15; radius: 4; color: dot; opacity: hasdot }
         text label { at: w / 2 + 6 * hasdot, 15; anchor: center; size: 13; weight: 500; family: "Geist"; width: w - 16 - 12 * hasdot; lines: 1; align: center
-                     color: mix(mix(k.ink2, k.ink, touch.hover), k.mint, on) }
+                     color: mix(mix(tk.ink2, tk.ink, touch.hover), tk.mint, on) }
         on press touch { emit press }
     }
 
     //  A tag: a word that says a state. tone: 0 plain · 1 mint · 2 sand · 3 red · 4 new.
     component Tag(label: text, w: number = 64, tone: number = 0) {
         size: w, 22
-        box { from: 0, 0; size: w, 22; corner: 11; color: pick(tone, k.s2, k.mint_soft, k.sand_soft, k.red_soft, #1f2733) }
+        box { from: 0, 0; size: w, 22; corner: 11; color: pick(tone, tk.s2, tk.mint_soft, tk.sand_soft, tk.red_soft, #1f2733) }
         text label { at: w / 2, 11; anchor: center; size: 12; weight: 600; family: "Geist"; width: w - 10; lines: 1; align: center
-                     color: pick(tone, k.ink2, k.mint, k.sand, k.red, k.blue) }
+                     color: pick(tone, tk.ink2, tk.mint, tk.sand, tk.red, tk.blue) }
     }
 
     //  A key, as it is written on the keyboard.
     component Kbd(label: text, w: number = 40) {
         size: w, 22
-        box { from: 0, 0; size: w, 22; corner: 6; color: k.s2 }
+        box { from: 0, 0; size: w, 22; corner: 6; color: tk.s2 }
         box { from: 0, 20; size: w, 2; corner: 1; color: #000000; opacity: 30% }
-        text label { at: w / 2, 11; anchor: center; size: 12; weight: 500; family: "Geist Mono"; color: k.ink2 }
+        text label { at: w / 2, 11; anchor: center; size: 12; weight: 500; family: "Geist Mono"; color: tk.ink2 }
     }
 
     //  A row that answers the mouse; what it holds goes inside.
     component Row(w: number, press: event, h: number = 52, live: bool = true) {
         size: w, h
         zone box touch { from: 0, 0; size: w, h; corner: 12; cursor: pointer; active: live }
-        box { from: 0, 0; size: w, h; corner: 12; color: k.s2; opacity: touch.hover * (1 - 0.3 * touch.pressed) }
+        box { from: 0, 0; size: w, h; corner: 12; color: tk.s2; opacity: touch.hover * (1 - 0.3 * touch.pressed) }
         children
     }
 
     //  The round badge an icon sits in. tone: 0 off · 1 on (mint) · 2 warn · 3 bad.
     component Bubble(tone: number = 0, d: number = 36) {
         size: d, d
-        ellipse { at: d / 2, d / 2; radius: d / 2; color: pick(tone, k.s2, k.mint, k.sand_soft, k.red_soft) }
+        ellipse { at: d / 2, d / 2; radius: d / 2; color: pick(tone, tk.s2, tk.mint, tk.sand_soft, tk.red_soft) }
         children { move: d / 2, d / 2 }
     }
 }

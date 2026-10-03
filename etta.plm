@@ -13,6 +13,8 @@
 // Everything in this file is run by the renderer. There is no logic here at all.
 
 import "pleamar:ui"
+import "ui/tokens.plm"
+import "ui/kit.plm"
 import "common/palette.plm"
 import "common/accessories.plm"
 
@@ -26,13 +28,13 @@ scene Etta {
         //  your home lives; the session, to be able to say goodbye. What is NOT
         //  here is `notifications`: the first one to ask for it keeps the spot,
         //  and on this machine that spot is Marea's.
-        services: "audio", "audio.*", "clock", "media", "media.*", "network", "brightness", "brightness.*", "apps", "apps.launch", "env", "session.*", "tray", "tray.*", "notifications", "notifications.*", "auth", "files", "files.write", "window", "window.*", "network.*", "bluetooth", "bluetooth.*"
+        services: "audio", "audio.*", "battery", "clock", "media", "media.*", "network", "brightness", "brightness.*", "apps", "apps.launch", "env", "session.*", "tray", "tray.*", "notifications", "notifications.*", "auth", "files", "files.write", "window", "window.*", "network.*", "bluetooth", "bluetooth.*"
         //  The network and the headphones are pleamar's own services now
         //  (NetworkManager and BlueZ, spoken to directly): listing, joining
         //  with a password, pairing. And `fd` finds the files and the folders.
         run: "curl", "timedatectl", "node", "notify-send", "fd", "deriva-worker", "kill", "xdg-open", "grim", "slurp", "hyprctl", "magick", "wl-copy", "mkdir", "wf-recorder", "xdg-user-dir", "test", "pgrep", "swaybg", "pactl", "pleamar-wm", "etta-halley"
     }
-    service clock as now { time: text = "--:--"; date: text; hour: number; minute: number }
+    service clock as now { time: text = "--:--"; date: text; hour: number; minute: number; day: number; month: number; weekday: number }
     service audio as sound { volume: number; muted: bool; input: number; input_muted: bool }
     service media as playback { playing: bool; title: text; artist: text }
     service network as net { online: bool; name: text; kind: text; strength: number }
@@ -153,11 +155,12 @@ scene Etta {
         //  The surface has to stretch to fit the card **and its shadow**: 18 px
         //  of offset plus 44 of spread, below and at the sides. Otherwise the
         //  shadow is cut sharply against the edge and the cut shows.
-        //  And it grows with the card: 572 of card hanging from `card.top` ≈ 38
-        //  make 610, plus the shadow's 62. When it falls short, pleamar says so
-        //  —«a drawing is cut: it needs 36 px below»— as soon as it has been like
-        //  that for three seconds, which is what used to have to be seen by eye.
-        size: 820, 680
+        //  And it grows with the card: Etta's panels are up to 700 × 780, hanging
+        //  from her when she moves aside, plus the shadow's 62. When it falls
+        //  short, pleamar says so —«a drawing is cut: it needs 36 px below»— as
+        //  soon as it has been like that for three seconds. She lives at its
+        //  centre, which is the centre of the monitor.
+        size: 1100, 940
         anchor: top
         margin: 0
         //  Her strip, if you want windows to leave it to her: as tall as she is
@@ -261,13 +264,21 @@ scene Etta {
     //  open: with the tray pulling her directly, on closing she came back at the
     //  same time as it folded, and two things on top of each other cannot be seen.
     let aside = offset
-    let cx = 120 + (1 - aside) * 240
+    //  How big she is. Marea measured 46; Etta is 56 by default and Settings
+    //  chooses. Everything of hers is drawn at 46 and scaled by `pk` around her
+    //  centre, so no timing, path or proportion of any animation changes: she
+    //  is only bigger. A spring, so changing size is not a jump.
+    fact pet.size: s46 | s52 | s56 | s64 = s56
+    prop pk = 1.2174 ~calm
+    follow pk = pick(pet.size, 46, 52, 56, 64) / 46
+    //  At the centre of the monitor; aside, 240 to the left, to present a panel.
+    let cx = 550 - aside * 240
     //  Open, she drops to the height of the card's header, as on the sheet.
     //  And the path bows: the height goes by the square, so she leaves and comes
     //  in from above instead of crossing in a straight line. Something with
     //  weight does not travel diagonally.
-    let cy = 46 + aside * aside * 46
-    let r = 23                        // half of the sheet's 46 px
+    let cy = 46 * pk + aside * aside * 46
+    let r = 23 * pk                   // half of the sheet's 46 px, at her size
 
     // ── what moves her ───────────────────────────────────────────
     //  `pose` is what a gesture leads by the hand: when it ends it goes back to
@@ -852,13 +863,13 @@ scene Etta {
     //  switch, it shows the one there already is. Two truths of the same state
     //  is how you end up with a card switched on and the ball awake.
     follow lit.3 = if(haven, 1, 0)
-    prop notecard = 0 ~650ms
     //  And with the menu out neither of the two comes out: they take its place.
     //  Going out it takes its time —it is a division, see below— and it goes
     //  back in quickly: two rules, because the two journeys are not the same.
-    let notecard.wants = note and not open and not haven and not menu_open and face == eye and out > 0.9 and phase == 0 and pending < 1
-    on change notecard.wants while notecard.wants { notecard: 1 ~700ms }
-    on change notecard.wants while not notecard.wants { notecard: 0 ~260ms }
+    //  What hovering her —or the clock beside her— asks for: the time card.
+    //  With notices waiting, hovering HER shows their fan instead; the clock
+    //  still tells the time. And not while something else is being said there.
+    let notecard.wants = note and not open and not haven and not menu_open and face == eye and out > 0.9 and phase == 0 and (pending < 1 or in.clock) and osd.kind == none
     follow fan = if(note and not open and not tray_open and not haven and not menu_open and face == eye and out > 0.9 and phase == 0 and pending > 0, 1, 0)
     // ── her menu, the right-button one ───────────────────────────
     //  «The right button opens her menu, which closes the same way on leaving
@@ -886,18 +897,6 @@ scene Etta {
     let capsule.wants = note and haven and not menu_open and out > 0.9
     on change capsule.wants while capsule.wants { capsule: 1 ~160ms }
     on change capsule.wants while not capsule.wants { capsule: 0 ~140ms }
-    //  The time comes out of her the way a drop divides. First a bud swells on
-    //  her side, melted into her (a); then it moves off, and the melting
-    //  lessens as it goes, so the neck stretches, thins and snaps (b); and once
-    //  free it stretches into the card (c). Going back in, the same in reverse.
-    let nc.a = clamp(notecard / 0.3, 0, 1)
-    let nc.b = clamp((notecard - 0.3) / 0.3, 0, 1)
-    let nc.c = clamp((notecard - 0.6) / 0.4, 0, 1)
-    let notecard.x = cx + 12 + 15 * nc.a + 62 * nc.b
-    let notecard.w = 28 * nc.a + 76 * nc.c
-    let notecard.h = 28 * nc.a + 28 * nc.c
-    //  And when it comes loose, both of them wobble.
-    on change nc.b > 0.95 while nc.b > 0.95 and notecard.wants { impulse wobble 70 }
     //  The card of a recording just saved: it comes out of her, to her right,
     //  like the time and the capsule, and goes back into her on its own after
     //  ten seconds unless the pointer is on it.
@@ -1192,7 +1191,7 @@ scene Etta {
     //  Only a press on her set `needed`: a card opened from the finder, a
     //  shortcut or the logic came out of a ball that was still sunk for the
     //  face, and her eyes sat 4.5 px low in it.
-    follow out = if(hidden and not needed and not open and not tray_open and not celebrating and not reel_open and not raging and not adventuring, 0, 1)
+    follow out = if(hidden and not needed and not open and not tray_open and not celebrating and not reel_open and not raging and not adventuring and osd.kind == none, 0, 1)
 
     // ── the photograph ───────────────────────────────────────────
     //  She does not switch off all at once before the screen freezes: she
@@ -1377,9 +1376,9 @@ scene Etta {
     //  screen: you saw her eye cut off at the bottom. She peeks out 29 of 46,
     //  which is almost two thirds, and you see her face. It is a deliberate
     //  deviation from the contract.
-    let rise = if(hidden, (1 - out) * 40, 0)
+    let rise = if(hidden, (1 - out) * 40 * pk, 0)
     //  And on opening the tray she rises 5 px, which is what the contract says.
-    let cy_actual = cy + body.y - rise - away * 84 - 5 * tray - 96 * drop_in
+    let cy_actual = cy + body.y * pk - rise - away * 84 * pk - 5 * tray - 96 * drop_in * pk
     //  The finder: 640 wide —the sheet's 780 times 46/56— and as tall as its list
     //  asks, which is what makes it grow and shrink while you type instead of
     //  leaving a black gap waiting.
@@ -1522,7 +1521,7 @@ scene Etta {
         //  the neck comes from the distances, not from drawing a neck.
         //  The melting goes away with the bulge: otherwise, a half-pixel bulge kept
         //  bulging the sheet and left a mole on the edge once she was already loose.
-        ellipse tether { at: cx, 0; radius: 30; scale: 1, sag / 30; blend: 16 * clamp(sag / 6, 0, 1) }
+        ellipse tether { at: cx, 0; radius: 30 * pk; scale: 1, sag / (30 * pk); blend: 16 * clamp(sag / 6, 0, 1) }
         ellipse crest.l { at: cx - ripple.x, 0; radius: 9; scale: 1, ripple.h / 9; blend: 8 * clamp(ripple.h / 3, 0, 1) }
         ellipse crest.r { at: cx + ripple.x, 0; radius: 9; scale: 1, ripple.h / 9; blend: 8 * clamp(ripple.h / 3, 0, 1) }
         ellipse drop_behind { at: cx, stray_drop.r * 0.7; radius: stray_drop.r; blend: 7 * clamp(stray_drop.r / 3, 0, 1) }
@@ -1558,12 +1557,6 @@ scene Etta {
             size: card.w, card.h
             corner: card.corner
             blend: 30 * 4 * card * (1 - card) + 24 * card
-        }
-        box notecard_box {
-            at: notecard.x, cy_actual
-            size: notecard.w, notecard.h
-            corner: 14 - nc.c
-            blend: 16 * (1 - nc.b)
         }
         //  The Haven's capsule, the same: it is what she says when you ask her by
         //  hovering over her, so it comes out from where the time comes out and in
@@ -1632,7 +1625,6 @@ scene Etta {
     fact sky.editing = false
     //  A storm there: now and then, lightning in the card.
     prop bolt = 0 ~60ms
-    every 6.5s while wx.storm > 0.5 and notecard > 0.9 { bolt: 1 ~40ms; bolt: 0 ~520ms after 90ms }
     let wx.gloom = clamp(max(max(wx.cloud * 0.55, wx.rain * 0.85), max(max(wx.snow * 0.5, wx.fog * 0.7), wx.storm)), 0, 1) * if(wx.ok, 1, 0)
     let wx.heat = clamp((wx.temp - 26) / 10, 0, 1) * if(wx.ok, 1, 0)
     let wx.cold = clamp((6 - wx.temp) / 12, 0, 1) * if(wx.ok, 1, 0)
@@ -1640,142 +1632,10 @@ scene Etta {
     let sky.day = clamp((sky.t - 6) / 2, 0, 1) * clamp((19 - sky.t) / 2, 0, 1)
     let sky.warm = clamp(1 - abs(sky.t - 7) / 1.5, 0, 1) + clamp(1 - abs(sky.t - 19.5) / 1.5, 0, 1)
     let sky.night = (1 - sky.day) * (1 - clamp(sky.warm, 0, 1))
-    let sky.x0 = notecard.x - 52
-    let sky.y0 = cy_actual - 28
     //  Where the sun is between 6 and 18, and the moon the other twelve hours.
     let sun.p = clamp((sky.t - 6) / 12, 0, 1)
     let moon.p = mod(sky.t + 6, 24) / 12
     let sun.up = if(sky.t >= 6 and sky.t < 18, 1, 0)
-    let orb.p = if(sun.up > 0.5, sun.p, moon.p)
-    let orb.x = sky.x0 + 70 + 28 * orb.p
-    let orb.y = sky.y0 + 38 - 24 * sin(orb.p * 180)
-    group {
-        opacity: nc.c * 72%
-        clip inset 0 box { at: notecard.x, cy_actual; size: notecard.w, notecard.h; corner: 14 - nc.c }
-        body {
-            gradient: sky.x0, sky.y0 to sky.x0, sky.y0 + 56, mix(mix(mix(mix(mix(#0d1633, #2f76c9, sky.day), #f08a6a, clamp(sky.warm, 0, 1) * (1 - wx.gloom * 0.7)), mix(#1b1f27, #6d7a89, sky.day), wx.gloom), #f0a060, wx.heat * 0.25), #bfe3ff, wx.cold * 0.2), mix(mix(mix(mix(mix(#1d2c57, #5fa6e0, sky.day), #6a4a9a, clamp(sky.warm, 0, 1) * (1 - wx.gloom * 0.7)), mix(#2a303a, #9aa6b3, sky.day), wx.gloom), #f0a060, wx.heat * 0.2), #d6ecff, wx.cold * 0.25)
-            box { at: notecard.x, cy_actual; size: notecard.w, notecard.h; corner: 14 - nc.c }
-        }
-        repeat k in 0..6 {
-            ellipse { at: sky.x0 + 8 + k * 17.5, sky.y0 + 7 + mod(k * 7, 11); radius: 0.8 + mod(k, 2) * 0.4; color: #ffffff; opacity: sky.night * 80% * (1 - wx.gloom) }
-        }
-        group {
-            opacity: 1 - 0.8 * wx.cloud * if(wx.ok, 1, 0)
-            group {
-                glow: 6, 90%, #ffd36b
-                ellipse { at: orb.x, orb.y; radius: 5; color: #ffd36b; show: sun.up > 0.5 }
-            }
-            ellipse { at: orb.x, orb.y; radius: 4.5; color: #e8ecf5; show: sun.up < 0.5 }
-            ellipse { at: orb.x + 2.2, orb.y - 1.4; radius: 3.8; color: mix(#1a2648, #1b1f27, wx.gloom); show: sun.up < 0.5 }
-        }
-        //  Its clouds: three, each a few drops of cloud melted into one, more of
-        //  them the more it is covered, greyer with rain, rocking a little.
-        let cl.col = mix(mix(#f4f6f8, #8a94a3, 1 - sky.day), #5d6572, max(wx.rain, wx.storm) * 0.6)
-        let cl.a = (34% + 30% * wx.cloud) * if(wx.ok, 1, 0)
-        group {
-        //  (Soft at the edge, as clouds are; the ones behind the time fainter,
-        //  so it still reads.)
-        blur: 1.4
-        body {
-            color: cl.col
-            opacity: cl.a * if(wx.cloud > 0.12, 1, 0)
-            ellipse { at: sky.x0 + 73 + 2 * sway, sky.y0 + 20; radius: 7 }
-            ellipse { at: sky.x0 + 81 + 2 * sway, sky.y0 + 15; radius: 8.5; blend: 5 }
-            ellipse { at: sky.x0 + 89 + 2 * sway, sky.y0 + 21; radius: 6.5; blend: 5 }
-            box { at: sky.x0 + 81 + 2 * sway, sky.y0 + 24; size: 26, 6; corner: 3; blend: 4 }
-        }
-        body {
-            color: cl.col
-            opacity: cl.a * 0.6 * if(wx.cloud > 0.4, 1, 0)
-            ellipse { at: sky.x0 + 27 - 1.5 * sway, sky.y0 + 12; radius: 5.5 }
-            ellipse { at: sky.x0 + 34 - 1.5 * sway, sky.y0 + 8.5; radius: 6.5; blend: 4 }
-            ellipse { at: sky.x0 + 41 - 1.5 * sway, sky.y0 + 13; radius: 5; blend: 4 }
-        }
-        body {
-            color: cl.col
-            opacity: cl.a * 0.5 * if(wx.cloud > 0.7, 1, 0)
-            ellipse { at: sky.x0 + 53 + 1.5 * sway, sky.y0 + 47; radius: 6 }
-            ellipse { at: sky.x0 + 60 + 1.5 * sway, sky.y0 + 43; radius: 7.5; blend: 4 }
-            ellipse { at: sky.x0 + 68 + 1.5 * sway, sky.y0 + 48; radius: 5.5; blend: 4 }
-        }
-        }
-        //  Fog: bands of it, drifting.
-        group {
-            show: wx.fog > 0.01
-            blur: 3
-            box { at: sky.x0 + 52 + 5 * sway, sky.y0 + 22; size: 124, 7; corner: 3.5; color: #dfe6ee; opacity: wx.fog * 30% }
-            box { at: sky.x0 + 52 - 5 * sway, sky.y0 + 39; size: 124, 6; corner: 3; color: #dfe6ee; opacity: wx.fog * 24% }
-        }
-        //  Rain, slanting; heavy, more of it.
-        group {
-            show: nc.c > 0.5 and wx.rain > 0.05
-            //  (Particles are not clipped: they are born inside and die before the edge.)
-            particles { at: notecard.x + 8, sky.y0 + 2; area: 84, 1; count: 26; life: 0.26s .. 0.33s; speed: 130 .. 155
-                        direction: 104deg; spread: 3deg; gravity: 0, 0; size: 1, 0.8; colors: #cfe6ff, #a9c8e8; opacity: 70%, 40%; shape: spark }
-        }
-        group {
-            show: nc.c > 0.5 and wx.rain > 0.6
-            particles { at: notecard.x + 8, sky.y0 + 2; area: 84, 1; count: 30; life: 0.24s .. 0.3s; speed: 150 .. 175
-                        direction: 106deg; spread: 3deg; gravity: 0, 0; size: 1, 0.8; colors: #dbeeff, #a9c8e8; opacity: 70%, 40%; shape: spark }
-        }
-        //  Snow, drifting down.
-        group {
-            show: nc.c > 0.5 and wx.snow > 0.05
-            particles { at: notecard.x + 2, sky.y0 + 3; area: 86, 1; count: 22; life: 2.2s .. 3s; speed: 9 .. 15
-                        direction: 95deg; spread: 30deg; gravity: 0, 3; size: 1.7, 1.1; colors: #ffffff, #e8f2ff; opacity: 90%, 60%; shape: dot }
-        }
-        //  Lightning: the card lights up, and a bolt.
-        box { at: notecard.x, cy_actual; size: notecard.w, notecard.h; color: #e8efff; opacity: bolt * 45% }
-        path { at: sky.x0 + 86, sky.y0 + 5; color: #fff3b0; opacity: bolt
-               move 2, 0; line -2, 8; line 1.5, 8; line -1.5, 17; line 5, 6; line 1.5, 6; line 4, 0; close }
-    }
-
-    //  What it has written on it. The system brings the time; there is no logic
-    //  here. Each digit is a column of numbers seen through a window of its own:
-    //  when the card appears they roll a whole lap, one after another, and stop
-    //  on the hour, like a slot machine; when the minute changes, only those
-    //  roll. 24 px between numbers, the same as the window.
-    let dg.1 = floor(now.hour / 10)
-    let dg.2 = now.hour - floor(now.hour / 10) * 10
-    let dg.3 = floor(now.minute / 10)
-    let dg.4 = now.minute - floor(now.minute / 10) * 10
-    on change nc.c > 0.05 while nc.c > 0.05 and notecard.wants {
-        roll.1: 0 ~16ms; roll.2: 0 ~16ms; roll.3: 0 ~16ms; roll.4: 0 ~16ms
-        roll.1: 10 + dg.1 ~650ms after 20ms
-        roll.2: 10 + dg.2 ~750ms after 90ms
-        roll.3: 10 + dg.3 ~850ms after 160ms
-        roll.4: 10 + dg.4 ~950ms after 230ms
-    }
-    on change now.minute while notecard > 0.9 {
-        roll.3: 10 + dg.3 ~420ms
-        roll.4: 10 + dg.4 ~420ms
-    }
-    on change now.hour while notecard > 0.9 {
-        roll.1: 10 + dg.1 ~420ms
-        roll.2: 10 + dg.2 ~420ms
-    }
-    group {
-        opacity: clamp(nc.c * 3 - 1, 0, 1)
-        let tx = notecard.x - 39
-        let ty = cy_actual - 9
-        repeat d in 1..5 {
-            prop roll.$d = 0 ~420ms
-            let dx = tx + 6.4 + (d - 1) * 12.8 + if(d > 2, 6.2, 0)
-            group {
-                clip inset 0 box { at: dx, ty; size: 14, 23 }
-                repeat n in 0..20 {
-                    text number(mod(n, 10), 0) { family: "Geist"; at: dx, ty + (n - roll.$d) * 24; anchor: center; size: 21; weight: 600; color: #f6f6f5
-                                                 opacity: clamp(1 - abs(n - roll.$d) * 1.4, 0, 1) }
-                }
-            }
-        }
-        text ":" { family: "Geist"; at: tx + 28.2, ty - 1; anchor: center; size: 21; weight: 600; color: #f6f6f5 }
-        text "{upper(now.date)}" { family: "Geist"; at: tx, cy_actual + 13; anchor: left center; size: 10; color: #c2c7cc }
-        //  And how warm it is there.
-        text "{wx.temp, 0}°" { family: "Geist"; at: notecard.x + 47, cy_actual + 13; anchor: right center; size: 10; weight: 600
-                               color: mix(mix(#dfe3e6, #a8d8ff, wx.cold), #ffbb85, wx.heat); show: wx.ok }
-    }
-
     // ── the face ─────────────────────────────────────────────────
     //  Clipped to the body: whatever sticks out of the ball does not exist. It is
     //  what lets the eyes turn into something else without leaving her.
@@ -1795,7 +1655,8 @@ scene Etta {
     component Face(x: number, y: number, gx: number, gy: number, sink: number = 0) {
         //  When something else is in charge, the eyelid stops counting: a camera
         //  does not blink and neither does a number.
-        let override = clamp(meter + num + cam + dot, 0, 1)
+        let g.any = clamp(g.vol + g.mute + g.sun + g.mic + g.micoff + g.caps + g.bolt + g.tired, 0, 1)
+        let override = clamp(meter + num + cam + dot + g.any, 0, 1)
         let eyelid = lid + (1 - lid) * override
 
         //  1. The eye, and the level laying it down. (Measured in «The level on the
@@ -1924,9 +1785,9 @@ scene Etta {
         //  ring before the ring goes.
         let shrink = 1 - powerdown
         let v.w = w.w * shrink
-        let v.h = w.h * shrink * (1 - joy) * (1 - clamp(eyewave, 0, 1)) * (1 - clamp(hands, 0, 1)) * (1 - clamp(sign, 0, 1)) * (1 - 0.35 * fury - 0.25 * glare)
+        let v.h = w.h * shrink * (1 - joy) * (1 - clamp(eyewave, 0, 1)) * (1 - clamp(hands, 0, 1)) * (1 - clamp(sign, 0, 1)) * (1 - 0.35 * fury - 0.25 * glare) * (1 - g.any)
         let v.rw = w.rw * shrink
-        let v.rh = w.rh * shrink * (1 - joy) * (1 - clamp(eyewave, 0, 1)) * (1 - clamp(hands, 0, 1)) * (1 - clamp(sign, 0, 1)) * (1 - 0.35 * fury - 0.25 * glare)
+        let v.rh = w.rh * shrink * (1 - joy) * (1 - clamp(eyewave, 0, 1)) * (1 - clamp(hands, 0, 1)) * (1 - clamp(sign, 0, 1)) * (1 - 0.35 * fury - 0.25 * glare) * (1 - g.any)
 
         //  The magnifying glass is centred as a whole, not by its ring: the ring
         //  sat where the eyes do and the handle hung off it down to the right,
@@ -2028,6 +1889,63 @@ scene Etta {
             line { from: r.x + 5.5, eye.y - 11 + 2 * (1 - fury); to: r.x - 4, eye.y - 6.5; width: 2.2; color: ink; opacity: fury }
             //  Blowing: a little «o» of a mouth.
             ellipse { at: x + 6 * side, eye.y + 10; radius: 2.6 * blow; stroke: 1.5; color: ink; opacity: blow }
+
+            //  What changed, in her eyes: the volume, the light, the microphone,
+            //  the capitals, the charger, a battery running out. As thick as her
+            //  eyes and two of them, where her eyes are: it is still her looking.
+            group {
+                opacity: min(g.vol * 3, 1)
+                box { at: l.x, eye.y; size: 5, 11 * g.vol; corner: 2.5; color: ink }
+                arc { at: r.x - 4, eye.y; radius: 3.6; span: 110deg * g.vol; width: 2.8; rotate: 90deg; color: ink }
+                arc { at: r.x - 4, eye.y; radius: 7.4; span: 100deg * g.vol; width: 2.8; rotate: 90deg; color: ink; opacity: if(sound.volume > 0.34, 1, 0.25) }
+                arc { at: r.x - 4, eye.y; radius: 11.2; span: 86deg * g.vol; width: 2.8; rotate: 90deg; color: ink; opacity: if(sound.volume > 0.67, 1, 0.25) }
+            }
+            group {
+                opacity: min(g.mute * 3, 1)
+                box { at: l.x, eye.y; size: 5, 11 * g.mute; corner: 2.5; color: ink }
+                line { from: r.x - 3.6 * g.mute, eye.y - 3.6 * g.mute; to: r.x + 3.6 * g.mute, eye.y + 3.6 * g.mute; width: 2.8; color: ink }
+                line { from: r.x + 3.6 * g.mute, eye.y - 3.6 * g.mute; to: r.x - 3.6 * g.mute, eye.y + 3.6 * g.mute; width: 2.8; color: ink }
+            }
+            group {
+                opacity: min(g.sun * 3, 1)
+                repeat e in 0..2 {
+                    let sun.ex = if(e == 0, l.x, r.x)
+                    ellipse { at: sun.ex, eye.y; radius: 3.2 * g.sun; color: ink }
+                    repeat t in 0..6 {
+                        ellipse { at: sun.ex + 5.8 * cos(t * 60 + 30), eye.y + 5.8 * sin(t * 60 + 30); radius: 1.15 * g.sun; color: ink }
+                    }
+                }
+            }
+            group {
+                opacity: min(max(g.mic, g.micoff) * 3, 1)
+                box { at: l.x, eye.y + 2.5 * g.micoff; size: 5, 11 - 8.4 * g.micoff; corner: 2.5; color: ink }
+                box { at: r.x, eye.y - 2.2; size: 5, 9; corner: 2.5; color: ink }
+                arc { at: r.x, eye.y - 0.5; radius: 4.6; span: 180deg; width: 1.9; rotate: 180deg; color: ink }
+                line { from: r.x, eye.y + 4.1; to: r.x, eye.y + 6.6; width: 1.9; color: ink }
+                line { from: r.x - 5, eye.y - 7; to: r.x + 5, eye.y + 6.5; width: 2.2; color: #ef6b5e; opacity: g.micoff }
+            }
+            group {
+                opacity: min(g.caps * 3, 1)
+                repeat e in 0..2 {
+                    let caps.ex = if(e == 0, l.x, r.x)
+                    path { at: caps.ex, eye.y - 1.5; stroke: 2.6; color: ink; move -3.8, 2.4; line 0, -2.6; line 3.8, 2.4 }
+                    box { at: caps.ex, eye.y + 4.2; size: 7, 2.4; corner: 1.2; color: ink }
+                }
+            }
+            group {
+                opacity: min(g.bolt * 3, 1)
+                repeat e in 0..2 {
+                    let bolt.ex = if(e == 0, l.x, r.x)
+                    path { at: bolt.ex, eye.y; color: ink; move 1.4, -7; line -3.6, 1; line -0.4, 1; line -1.4, 7; line 3.6, -1; line 0.4, -1; close }
+                }
+            }
+            group {
+                opacity: min(g.tired * 3, 1)
+                box { at: l.x, eye.y + 3; size: 5.4, 5; corner: 2.5; color: ink }
+                box { at: r.x, eye.y + 3; size: 5.4, 5; corner: 2.5; color: ink }
+                line { from: l.x - 3.6, eye.y; to: l.x + 3.6, eye.y; width: 1.7; color: ink }
+                line { from: r.x - 3.6, eye.y; to: r.x + 3.6, eye.y; width: 1.7; color: ink }
+            }
 
             //  The level's filled part is **the same track**, painted again and
             //  clipped from the left. That way the mint has the exact shape of the
@@ -2180,7 +2098,11 @@ scene Etta {
     let face.dx = (gaze.x + (4 - gaze.x) * attentive) * (1 - glare)
     let face.dy = gaze.y * (1 - attentive) * (1 - glare)
     let face.sink = (1 - out) * 4.5 * if(hidden, 1, 0)
-    Face(cx, cy_actual, face.dx, face.dy, face.sink)
+    group {
+        pivot: cx, cy_actual
+        scale: pk, pk
+        Face(cx, cy_actual, face.dx, face.dy, face.sink)
+    }
 
     // ── the Haven's capsule ──────────────────────────────────────
     //  The whole —her and the capsule—, for the grace on leaving. And it goes
@@ -2277,7 +2199,10 @@ scene Etta {
     let water.y = cy_actual + 7
     let water.tilt = tide * 0.10
     group {
-        clip inset 0 ellipse { at: cx, cy_actual; radius: r }
+        pivot: cx, cy_actual
+        scale: pk, pk
+    group {
+        clip inset 0 ellipse { at: cx, cy_actual; radius: 23 }
         opacity: calmness
         //  What is below the waterline: a little lighter than her, like water
         //  seen from outside.
@@ -2304,10 +2229,14 @@ scene Etta {
     //  At three o'clock on her membrane, far from the moon: together they read
     //  as one single strange thing on the edge.
     ellipse { at: cx + 20, cy_actual - 11.5; radius: 4.2; color: #e2b25a; opacity: glance }
+    }
 
     //  The membrane, of the same diameter as her. It is drawn by a wave that
     //  runs around it once on entering: the arc grows from nothing to whole.
     arc { at: cx, cy_actual; radius: r; span: 360deg * drawing; width: 1.3; color: #7fd6c4; opacity: calmness * 85% }
+    group {
+        pivot: cx, cy_actual
+        scale: pk, pk
 
     //  The moon, in the upper right quadrant and outside her. It is a path of two
     //  curves —the outer edge and the inner one—, which is how a crescent is
@@ -2318,6 +2247,7 @@ scene Etta {
     //  rotated so it opens downwards and to the left. With two curves it came
     //  out as a hook; this is what the shape really is.
     arc { at: moon.x, moon.y; radius: 7.5; span: 210deg; width: 5.5; rotate: 145deg; color: #8fa2e8; opacity: calmness }
+    }
 
 
 
@@ -2326,7 +2256,7 @@ scene Etta {
     //  press —and the cursor— belong to the last one declared, so written after
     //  they took away each drop's little hand and there was no way to know they
     //  could be pressed. They go sixth.
-    zone box notecard_area { from: cx - 30, cy_actual - 40; size: 200, 80; active: note and not haven }
+    zone box notecard_area { from: cx - r - 12, 0; size: clk.x + max(clk.w, 60) + 12 - (cx - r - 12), max(cy_actual + r + 16, 24 + clk.h); active: note and not haven }
     zone box fan_area { at: cx, cy_actual + 40; size: 260, 180; corner: 30; active: fan > 0.01 }
 
     //  Up to four, one per category and **the most recent first**, going down
@@ -2370,7 +2300,7 @@ scene Etta {
         //  0— stuck out through it and could not be seen. «Nothing sticks out
         //  above her head» also holds when the head is half tucked in.
         let ang.$k = -24 + 30 * (1 - out) + (26 + 4 * fan) * slot.$k + 69 * fan
-        let rad.$k = 31.7 + 10.3 * fan
+        let rad.$k = (31.7 + 10.3 * fan) * pk
         let gx.$k = cx + rad.$k * cos(ang.$k)
         let gy.$k = cy_actual + rad.$k * sin(ang.$k)
         //  And in amber while it lasts, like its row in the tray: what matters
@@ -2542,6 +2472,258 @@ scene Etta {
     //  The whole —her, the fan and the preview— for the grace on leaving: the gap
     //  between the three is real and must not be lost while crossing it.
 
+    // ── the clock, always there ──────────────────────────────────
+    //  At rest, on her right at the top edge —the way the stones sit on her
+    //  left—: the time and the battery, readable from across the desk.
+    //  Hovering it, or her, it grows into the time card: the time big, the
+    //  date, her sky with the weather, what comes next and how the battery is
+    //  doing; pressing it opens the calendar. And when something changes —the
+    //  volume, the light, a charger— it is the clock that says so, while her
+    //  eyes take the shape of what changed.
+    service battery as bat { present: bool; percent: number; charging: bool }
+    service clock.seconds as tick { second: number }
+    fact clock24 = true
+    fact clock.secs = true
+    fact bat.shown = true
+    text bat.txt = ""                  // «2 h 40 min left», from the logic
+    text next.event = "Nothing scheduled today"
+    fact in.clock = false
+    measure clk.tm
+    measure clk.tm12
+    measure clk.pct
+    measure clk.pct2
+    measure clk.big
+    measure clk.big12
+
+    let bat.on = bat.present and bat.shown
+    let bat.tone = mix(mix(mix(tk.ink, tk.sand, bat.percent < 20.5), tk.red, bat.percent < 10.5), mint, bat.charging)
+    let clk.tw = if(clock24, clk.tm.width, clk.tm12.width)
+    let clk.pw = 28 + clk.tw + if(bat.on, 1, 0) * (24 + 26 + 6 + clk.pct.width)
+    let clk.x = cx + r + 20
+    //  It steps aside for whatever else she says on that side —a notice, the
+    //  Haven's capsule, a recording just saved— and for her panels.
+    prop clk.vis = 1 ~200ms
+    follow clk.vis = if(not open and not tray_open and not searching and not menu_open and phase == 0 and capsule < 0.05 and reel < 0.05 and summary < 0.05 and not corner and not adventuring and not travelling and away < 0.5 and catch < 0.05, 1, 0)
+    //  The card grows out of the pill: geometry first, then what is read; on
+    //  closing what is read goes first. The same beats as her panels.
+    prop clk.card = 0 ~290ms
+    prop clk.inner = 0 ~200ms
+    on change notecard.wants while notecard.wants { clk.card: 1 ~290ms; clk.inner: 1 ~200ms after 90ms }
+    on change notecard.wants while not notecard.wants { clk.inner: 0 ~50ms; clk.card: 0 ~210ms after 30ms }
+
+    // ── what changed: the OSD ────────────────────────────────────
+    //  Whatever changes it —a key, a slider, another program—, the clock
+    //  stretches into a capsule that says what and how much, and her eyes
+    //  take its shape. 1.6 s after the LAST change it goes back, so a burst of
+    //  key presses is one reading and not a blink per step.
+    fact osd.kind: none | o_vol | o_mute | o_bright | o_mic | o_caps | o_plug | o_unplug | o_low | o_dev | o_net | o_quiet = none
+    fact osd.seq = 0
+    fact osd.armed = false
+    fact caps.on = false               // the logic reads the Caps Lock light
+    fact osd.dev.batt = -1             // a device that just connected: its battery, or −1
+    text osd.out = "Speakers"
+    text osd.in = "Microphone"
+    text osd.dev = ""
+    text osd.net = ""
+    event osd_dev                      // the logic: a device has just connected
+    event osd_net                      // the logic: a network has just been joined
+    //  Not at birth: every service reports once on starting, and that is not a
+    //  change anybody made.
+    every 4s while not osd.armed { osd.armed = true }
+    on change sound.volume while osd.armed and not locked and not sound.muted { osd.kind = o_vol; osd.seq = osd.seq + 1 }
+    on change sound.muted while osd.armed and not locked { osd.kind = o_mute; osd.seq = osd.seq + 1 }
+    on change display.level while osd.armed and not locked and display.present { osd.kind = o_bright; osd.seq = osd.seq + 1 }
+    on change sound.input_muted while osd.armed and not locked { osd.kind = o_mic; osd.seq = osd.seq + 1 }
+    on change caps.on while osd.armed and not locked { osd.kind = o_caps; osd.seq = osd.seq + 1 }
+    on change bat.charging while osd.armed and not locked and bat.present and bat.charging { osd.kind = o_plug; osd.seq = osd.seq + 1 }
+    on change bat.charging while osd.armed and not locked and bat.present and not bat.charging { osd.kind = o_unplug; osd.seq = osd.seq + 1 }
+    on change bat.percent < 20.5 while osd.armed and not locked and bat.present and bat.percent < 20.5 and not bat.charging { osd.kind = o_low; osd.seq = osd.seq + 1 }
+    on change bat.percent < 10.5 while osd.armed and not locked and bat.present and bat.percent < 10.5 and not bat.charging { osd.kind = o_low; osd.seq = osd.seq + 1 }
+    on osd_dev while not locked { osd.kind = o_dev; osd.seq = osd.seq + 1; face = happy }
+    on osd_net while not locked { osd.kind = o_net; osd.seq = osd.seq + 1; face = happy }
+    on change haven while osd.armed and not locked { osd.kind = o_quiet; osd.seq = osd.seq + 1 }
+    on still osd.seq for 1.6s while osd.kind != none and osd.kind != o_low { osd.kind = none }
+    on still osd.seq for 4s while osd.kind == o_low { osd.kind = none }
+    on still face for 1.4s while face == happy and not celebrating and (osd.kind == o_dev or osd.kind == o_net or osd.kind == none) and agents.face == none { face = eye }
+    //  Low: a drop of sweat, as with an urgent notice.
+    on change osd.kind == o_low while osd.kind == o_low { sweat: 1; slip: 0 ~16ms; slip: 1 ~900ms after 60ms; sweat: 0 ~300ms after 1800ms }
+    prop clk.osd = 0 ~260ms
+    follow clk.osd = if(osd.kind != none and clk.card < 0.05, 1, 0)
+    //  Her eyes, one spring per shape: one can interrupt another halfway.
+    prop g.vol = 0 ~180ms
+    prop g.mute = 0 ~180ms
+    prop g.sun = 0 ~180ms
+    prop g.mic = 0 ~180ms
+    prop g.micoff = 0 ~180ms
+    prop g.caps = 0 ~180ms
+    prop g.bolt = 0 ~180ms
+    prop g.tired = 0 ~180ms
+    follow g.vol = if(osd.kind == o_vol, 1, 0)
+    follow g.mute = if(osd.kind == o_mute, 1, 0)
+    follow g.sun = if(osd.kind == o_bright, 1, 0)
+    follow g.mic = if(osd.kind == o_mic and not sound.input_muted, 1, 0)
+    follow g.micoff = if(osd.kind == o_mic and sound.input_muted, 1, 0)
+    follow g.caps = if(osd.kind == o_caps and caps.on, 1, 0)
+    follow g.bolt = if(osd.kind == o_plug, 1, 0)
+    follow g.tired = if(osd.kind == o_low, 1, 0)
+    //  What the capsule's bar shows, and whether it has one.
+    let osd.v = pick(osd.kind, 0, sound.volume, sound.volume, display.level, sound.input, 0, bat.percent / 100, bat.percent / 100, bat.percent / 100, max(osd.dev.batt, 0) / 100, 0, 0)
+    let osd.bar = osd.kind == o_vol or osd.kind == o_mute or osd.kind == o_bright or osd.kind == o_plug or osd.kind == o_unplug or osd.kind == o_low or (osd.kind == o_dev and osd.dev.batt > -0.5)
+
+    let clk.w = clk.pw + (360 - clk.pw) * clk.osd + (340 - clk.pw) * clk.card
+    let clk.h = 36 + 24 * clk.osd + 264 * clk.card
+    let clk.lift = max(clk.card, clk.osd)
+    group {
+        opacity: clk.vis
+        body {
+            color: coal
+            rim: 14%
+            shadow: 0, 3 + 12 * clk.lift, 10 + 26 * clk.lift, 30% + 15% * clk.lift, #05070a
+            box { from: clk.x, 12; size: clk.w, clk.h; corner: 18 + 2 * clk.lift }
+        }
+
+        //  At rest: the time and the battery.
+        group {
+            opacity: (1 - clamp(clk.card * 4, 0, 1)) * (1 - clamp(clk.osd * 4, 0, 1))
+            text now.time { family: "Geist"; at: clk.x + 14, 30; anchor: left center; size: 15; weight: 600; color: tk.ink; measure: clk.tm; show: clock24 }
+            text "{mod(now.hour + 11, 12) + 1, 0}:{floor(now.minute / 10), 0}{mod(now.minute, 10), 0}" { family: "Geist"; at: clk.x + 14, 30; anchor: left center; size: 15; weight: 600; color: tk.ink; measure: clk.tm12; show: not clock24 }
+            group {
+                show: bat.on
+                let bx = clk.x + 14 + clk.tw + 12
+                box { from: bx, 22; size: 1, 16; color: tk.line; opacity: 10% }
+                box { from: bx + 11, 24; size: 21, 12; corner: 3.5; stroke: 1.5; color: bat.tone; opacity: 75% }
+                box { from: bx + 33, 27.5; size: 2, 5; corner: 1; color: bat.tone; opacity: 75% }
+                box { from: bx + 13, 26; size: max(1.5, 17 * bat.percent / 100), 8; corner: 2; color: bat.tone }
+                path { at: bx + 21.5, 30; color: coal; show: bat.charging
+                       move 1, -5.5; line -3, 0.5; line -0.3, 0.5; line -1, 5.5; line 3, -0.5; line 0.3, -0.5; close }
+                text "{bat.percent, 0}%" { family: "Geist"; at: bx + 40, 30; anchor: left center; size: 13; weight: 600; color: bat.tone; measure: clk.pct }
+            }
+        }
+
+        //  The time card.
+        group {
+            opacity: clk.inner
+            move: 0, (1 - clk.inner) * -4
+            let L = clk.x
+            //  Her sky, in a band of its own: the time is no longer written on
+            //  top of clouds and rain.
+            group {
+                clip box { from: L + 12, 24; size: 316, 72; corner: 14 }
+                body {
+                    gradient: L + 12, 24 to L + 328, 96, mix(mix(mix(#141c33, #4f78a6, sky.day), #5a4a7a, clamp(sky.warm, 0, 1) * (1 - wx.gloom * 0.7)), #2a303a, wx.gloom), mix(mix(mix(#2a3555, #8fa3b5, sky.day), #c98a6a, clamp(sky.warm, 0, 1) * (1 - wx.gloom * 0.7)), #4a535f, wx.gloom)
+                    box { from: L + 12, 24; size: 316, 72 }
+                }
+                group {
+                    glow: 8, 90%, #ffd36b
+                    ellipse { at: L + 300, 40; radius: 7; color: #ffd36b; show: sun.up > 0.5 }
+                }
+                ellipse { at: L + 300, 40; radius: 6.5; color: #e8ecf5; show: sun.up < 0.5 }
+                ellipse { at: L + 303, 38; radius: 5.5; color: mix(#22304f, #2a303a, wx.gloom); show: sun.up < 0.5 }
+                group {
+                    blur: 1.5
+                    opacity: if(wx.ok and wx.cloud > 0.2, 0.5, 0)
+                    ellipse { at: L + 286, 50; radius: 11; scale: 1.6, 0.7; color: #e6ecf2 }
+                    ellipse { at: L + 300, 46; radius: 9; scale: 1.4, 0.8; color: #e6ecf2 }
+                }
+                group {
+                    mask: L + 12, 60 to L + 250, 60
+                    box { from: L + 12, 24; size: 316, 72; color: #0a0c10; opacity: 55% }
+                }
+            }
+            group {
+                show: wx.ok
+                figure Kit.i_storm { at: L + 38, 60; size: 28, 28; color: tk.ink; show: wx.storm > 0.5 }
+                figure Kit.i_snow { at: L + 38, 60; size: 28, 28; color: tk.ink; show: wx.storm < 0.5 and wx.snow > 0.05 }
+                figure Kit.i_rain { at: L + 38, 60; size: 28, 28; color: tk.ink; show: wx.storm < 0.5 and wx.snow < 0.05 and wx.rain > 0.05 }
+                figure Kit.i_fog { at: L + 38, 60; size: 28, 28; color: tk.ink; show: wx.storm < 0.5 and wx.snow < 0.05 and wx.rain < 0.05 and wx.fog > 0.5 }
+                figure Kit.i_cloud { at: L + 38, 60; size: 28, 28; color: tk.ink; show: wx.storm < 0.5 and wx.snow < 0.05 and wx.rain < 0.05 and wx.fog < 0.5 and wx.cloud > 0.4 }
+                figure Kit.i_sun { at: L + 38, 60; size: 28, 28; color: #ffd36b; show: wx.storm < 0.5 and wx.snow < 0.05 and wx.rain < 0.05 and wx.fog < 0.5 and wx.cloud < 0.4 and sky.day > 0.3 }
+                figure Kit.i_moon { at: L + 38, 60; size: 26, 26; color: #e8ecf5; show: wx.storm < 0.5 and wx.snow < 0.05 and wx.rain < 0.05 and wx.fog < 0.5 and wx.cloud < 0.4 and sky.day <= 0.3 }
+                text "{wx.temp, 0}°" { family: "Geist"; at: L + 62, 50; anchor: left center; size: 26; weight: 600; color: tk.ink }
+                text wx.summary { family: "Geist"; at: L + 62, 76; anchor: left center; size: 13; weight: 500; width: 150; lines: 1; color: #e6ebe8 }
+                text "H {wx.hi, 0}° · L {wx.lo, 0}°" { family: "Geist"; at: L + 314, 66; anchor: right center; size: 12; weight: 600; color: #e6ebe8 }
+                text wx.place { family: "Geist"; at: L + 314, 84; anchor: right center; size: 12; weight: 500; width: 120; lines: 1; align: right; color: #cfd6d2 }
+            }
+            text "Set your city in the calendar for her sky" { family: "Geist"; at: L + 170, 60; anchor: center; size: 13; weight: 500; color: #e6ebe8; show: not wx.ok }
+
+            //  The time, big, and its seconds beside it.
+            text now.time { family: "Geist"; at: L + 16, 134; anchor: left center; size: 44; weight: 500; color: tk.ink; measure: clk.big; show: clock24 }
+            text "{mod(now.hour + 11, 12) + 1, 0}:{floor(now.minute / 10), 0}{mod(now.minute, 10), 0}" { family: "Geist"; at: L + 16, 134; anchor: left center; size: 44; weight: 500; color: tk.ink; measure: clk.big12; show: not clock24 }
+            text ":{floor(tick.second / 10), 0}{mod(tick.second, 10), 0}" { family: "Geist"; at: L + 20 + if(clock24, clk.big.width, clk.big12.width), 140; anchor: left center; size: 20; weight: 500; color: tk.ink3; show: clock.secs }
+            text pick(if(now.hour < 12, 0, 1), "AM", "PM") { family: "Geist"; at: L + 324, 140; anchor: right center; size: 15; weight: 600; color: tk.ink3; show: not clock24 }
+            row {
+                at: L + 16, 172
+                anchor: left middle
+                gap: 0
+                text pick(now.weekday, "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday") { family: "Geist"; size: 15; weight: 600; color: tk.ink2 }
+                text ", {now.day, 0} " { family: "Geist"; size: 15; weight: 600; color: tk.ink2 }
+                text pick(now.month - 1, "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December") { family: "Geist"; size: 15; weight: 600; color: tk.ink2 }
+            }
+            box { from: L + 16, 196; size: 308, 1; color: tk.line; opacity: 8% }
+            figure Kit.i_calendar { at: L + 26, 220; size: 18, 18; color: tk.ink3 }
+            text next.event { family: "Geist"; at: L + 44, 220; anchor: left center; size: 14; width: 280; lines: 1; color: tk.ink }
+            group {
+                show: bat.present
+                figure Kit.i_battery { at: L + 26, 248; size: 18, 18; color: bat.tone }
+                text "{bat.percent, 0}%" { family: "Geist"; at: L + 44, 248; anchor: left center; size: 14; weight: 600; color: bat.tone; measure: clk.pct2 }
+                text bat.txt { family: "Geist"; at: L + 52 + clk.pct2.width, 248; anchor: left center; size: 14; width: 230; lines: 1; color: tk.ink2 }
+            }
+            text "Open the calendar" { family: "Geist"; at: L + 16, 284; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
+            figure Kit.i_chev_r { at: L + 322, 284; size: 14, 14; color: tk.ink3 }
+        }
+
+        //  What changed, said: its name, where, how much.
+        group {
+            opacity: clamp(clk.osd * 2 - 0.6, 0, 1)
+            let L = clk.x
+            text "Volume" { family: "Geist"; at: L + 18, 33; anchor: left center; size: 15; weight: 600; color: tk.ink; show: osd.kind == o_vol }
+            text "Muted" { family: "Geist"; at: L + 18, 33; anchor: left center; size: 15; weight: 600; color: tk.ink3; show: osd.kind == o_mute and sound.muted }
+            text "Sound on" { family: "Geist"; at: L + 18, 33; anchor: left center; size: 15; weight: 600; color: tk.ink; show: osd.kind == o_mute and not sound.muted }
+            text "Brightness" { family: "Geist"; at: L + 18, 33; anchor: left center; size: 15; weight: 600; color: tk.ink; show: osd.kind == o_bright }
+            text pick(if(sound.input_muted, 1, 0), "Microphone on", "Microphone off") { family: "Geist"; at: L + 18, 33; anchor: left center; size: 15; weight: 600; color: tk.ink; show: osd.kind == o_mic }
+            text pick(if(caps.on, 1, 0), "Caps Lock off", "Caps Lock on") { family: "Geist"; at: L + 18, 33; anchor: left center; size: 15; weight: 600; color: tk.ink; show: osd.kind == o_caps }
+            text "Charging" { family: "Geist"; at: L + 18, 33; anchor: left center; size: 15; weight: 600; color: mint; show: osd.kind == o_plug }
+            text "On battery" { family: "Geist"; at: L + 18, 33; anchor: left center; size: 15; weight: 600; color: tk.ink; show: osd.kind == o_unplug }
+            text "Battery low" { family: "Geist"; at: L + 18, 33; anchor: left center; size: 15; weight: 600; color: bat.tone; show: osd.kind == o_low }
+            text osd.dev { family: "Geist"; at: L + 18, 33; anchor: left center; size: 15; weight: 600; width: 160; lines: 1; color: tk.ink; show: osd.kind == o_dev }
+            text "Wi-Fi" { family: "Geist"; at: L + 18, 33; anchor: left center; size: 15; weight: 600; color: tk.ink; show: osd.kind == o_net }
+            text "Do not disturb" { family: "Geist"; at: L + 18, 33; anchor: left center; size: 15; weight: 600; color: tk.ink; show: osd.kind == o_quiet }
+
+            text osd.out { family: "Geist"; at: L + 18, 52; anchor: left center; size: 12; weight: 500; width: 128; lines: 1; color: tk.ink3; show: osd.kind == o_vol or osd.kind == o_mute }
+            text "Display" { family: "Geist"; at: L + 18, 52; anchor: left center; size: 12; weight: 500; color: tk.ink3; show: osd.kind == o_bright }
+            text osd.in { family: "Geist"; at: L + 18, 52; anchor: left center; size: 12; weight: 500; width: 160; lines: 1; color: tk.ink3; show: osd.kind == o_mic }
+            text "Keyboard" { family: "Geist"; at: L + 18, 52; anchor: left center; size: 12; weight: 500; color: tk.ink3; show: osd.kind == o_caps }
+            text bat.txt { family: "Geist"; at: L + 18, 52; anchor: left center; size: 12; weight: 500; width: 128; lines: 1; color: tk.ink3; show: osd.kind == o_plug or osd.kind == o_unplug or osd.kind == o_low }
+            text "Connected" { family: "Geist"; at: L + 18, 52; anchor: left center; size: 12; weight: 500; color: tk.ink3; show: osd.kind == o_dev }
+            text osd.net { family: "Geist"; at: L + 18, 52; anchor: left center; size: 12; weight: 500; width: 200; lines: 1; color: tk.ink3; show: osd.kind == o_net }
+            text pick(if(haven, 1, 0), "Everything arrives again", "Notices wait for later") { family: "Geist"; at: L + 18, 52; anchor: left center; size: 12; weight: 500; color: tk.ink3; show: osd.kind == o_quiet }
+
+            group {
+                show: osd.bar
+                box { from: L + 156, 39; size: 136, 6; corner: 3; color: tk.s3 }
+                box { from: L + 156, 39; size: max(6, 136 * clamp(osd.v, 0, 1)), 6; corner: 3
+                      color: pick(osd.kind, mint, mint, #5d6461, tk.sand, mint, mint, mint, tk.ink2, bat.tone, tk.blue, mint, mint) }
+                text "{osd.v * 100, 0}%" { family: "Geist"; at: L + 344, 42; anchor: right center; size: 15; weight: 600; color: if(osd.kind == o_mute, tk.ink3, tk.ink) }
+            }
+            group { move: L + 290, 31; show: osd.kind == o_mic and sound.input_muted; Tag("Muted", w: 56, tone: 3) }
+            group { move: L + 300, 31; show: osd.kind == o_mic and not sound.input_muted; Tag("Live", w: 46, tone: 1) }
+            group { move: L + 302, 31; show: osd.kind == o_caps and caps.on; Tag("ON", w: 44, tone: 2) }
+            group { move: L + 298, 31; show: osd.kind == o_caps and not caps.on; Tag("OFF", w: 48) }
+            group { move: L + 304, 31; show: osd.kind == o_dev and osd.dev.batt < -0.5; Tag("On", w: 42, tone: 1) }
+            group { move: L + 282, 31; show: osd.kind == o_net; Tag("Connected", w: 64, tone: 1) }
+            group { move: L + 302, 31; show: osd.kind == o_quiet and haven; Tag("ON", w: 44, tone: 1) }
+            group { move: L + 298, 31; show: osd.kind == o_quiet and not haven; Tag("OFF", w: 48) }
+        }
+    }
+    //  Hovering the clock brings her out to tell the time; pressing it opens the
+    //  calendar. Its grace is the note's: `notecard_area` holds her and it.
+    zone box clock_zone { from: clk.x, 12; size: clk.w, clk.h; corner: 18; cursor: pointer; active: clk.vis > 0.5 and clk.osd < 0.5 }
+    on enter clock_zone { in.clock = true; needed = true; wanted = true; asleep = false }
+    on leave clock_zone { in.clock = false }
+    on hover clock_zone for 150ms while not open and not menu_open { note = true }
+    on press clock_zone { note = false; open = true; page = calendar; emit calendar }
+    on leave clock_zone while not note and not open { wanted = false }
+
     // ── the notice that arrives ──────────────────────────────────
     //  From the centre of the card to the shoulder along two different curves:
     //  sideways at a constant pace, and upwards quickly. The path bends.
@@ -2552,8 +2734,8 @@ scene Etta {
     //  a mascot that ends up switched off.
     let hue = mix(mix(mix(blue, lilac, reading_cat > 1.5), green, reading_cat > 2.5), amber, reading_cat > 3.5)
     let arrival.x0 = cx + 23 + 14 + 125
-    let arrival.dx = cx + 31.7 * cos(-24) - arrival.x0
-    let arrival.dy = 31.7 * sin(-24)
+    let arrival.dx = cx + 31.7 * pk * cos(-24) - arrival.x0
+    let arrival.dy = 31.7 * pk * sin(-24)
 
     //  It arrives as a drop: it falls from the top edge of the screen —her
     //  water's surface—, splashes beside her and unfolds into the card (land:
@@ -2764,8 +2946,8 @@ scene Etta {
         //  her and not cutting through.
         repeat k in 1..5 {
             let ang = -24 + 26 * slot.$k
-            let gx = cx + 31.7 * cos(ang)
-            let gy = cy_actual + 31.7 * sin(ang)
+            let gx = cx + 31.7 * pk * cos(ang)
+            let gy = cy_actual + 31.7 * pk * sin(ang)
             //  Packed to the end of the lane and in their order —the same as on
             //  her shoulder—, not by their category's number: if one is missing,
             //  the others close up instead of leaving its gap.
@@ -2851,8 +3033,8 @@ scene Etta {
             //  And the drop that comes back. It is born STUCK to its row's colour
             //  bar —melted with it— and comes loose on leaving: the pinch is not
             //  drawn, it comes from the distances, like the one at the water's edge.
-            let vx = fx - 214 + (cx + 31.7 * cos(-24) - fx + 214) * freed.$k
-            let vy = fy + (cy_actual + 31.7 * sin(-24) - fy) * (1 - (1 - freed.$k) * (1 - freed.$k))
+            let vx = fx - 214 + (cx + 31.7 * pk * cos(-24) - fx + 214) * freed.$k
+            let vy = fy + (cy_actual + 31.7 * pk * sin(-24) - fy) * (1 - (1 - freed.$k) * (1 - freed.$k))
             body {
                 color: color.$k
                 opacity: clamp(freed.$k * 8, 0, 1) * (1 - clamp(freed.$k * 8 - 7, 0, 1))
@@ -2917,7 +3099,7 @@ scene Etta {
            move 0, -6 + drip.fall * 2.4; curve 4.2, 1.8 via 4.2, -2.4; curve 0, 5.8 via 4.2, 4.8
            curve -4.2, 1.8 via -4.2, 4.8; curve 0, -6 + drip.fall * 2.4 via -4.2, -2.4; close }
     //  And the ripple: a ring of its colour that comes out of her and dissolves.
-    arc { at: cx, cy_actual; radius: 21 + ripple.drip * 26; span: 360deg; width: 2.4 * (1 - ripple.drip)
+    arc { at: cx, cy_actual; radius: 21 * pk + ripple.drip * 26; span: 360deg; width: 2.4 * (1 - ripple.drip)
           color: hue; opacity: (1 - ripple.drip) * 70% * clamp(ripple.drip * 8, 0, 1) }
 
     // ── the asleep «z» ───────────────────────────────────────────
@@ -2926,7 +3108,7 @@ scene Etta {
     //  And it goes beside her, not on top: up there is the edge of the screen,
     //  which is the same reason the drops go down her shoulder. Over her head the
     //  «z» came out half cut off and could not be seen.
-    text "z" { family: "Geist"; at: cx + 26 + zee * 7, cy_actual - 6 - zee * 15; anchor: center
+    text "z" { family: "Geist"; at: cx + 26 * pk + zee * 7, cy_actual - 6 * pk - zee * 15; anchor: center
                size: 10 + zee * 7; weight: 600; color: #dfe6e2
                opacity: drowsy * clamp(zee * 6, 0, 1) * (1 - zee * 0.9) * 95% }
 
@@ -2947,7 +3129,7 @@ scene Etta {
     }
     //  A real drop: the tip up and the fat body down, which is what makes it
     //  read as a drop and not as an oval.
-    path { at: cx - 19, cy_actual - 18 + slip * 9; color: #bfe6f2; opacity: sweat * 88%
+    path { at: cx - 19 * pk, cy_actual - 18 * pk + slip * 9; color: #bfe6f2; opacity: sweat * 88%
            move 0, -5.5; curve 3.6, 1.6 via 3.6, -2.2; curve 0, 5.4 via 3.6, 4.4
            curve -3.6, 1.6 via -3.6, 4.4; curve 0, -5.5 via -3.6, -2.2; close }
 
@@ -2984,37 +3166,42 @@ scene Etta {
     prop sway = 0
     wave sway = 1 at 0.9
 
-    //  On top: it rests on her head, arrives late and tilts from the lag.
-    Perched(cx, cy_actual, gaze.x, worn.1, lift: 30) {
-        figure hat.brim     { at: 0, 0; size: 58, 43 }
-        figure hat.crown    { at: 0, 0; size: 58, 43 }
-        figure hat.pompom   { at: 0, 0; size: 58, 43 }
-    }
-    //  On her face: it chases nothing, it inherits what is hers. What is passed
-    //  to it is **her** turn and squash, with her centre as pivot, and the piece
-    //  is placed inside: that way the squash squashes it as it squashes the
-    //  face, and not around itself.
-    //
-    //  And they go where her eyes are: 2.5 px below her centre, with the same
-    //  gaze as them. Before they were 2 px ABOVE and with half the gaze, so they
-    //  stayed on her forehead and looked the other way.
-    Pinned(cx, cy_actual, tilt + lean, sx, sy, worn.2) {
-        figure glasses { at: face.dx, 2.5 + face.dy + look.y + face.sink; size: 44, 24 }
-    }
-    //  Over her head and round it, stuck on as the glasses are: they squash and
-    //  turn with her. They do not follow her gaze: they are on her head, not on
-    //  her eyes.
-    Pinned(cx, cy_actual, tilt + lean, sx, sy, worn.4) {
-        figure phones.band   { at: 0, 0; size: 64, 64 }
-        figure phones.cups   { at: 0, 0; size: 64, 64 }
-        figure phones.accent { at: 0, 0; size: 64, 64 }
-        figure phones.boom   { at: 0, 0; size: 64, 64 }
-        ellipse { at: -6.8, 21.2; radius: 4.5 + 1.5 * air_glow; color: #ef7a66; opacity: on_air * (22% + 18% * air_glow) }
-        figure phones.led    { at: 0, 0; size: 64, 64; color: mix(#9ed6bd, #ef7a66, on_air) }
-    }
-    //  Beside her: it keeps her company, stays behind and floats.
-    Tagalong(cx, cy_actual, worn.3, sway, apart: 42) {
-        figure mug { at: 0, 0; size: 34, 34 }
+    //  Everything she wears grows with her: drawn at 46, scaled around her.
+    group {
+        pivot: cx, cy_actual
+        scale: pk, pk
+        //  On top: it rests on her head, arrives late and tilts from the lag.
+        Perched(cx, cy_actual, gaze.x, worn.1, lift: 30) {
+            figure hat.brim     { at: 0, 0; size: 58, 43 }
+            figure hat.crown    { at: 0, 0; size: 58, 43 }
+            figure hat.pompom   { at: 0, 0; size: 58, 43 }
+        }
+        //  On her face: it chases nothing, it inherits what is hers. What is passed
+        //  to it is **her** turn and squash, with her centre as pivot, and the piece
+        //  is placed inside: that way the squash squashes it as it squashes the
+        //  face, and not around itself.
+        //
+        //  And they go where her eyes are: 2.5 px below her centre, with the same
+        //  gaze as them. Before they were 2 px ABOVE and with half the gaze, so they
+        //  stayed on her forehead and looked the other way.
+        Pinned(cx, cy_actual, tilt + lean, sx, sy, worn.2) {
+            figure glasses { at: face.dx, 2.5 + face.dy + look.y + face.sink; size: 44, 24 }
+        }
+        //  Over her head and round it, stuck on as the glasses are: they squash and
+        //  turn with her. They do not follow her gaze: they are on her head, not on
+        //  her eyes.
+        Pinned(cx, cy_actual, tilt + lean, sx, sy, worn.4) {
+            figure phones.band   { at: 0, 0; size: 64, 64 }
+            figure phones.cups   { at: 0, 0; size: 64, 64 }
+            figure phones.accent { at: 0, 0; size: 64, 64 }
+            figure phones.boom   { at: 0, 0; size: 64, 64 }
+            ellipse { at: -6.8, 21.2; radius: 4.5 + 1.5 * air_glow; color: #ef7a66; opacity: on_air * (22% + 18% * air_glow) }
+            figure phones.led    { at: 0, 0; size: 64, 64; color: mix(#9ed6bd, #ef7a66, on_air) }
+        }
+        //  Beside her: it keeps her company, stays behind and floats.
+        Tagalong(cx, cy_actual, worn.3, sway, apart: 42) {
+            figure mug { at: 0, 0; size: 34, 34 }
+        }
     }
 
     // ── what is seen of the finder ───────────────────────────────
@@ -5211,12 +5398,8 @@ scene Etta {
     //  It fires with whatever changes the volume, wherever it comes from. And it
     //  does not happen when sunk: the volume key is not addressed to her.
     follow vol_level = sound.volume
-    //  And it does not happen when asleep: the volume key is not addressed to her.
-    on change sound.volume while out > 0.9 and not asleep { meter: 1 }
-    //  It holds 1.1 s after the LAST change, not after each one: a burst of key
-    //  presses is one continuous reading and not a blink per step. This is what
-    //  pleamar could not say and now says: `on still`.
-    on still sound.volume for 1.1s { meter: 0 }
+    //  The volume no longer lays her eyes down into a bar: her eyes take the
+    //  speaker's shape and the clock beside her says the level (the clock).
 
     // ── the life of a notice ─────────────────────────────────────
     //  A notice brings her out if she is sunk, and then the card waits for her
@@ -5531,7 +5714,6 @@ scene Etta {
     //  time. And 300 of grace on leaving, because the gap between her and the note
     //  is real and must not be lost while crossing it. It goes away if the panel
     //  opens.
-    zone box notecard_zone { at: notecard.x, cy_actual; size: 104, 56; corner: 13; cursor: pointer; active: notecard > 0.8 }
     on hover body_zone for 180ms while not open and not menu_open and drag.over < 0.5 { note = true }
     //  And this does not rule in the Haven: with the zone switched off, «being
     //  outside» is always true, so it switched the capsule off 300 ms after
@@ -5551,14 +5733,13 @@ scene Etta {
     on enter body_zone { in.body = true }
     on enter notecard_area { in.note = true }
     on enter fan_area { in.fan = true }
-    on still note and not (in.body or in.note or in.fan) for 400ms while note and not (in.body or in.note or in.fan) and not haven { note = false }
+    on still note and not (in.body or in.note or in.fan or in.clock) for 400ms while note and not (in.body or in.note or in.fan or in.clock) and not haven { note = false }
     //  With the fan out, the grace is counted over the whole.
     on away fan_area for 300ms { note = false }
     //  And opening the card takes the menu with it, as the menu takes the card
     //  with it: there are no two things of hers open at once.
     on change open while open { note = false; menu_open = false }
     //  The time opens the calendar: in her card, on its own page.
-    on press notecard_zone { note = false; open = true; page = calendar; emit calendar }
     //  A single grace clock for everything that needs her —the pointer, the note,
     //  the card—: 2.6 s from when the LAST one stops needing her. With one `away`
     //  per zone, leaving her towards the note already counted, and she sank with
@@ -5725,7 +5906,7 @@ scene Etta {
         //  around it instead, three strips —left, right and below— and the
         //  finder and Marea herself in the hole. (Her surface is centred at
         //  the top: `ox` is where it starts on this one.)
-        let ox = (catcher.width - 820) / 2
+        let ox = (catcher.width - 1100) / 2
         let hole.x0 = ox + cx - r - 12
         let hole.x1 = ox + finder.x + finder.w / 2 + 8
         let hole.y1 = finder.y + finder.h / 2 + 8
@@ -5765,7 +5946,7 @@ scene Etta {
             }
             //  The drop, from her to where it lands: long as it falls, round when it lands.
             let fall = tide.fall * tide.fall
-            let dx = tw / 2 - 50 + (tw / 2 - (tw / 2 - 50)) * tide.fall
+            let dx = tw / 2
             let dy = 30 + (t.oy - 30) * fall
             let stretch = clamp(vel(tide.fall) * 0.25, 0, 1.2)
             body {
@@ -5794,8 +5975,8 @@ scene Etta {
         screens: each max 2
         open: adventuring and screen.index == adv_screen
         //  Where she is: across the bottom and between home and the floor.
-        //  Home is where she lives: 50 px left of the middle, at her height.
-        let home.x = stage.width / 2 - 50
+        //  Home is where she lives: the middle, at her height.
+        let home.x = stage.width / 2
         let home.y = cy - rise
         let floor.y = stage.height - 26
         let ax = home.x + adv.fx * (stage.width / 2 - 80)
@@ -5831,10 +6012,10 @@ scene Etta {
             color: skin
             rim: 14%
             ellipse { at: home.x, -30; radius: 40 * clamp(1 - adv.fy * 6, 0, 1); blend: 18 * clamp(1 - adv.fy * 8, 0, 1) }
-            ellipse { at: ax, ay; radius: 23; rotate: tilt; blend: 18 * clamp(1 - adv.fy * 8, 0, 1)
+            ellipse { at: ax, ay; radius: 23 * pk; rotate: tilt; blend: 18 * clamp(1 - adv.fy * 8, 0, 1)
                       scale: sx * (1 + 0.2 * hop.ground - 0.07 * hop.speed), sy * (1 - 0.24 * hop.ground + 0.1 * hop.speed) }
         }
-        Face(ax, ay, gaze.x * 0.5, gaze.y * 0.5, 0)
+        group { pivot: ax, ay; scale: pk, pk; Face(ax, ay, gaze.x * 0.5, gaze.y * 0.5, 0) }
         //  A little dust where she lands and hops.
         particles { at: ax, floor.y + 18; area: 30, 0; count: 40; life: 0.3s .. 0.6s; speed: 20 .. 70; direction: -90deg; spread: 120deg
                     gravity: 0, 200; size: 3, 0; colors: #cfd3d8; opacity: 50%, 0%; emit: adventuring and adv.fy > 0.98 and (hop.ground > 0.6 or sx > 1.1) }
