@@ -1,6 +1,7 @@
 # Etta — handoff
 
-Estado em **2026-10-03**, último commit antes deste arquivo: `c7a2f92`.
+Estado em **2026-10-04**. O marco "estabilidade no Halley + Finder, menu,
+cápsula do Haven" está no commit que acompanha esta versão do arquivo.
 Escrito para retomar numa sessão nova sem reler a conversa anterior.
 
 ---
@@ -97,9 +98,10 @@ grim -o HDMI-A-1 /tmp/s.png && magick /tmp/s.png -rotate 180 /tmp/v.png   # o HD
 - **Hot reload:** a cena e a lógica recarregam ao salvar.
 - **O que exige reiniciar a instância:**
   - superfícies novas;
-  - `permissions { run: … }` (todo binário novo chamado com `run()` precisa
-    entrar nessa lista);
   - variáveis de ambiente.
+- **Permissões** (`permissions { run: …; services: … }`) recarregam ao
+  salvar no pleamar 0.2.8: o log diz "permissions now: …". Mesmo assim, todo
+  binário novo chamado com `run()` precisa entrar na lista.
 - **Para reiniciar sem matar o próprio shell:**
   `kill $(pgrep -f "^/home/ely/.local/bin/pleamar --scene etta.plm")`, depois
   `etta start`. **Não use** `pkill -f "pleamar --scene etta.plm"`: casa com a
@@ -130,6 +132,41 @@ só na máquina do usuário.
 | `4efb5c8` | Captura de região própria (frame congelado, guias, medidas, ela como HUD de W×H; soltar salva em `~/Pictures/Screenshots/Screenshot_…png` + clipboard; Esc cancela; R/W/S trocam o modo); cartão "saved" compartilhado com gravações |
 | `0dd7a84` | Look: **Glass bloqueado no Halley** (crash de screencopy); Frosted só translúcido |
 | `c7a2f92` | Gravação nativa testada (NVENC + áudio), `~/Videos/Recordings/Recording_…mp4`, rotação de 180° marcada com `ffmpeg -display_rotation` |
+| (este marco) | **Estabilidade no Halley** (veja §4.1) e **Finder, menu, cápsula do Haven e "Welcome back"** redesenhados conforme os protótipos |
+
+### 4.1 O que a rodada de estabilidade corrigiu (relatório de testes do usuário)
+
+- **Cliques vazando entre painéis:** o `Seg` declarava `zone box opt.$i`
+  dentro de componente. Nomes com `$` perdem o sufixo da instância, então
+  todos os `Seg` compartilhavam 5 zonas: "Face" no Wardrobe também escolhia
+  Frosted + eDP-1, e qualquer índice 2 ligava "Follow focus". Agora cada
+  opção é uma cópia de `SegOpt`.
+- **Teclado morto** (Esc, Finder, R/W/S): só a última `keyboard: … while`
+  valia (a do lockpreview). Agora há **uma** declaração, na superfície
+  principal, `exclusive`. No Halley, `on_demand` só pega o teclado com
+  clique/hover numa layer que já é on_demand. Enquanto a Etta segura o
+  teclado, os binds do Halley ficam desligados; por isso ela espelha
+  Super+Space, Super+Shift+L/S/V e as teclas de volume, brilho e mídia. Uma
+  regra `on focus … { blur }` tira o cursor de campos invisíveis.
+- **Esc** fecha o que está aberto, de qualquer página. Antes, cancelam:
+  senha do Wi-Fi, editor de cidade e confirmação da sessão.
+- **Captura:** dentro de superfície nomeada, `pointer.y` vem no plano
+  (+10000 por cópia). Cada cópia aprende o próprio deslocamento (`ox`/`oy`)
+  pela zona. O overlay abre em **todos** os monitores; o clicado é o
+  capturado. Window fica escondido no Halley. Clique direito e Cancel saem.
+  O adaptador ganhou `selected` (o output escolhido pelo Halley).
+- **Shaders/Deriva:** a zona de rolagem estava por cima dos cards. Agora vem
+  antes deles. O 7º shader era inalcançável: o limite da rolagem foi
+  arredondado para 0. Agora há paginação "1–6 of 7" com ‹ ›.
+- **Settings/Tray/Calendar:** zonas de linhas roladas não respeitam o
+  `view`. Agora cada controle só fica ativo com a linha inteira visível, e o
+  cabeçalho é desenhado depois da lista.
+- **Frame do relógio:** uma transição atrasada sobrevivia a uma mais nova.
+  Agora os alvos são `if(cond, 1, 0)`, e o card fica recortado.
+- **Prévia do lock:** clicar no fundo não fecha mais. Tem pílula com Close,
+  abre no monitor dela e não mostra suspender/desligar.
+- **Persistência:** o nome do monitor só é gravado quando você escolhe.
+  "View rules" da cápsula não tinha handler e ganhou um.
 
 ---
 
@@ -196,8 +233,32 @@ só na máquina do usuário.
   tamanho real.
 - Superfícies `screens: each` com regras que leem o ponteiro: abra só no
   monitor alvo (`open: … and screen.index == X`).
-- O pleamar repinta só os retângulos que mudaram. Se aparecerem rastros, teste
-  com `PLEAMAR_FULL_REPAINT=1`.
+- **Nome com `$` dentro de componente é compartilhado por todas as cópias**
+  (sem sufixo de instância). Em componente, use nomes fixos ou uma
+  subcópia (`SegOpt`).
+- **`keyboard: … while` é um só para a cena**: a última declarada vale, e o
+  modo é o da superfície principal. Declare só na principal.
+- **No Halley use `exclusive`**, porque `on_demand` não recebe o teclado ao
+  abrir. Com exclusive, os binds do Halley param: espelhe na cena os que
+  importam.
+- Ao ganhar o teclado, o pleamar põe o cursor num campo (até num invisível),
+  e o campo come letras e Enter antes das regras. `blur` resolve. Enter num
+  campo vira submit mesmo com Ctrl.
+- **Zonas ignoram `clip` e `view:`**: linha rolada para fora continua
+  clicável. Proteja por posição (`live:`/`active:`).
+- **Em superfície nomeada, `pointer.x/y` são do plano** (cópia n em
+  y + 10000·n); `local.x/y` em regra de zona são corretos.
+- **Transição atrasada nunca é cancelada**, e o alvo é lido quando ela cai.
+  Escreva `if(cond, 1, 0)`, nunca `1`.
+- `on still X for T` dispara **uma vez**: se a guarda estiver falsa nesse
+  momento, não dispara de novo. (Foi assim que `face = happy` ficou preso.)
+  Prefira gestos (`play …`) para reações curtas.
+- O renderer pinta o frame inteiro no Halley. `PLEAMAR_FULL_REPAINT` só
+  vale para os frames emprestados do pleamar-wm.
+- Mouse simulado (`--mouse`) recebe coordenadas **do plano**: a cópia 0 da
+  primeira superfície nomeada fica em y+10000. `--mouse "focus+@… key:Escape@…
+  type:abc@…"` simula teclado. Dá para testar componentes reais numa cena
+  pequena que importa `ui/`.
 
 **Luau (lógica):**
 
@@ -229,35 +290,29 @@ só na máquina do usuário.
   Etta cai para o monitor onde mora.
 - `halleyctl config verify -c ARQUIVO` valida uma cópia. O Halley recarrega
   sozinho os arquivos reunidos por `gather`.
+- O "output selecionado" (o último clicado) vem de `client.trail(None).output`.
+  É o que a captura de tela inteira e a gravação usam.
+- **Permissões** (`services:`) agora recarregam ao salvar: `clipboard` e
+  `clipboard.*` entraram sem reiniciar.
 
 ---
 
-## 7. Próximo marco (pedido pelo usuário)
+## 7. Próximo marco
 
-**Finder, menu, cápsula do Haven e resumo**, depois a **rodada de polimento e
-otimização**, junto com os resultados de teste que o usuário trouxer.
+**Rodada de polimento e otimização**, junto com os resultados do teste ao
+vivo deste marco:
 
-1. **Finder** (protótipo `Finder.dc.html`): redesenho no kit, calculadora,
-   corrigir o estado vazio. O bloco atual está em `etta.plm`, em "what is seen
-   of the finder" (`ResultRow` e afins), e a lógica em "the finder", em
-   `etta.luau`.
-2. **Menu do botão direito** (protótipo `Menu.dc.html`): linhas com ícone e
-   Kbd: Search, Capture, Record, Do not disturb, Keep awake (mini-toggles),
-   Deriva, Keep what I copy, Notification history, Wardrobe, Wallpaper,
-   Settings, Sleep. O código atual está em "her menu" e "what is seen of her
-   menu" (`menu_box`, `entries`).
-3. **Cápsula do Haven e resumo de volta** (protótipo `Haven.dc.html`): cápsula
-   300 px com "Do not disturb · mm:ss left", contagem guardada, barra de
-   progresso, "End now" e "Rules"; o "Welcome back" com as gotas e "Show".
-   Código: `capsule_box`, `capsule.*`, `summary.*`.
-4. **Polimento e otimização:**
-   - alinhamento fino de todas as páginas, comparando com os protótipos (o
-     usuário pediu);
-   - sensação de fluidez (já sem limite de fps; medir de novo com
-     `etta report`);
-   - observar se volta o "rastro do hover do relógio" ao fechar um painel (não
-     reproduzido);
-   - indicador de paginação nos Wallpapers (há 7 shaders, 6 por página).
+- alinhamento fino de todas as páginas, comparando com os protótipos (o
+  usuário pediu);
+- sensação de fluidez: medir de novo com `etta report`;
+- conferir ao vivo o que só o teste real confirma (veja a lista na mensagem
+  final do marco): teclado físico no Finder e no menu, Esc em cada página,
+  captura nos dois monitores, Ctrl+Enter, "Keep what I copy" (clipboard via
+  data-control no Halley) e notificações urgentes atravessando o Haven.
+
+**Valores errados no `settings.json` do usuário** (gravados pelo bug do
+`Seg`): `follow: true`, `home: "eDP-1"`, `lock_idle: 2`, `snooze: 2`. O
+usuário reescolhe no Settings. Não editar o arquivo sem pedir.
 
 **Backlog conhecido** (fora do marco, anotar e encaixar):
 
@@ -266,17 +321,26 @@ otimização**, junto com os resultados de teste que o usuário trouxer.
 - **Caps Lock:** hoje é lido com `cat` a cada 300 ms. Passar para o adaptador.
 - **Keep awake:** idealmente via `zwp_idle_inhibit` no adaptador. Hoje é
   logind.
-- **Opções do Focus no protótipo:** "Let urgent notifications through" (fact
-  `dnd` antigo) e "Summary when it ends".
-- **Deriva:** "Keep what I copy" (toggle do protótipo, sem backend ainda).
+- **Captura de janela no Halley:** dá para delegar ao seletor nativo do
+  Halley (`client.capture(CaptureMode::Window, …)` na halley-api) com um
+  `etta-halley capture window`.
+- **Face presa:** a regra genérica que desfaz `face = happy` (OSD de
+  dispositivo/rede, agentes) é de um disparo só. Pode prender a cara feliz
+  se o momento passar com outra coisa acontecendo. Tornar robusta.
 - **Agents:** o Codex aparece como "No window read yet" quando o rollout mais
   recente não tem `rate_limits`.
 - **README e NOTICE:** atualizar com instalação no Halley (keybinds, autostart,
   `gather`).
-- **Reportar ao Halley:** a dupla rotação no screencopy e o formato de buffer
-  do screencopy.
-
----
+- **Reportar ao Halley:** a dupla rotação no screencopy, o formato de buffer
+  do screencopy e a falta da geometria apresentada das janelas na API v1.
+- **Reportar ao pleamar** (textos prontos no diagnóstico desta sessão,
+  `~/.cache/etta-dev/diagnosis.md`):
+  - nome com `$` em componente sem sufixo de instância;
+  - `keyboard: … while` global (a última vence);
+  - zonas que ignoram `clip`/`view`;
+  - `pointer.x/y` no plano em superfície nomeada;
+  - transição atrasada que não é cancelada;
+  - campo invisível que pega o cursor ao ganhar o teclado.
 
 ## 8. Como o usuário trabalha
 

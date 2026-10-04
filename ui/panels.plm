@@ -70,9 +70,11 @@ library Panels {
 
     //  An icon of the tray: a click is the usual one, the right one asks for
     //  its menu.
-    component TrayIcon(i: record) {
+    //  `sx` is how far the strip has scrolled: an icon outside its 150-px
+    //  window still caught the press, over the battery beside it.
+    component TrayIcon(i: record, sx: number = 0) {
         size: 30, 30
-        zone box touch { from: 0, 0; size: 30, 30; corner: 8; cursor: pointer; active: content > 0.9 and page == none }
+        zone box touch { from: 0, 0; size: 30, 30; corner: 8; cursor: pointer; active: content > 0.9 and page == none and i.index * 32 >= sx - 1 and i.index * 32 + 30 <= sx + 151 }
         box { from: 0, 0; size: 30, 30; corner: 8; color: tk.s2; opacity: touch.hover }
         image i.icon { at: 4, 4 - touch.hover * 1.5; size: 22, 22 }
         on press touch { emit systray_activate(i.index) }
@@ -82,14 +84,16 @@ library Panels {
     // ── the control center ───────────────────────────────────────
     component Overview() {
         size: 620, 700
+        prop tray.sx = 0 ~16ms
         text "Control center" { family: "Geist"; at: 64, 33; anchor: left center; size: 20; weight: 600; color: tk.ink }
         row tray_strip {
             at: 236, 33
             anchor: left middle
             gap: 2
             view: 150, 30
-            for i in icons { TrayIcon(i) }
+            for i in icons { TrayIcon(i, sx: tray.sx) }
         }
+        follow tray.sx = tray_strip.scroll
         //  The battery, small: the clock beside her steps aside while a panel
         //  is out, so it is said here too.
         group {
@@ -273,8 +277,11 @@ library Panels {
     // ── bluetooth ────────────────────────────────────────────────
     component BtRow(r: record) {
         size: 564, 60
+        //  The whole row connects (or pairs) one that is not connected —its
+        //  name is what you aim at—; disconnecting stays on its button only.
         zone box touch { from: 0, 0; size: 564, 60; corner: 12; active: page == bluetooth and paging > 0.9 }
-        box { from: 0, 0; size: 564, 60; corner: 12; color: tk.s2; opacity: touch.hover * 0.6 }
+        zone box go { from: 0, 0; size: 564, 60; corner: 12; cursor: pointer; active: page == bluetooth and paging > 0.9 and not r.current }
+        box { from: 0, 0; size: 564, 60; corner: 12; color: tk.s2; opacity: max(touch.hover, go.hover) * 0.6 }
         group { move: 10, 12; Bubble(if(r.current, 1, 0)) {
             figure Kit.i_headphones { at: 0, 0; size: 18, 18; color: if(r.current, tk.mint_ink, tk.ink2); show: r.kind == 1 }
             figure Kit.i_phone { at: 0, 0; size: 18, 18; color: if(r.current, tk.mint_ink, tk.ink2); show: r.kind == 2 }
@@ -288,6 +295,7 @@ library Panels {
         group { move: 472, 14; show: not r.paired; Btn("Pair", noop, w: 80, kind: 1, h: 32) }
         zone box act { from: 432, 10; size: 124, 40; corner: 12; cursor: pointer; active: page == bluetooth and paging > 0.9 }
         on press act { emit pick_gadget(r.index) }
+        on press go { emit pick_gadget(r.index) }
     }
 
     component BtPage() {
@@ -361,20 +369,27 @@ library Panels {
         text "For how long" { family: "Geist"; at: 36, 160; anchor: left center; size: 13; weight: 500; color: tk.ink2 }
         group { move: 36, 178; Seg(focus.dur, "25 min", "45 min", pick_dur, c: "1 hour", d: "Until I turn it off", count: 4, w: 548) }
 
-        box { from: 20, 252; size: 580, 136; corner: 16; color: tk.s1 }
-        text "Quiet while recording or sharing" { family: "Geist"; at: 36, 278; anchor: left center; size: 14; weight: 500; color: tk.ink }
-        text "Notices go straight to their drop; locked, always quiet" { family: "Geist"; at: 36, 298; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
-        group { move: 544, 276; Toggle(quiet_rec, flip_quiet_rec) }
-        box { from: 36, 320; size: 548, 1; color: tk.line; opacity: 7% }
-        text "Later brings a notice back in" { family: "Geist"; at: 36, 354; anchor: left center; size: 14; weight: 500; color: tk.ink }
-        group { move: 316, 335; Seg(snooze_k, "15 min", "1 hour", pick_snooze, c: "3 hours", count: 3, w: 268) }
+        //  What is left of it, as in her capsule.
+        group {
+            show: haven and remaining < 9999
+            box { from: 36, 140; size: 548, 4; corner: 2; color: tk.s3 }
+            box { from: 36, 140; size: max(4, 548 * clamp(haven.left / haven.total, 0, 1)), 4; corner: 2; color: tk.mint }
+        }
 
-        group { move: 16, 404; Over("MUTED APPS") }
+        //  The rules: what still gets through, the quiet while recording, the
+        //  line on coming back, and how long «later» lasts.
+        box { from: 20, 252; size: 580, 232; corner: 16; color: tk.s1 }
+        group { move: 20, 256; SetRow("Let urgent notifications through", "Battery, security and anything marked critical", tw: 460) { group { move: -40, -12; Toggle(haven.urgent, flip_haven_urgent) } } }
+        group { move: 20, 312; SetRow("Quiet while recording or sharing the screen", "Turns itself on and off with the recording", tw: 460) { group { move: -40, -12; Toggle(quiet_rec, flip_quiet_rec) } } }
+        group { move: 20, 368; SetRow("Summary when it ends", "Etta tells you what arrived, in one line", tw: 460) { group { move: -40, -12; Toggle(haven.summary, flip_haven_summary) } } }
+        group { move: 20, 424; SetRow("Later brings a notice back in", "", last: 1, two: 0) { group { move: -268, -19; Seg(snooze_k, "15 min", "1 hour", pick_snooze, c: "3 hours", count: 3, w: 268) } } }
+
+        group { move: 16, 500; Over("MUTED APPS") }
         grid {
-            at: 20, 432; columns: 3; gap: 10; width: 580; row: 34
+            at: 20, 528; columns: 3; gap: 10; width: 580; row: 34
             for m in muted { MutedChip(m) }
         }
-        text "None. The bell on a notice mutes its app." { family: "Geist"; at: 24, 449; anchor: left center; size: 13; weight: 500; color: tk.ink3; show: muted.count < 1 }
+        text "None. The bell on a notice mutes its app." { family: "Geist"; at: 24, 545; anchor: left center; size: 13; weight: 500; color: tk.ink3; show: muted.count < 1 }
 
         box { from: 20, 620; size: 580, 72; corner: 16; color: tk.s1 }
         group { move: 36, 638; Bubble(2) { figure Kit.i_inbox { at: 0, 0; size: 20, 20; color: tk.sand } } }
@@ -529,11 +544,14 @@ library Panels {
     //  One page, in sections, that scrolls: nothing hides behind a tile. A
     //  row is its name (and what it means, below) on the left and its control
     //  on the right; the control goes inside, drawn from the row's right edge.
-    component SetRow(title: text, sub: text = "", w: number = 580, h: number = 56, last: number = 0, two: number = 1) {
+    //  `tw`: how wide its words may be (by default room is left for a Seg of
+    //  300; a row with only a switch gives them more).
+    component SetRow(title: text, sub: text = "", w: number = 580, h: number = 56, last: number = 0, two: number = 1, tw: number = 0) {
         size: w, h
         let has_sub = two
-        text title { family: "Geist"; at: 16, h / 2 - 9 * has_sub; anchor: left center; size: 14; weight: 500; width: w - 340; lines: 1; color: tk.ink }
-        text sub { family: "Geist"; at: 16, h / 2 + 10; anchor: left center; size: 12; weight: 500; width: w - 340; lines: 1; color: tk.ink3; show: has_sub > 0.5 }
+        let words = if(tw > 0, tw, w - 340)
+        text title { family: "Geist"; at: 16, h / 2 - 9 * has_sub; anchor: left center; size: 14; weight: 500; width: words; lines: 1; color: tk.ink }
+        text sub { family: "Geist"; at: 16, h / 2 + 10; anchor: left center; size: 12; weight: 500; width: words; lines: 1; color: tk.ink3; show: has_sub > 0.5 }
         box { from: 16, h - 1; size: w - 32, 1; color: tk.line; opacity: 7% * (1 - last) }
         children { move: w - 16, h / 2 }
     }
@@ -543,9 +561,17 @@ library Panels {
         text note { family: "Geist"; at: w - 4, 12; anchor: right center; size: 12; weight: 500; color: tk.ink3 }
     }
 
+    //  pleamar 0.2.8 does not clip zones to a list's `view`: a row scrolled
+    //  out of sight above or below still takes the press where it would be —
+    //  over the header's ‹ and ×, or under the card, where a «click outside»
+    //  flipped a setting nobody saw—. So each control is live only while its
+    //  row is whole inside the view (`set.sy` is how far down it is, and the
+    //  numbers are each row's top in the list), and the header is drawn after
+    //  the list, so its buttons are on top.
     component SettingsPage(h: number = 760) {
         size: 620, h
-        PageHead("Settings")
+        prop set.sy = 0 ~16ms
+        let set.v = h - 88
         column set_list {
             at: 20, 68
             view: 580, h - 88
@@ -554,13 +580,13 @@ library Panels {
             group { size: 580, 168
                 box { from: 0, 0; size: 580, 168; corner: 16; color: tk.s1 }
                 group { move: 0, 0; SetRow("Size", "Everything of hers grows with her") {
-                    group { move: -280, -19; Seg(size.k, "46", "52", pick_size, c: "56", d: "64", count: 4, w: 280) }
+                    group { move: -280, -19; Seg(size.k, "46", "52", pick_size, c: "56", d: "64", count: 4, w: 280, live: set.sy <= 42 and set.sy >= 82 - set.v) }
                 } }
                 group { move: 0, 56; SetRow("Look", pick(if(compositor_halley, 3 + look.k, look.k), "Opaque · nothing extra needed", "Blurs what is behind her", "Bends what is behind, like glass", "Opaque · nothing extra needed", "Translucent: Halley does not blur behind it yet", "")) {
-                    group { move: -280, -19; Seg(look.k, "Classic", "Frosted", pick_look, c: "Glass", count: if(compositor_halley, 2, 3), w: 280) }
+                    group { move: -280, -19; Seg(look.k, "Classic", "Frosted", pick_look, c: "Glass", count: if(compositor_halley, 2, 3), w: 280, live: set.sy <= 98 and set.sy >= 138 - set.v) }
                 } }
                 group { move: 0, 112
-                    zone box wr_zone { from: 0, 0; size: 580, 56; corner: 16; cursor: pointer; active: page == settings and paging > 0.9 }
+                    zone box wr_zone { from: 0, 0; size: 580, 56; corner: 16; cursor: pointer; active: page == settings and paging > 0.9 and set.sy <= 154 and set.sy >= 194 - set.v }
                     box { from: 0, 0; size: 580, 56; corner: 16; color: tk.s2; opacity: wr_zone.hover * 0.6 }
                     SetRow("Wardrobe", "{wear.n, 0} on · and the wallpaper", last: 1) {
                         figure Kit.i_chev_r { at: -6, 0; size: 16, 16; color: tk.ink3 }
@@ -573,21 +599,21 @@ library Panels {
             group { size: 580, 112
                 box { from: 0, 0; size: 580, 112; corner: 16; color: tk.s1 }
                 group { move: 0, 0; SetRow("Monitor", pick(if(following, 1, 0), "She stays on this monitor", "She goes to the monitor you are working on")) {
-                    group { move: -300, -19; Seg(home.k, screen.0.name, screen.1.name, pick_home, c: "Follow focus", count: 3, w: 300) }
+                    group { move: -300, -19; Seg(home.k, screen.0.name, screen.1.name, pick_home, c: "Follow focus", count: 3, w: 300, live: set.sy <= 268 and set.sy >= 308 - set.v) }
                 } }
                 group { move: 0, 56; SetRow("Keep the top strip for her", "Windows leave her 72 px free at the top", last: 1) {
-                    group { move: -40, -12; Toggle(taking_room, flip_room) }
+                    group { move: -40, -12; Toggle(taking_room, flip_room, live: set.sy <= 324 and set.sy >= 364 - set.v) }
                 } }
             }
             space 12
             SetHead("CLOCK AND BATTERY")
             group { size: 580, 224
                 box { from: 0, 0; size: 580, 224; corner: 16; color: tk.s1 }
-                group { move: 0, 0; SetRow("24-hour time", two: 0) { group { move: -40, -12; Toggle(clock24, flip_24) } } }
-                group { move: 0, 56; SetRow("Seconds when the clock is open", two: 0) { group { move: -40, -12; Toggle(clock.secs, flip_secs) } } }
-                group { move: 0, 112; SetRow("Battery percentage beside the time", two: 0) { group { move: -40, -12; Toggle(bat.shown, flip_batpct) } } }
+                group { move: 0, 0; SetRow("24-hour time", two: 0) { group { move: -40, -12; Toggle(clock24, flip_24, live: set.sy <= 438 and set.sy >= 478 - set.v) } } }
+                group { move: 0, 56; SetRow("Seconds when the clock is open", two: 0) { group { move: -40, -12; Toggle(clock.secs, flip_secs, live: set.sy <= 494 and set.sy >= 534 - set.v) } } }
+                group { move: 0, 112; SetRow("Battery percentage beside the time", two: 0) { group { move: -40, -12; Toggle(bat.shown, flip_batpct, live: set.sy <= 550 and set.sy >= 590 - set.v) } } }
                 group { move: 0, 168; SetRow("Weather for", last: 1, two: 0) {
-                    group { move: -180, -15; Chip(pick(if(wx.ok, 0, 1), wx.place, "Choose a city"), edit_city, w: 180, hasdot: 0) }
+                    group { move: -180, -15; Chip(pick(if(wx.ok, 0, 1), wx.place, "Choose a city"), edit_city, w: 180, hasdot: 0, live: set.sy <= 606 and set.sy >= 646 - set.v) }
                 } }
             }
             space 12
@@ -595,11 +621,11 @@ library Panels {
             group { size: 580, 224
                 box { from: 0, 0; size: 580, 224; corner: 16; color: tk.s1 }
                 group { move: 0, 0; SetRow("Lock when idle for", "Halley says when you have been away") {
-                    group { move: -300, -19; Seg(idle.k, "5 min", "10 min", pick_idle, c: "30 min", d: "Never", count: 4, w: 300) }
+                    group { move: -300, -19; Seg(idle.k, "5 min", "10 min", pick_idle, c: "30 min", d: "Never", count: 4, w: 300, live: set.sy <= 720 and set.sy >= 760 - set.v) }
                 } }
-                group { move: 0, 56; SetRow("Lock before suspending", two: 0) { group { move: -40, -12; Toggle(lock.suspend, flip_locksusp) } } }
-                group { move: 0, 112; SetRow("Safety net", "Esc also opens the lock, until a restart") { group { move: -40, -12; Toggle(with_exit, flip_safety) } } }
-                group { move: 0, 168; SetRow("See the lock screen", "A preview: nothing is locked", last: 1) { group { move: -96, -16; Btn("Preview", preview_lock, w: 96, h: 32) } } }
+                group { move: 0, 56; SetRow("Lock before suspending", two: 0) { group { move: -40, -12; Toggle(lock.suspend, flip_locksusp, live: set.sy <= 776 and set.sy >= 816 - set.v) } } }
+                group { move: 0, 112; SetRow("Safety net", "Esc also opens the lock, until a restart") { group { move: -40, -12; Toggle(with_exit, flip_safety, live: set.sy <= 832 and set.sy >= 872 - set.v) } } }
+                group { move: 0, 168; SetRow("See the lock screen", "A preview: nothing is locked", last: 1) { group { move: -96, -16; Btn("Preview", preview_lock, w: 96, h: 32, live: set.sy <= 888 and set.sy >= 928 - set.v) } } }
             }
             space 12
             SetHead("SHORTCUTS", "Bound in Halley's config")
@@ -616,8 +642,10 @@ library Panels {
                 text "Etta 0.1 · pleamar 0.2.8 · Halley 0.7" { family: "Geist"; at: 290, 14; anchor: center; size: 12; weight: 500; color: tk.ink3 }
             }
         }
+        follow set.sy = set_list.scroll
+        PageHead("Settings")
         //  How far down it is, as a thin bar on the right.
-        let set.total = 1242
+        let set.total = 1280
         box { from: 606, 68 + set_list.scroll / set.total * (h - 88)
               size: 4, (h - 88) * (h - 88) / set.total; corner: 2; color: tk.ink; opacity: 18% }
     }
@@ -720,14 +748,16 @@ library Panels {
     }
 
     // ── the calendar ─────────────────────────────────────────────
-    component CalRow(e: record) {
+    //  `sy`: how far its list has scrolled. Four rows fit in the 240-px
+    //  window; the trash of a fifth, out of sight, still took the press.
+    component CalRow(e: record, sy: number = 0) {
         size: 250, 52
         box { from: 0, 0; size: 250, 52; corner: 12; color: tk.s1 }
         box { from: 10, 10; size: 4, 32; corner: 2; color: tk.sand }
         text e.title { family: "Geist"; at: 24, 18; anchor: left center; size: 14; weight: 500; width: 180; lines: 1; color: tk.ink }
         text e.time { family: "Geist"; at: 24, 36; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
         group { move: 212, 10; Ib(noop, d: 32) { figure Kit.i_trash { at: 0, 0; size: 16, 16; color: mix(tk.ink3, tk.red, gone.hover) } } }
-        zone box gone { from: 212, 10; size: 32, 32; corner: 16; cursor: pointer; active: page == calendar }
+        zone box gone { from: 212, 10; size: 32, 32; corner: 16; cursor: pointer; active: page == calendar and e.index * 60 >= sy - 1 and e.index * 60 + 52 <= sy + 241 }
         on press gone { emit cal_delete(e.index) }
     }
     //  A small sign of the weather, by its kind: 0 sun, 1 moon, 2 cloud,
@@ -746,6 +776,7 @@ library Panels {
     component CalendarPage() {
         size: 620, 716
         measure cal.dayw
+        prop cal.sy = 0 ~16ms
         PageHead(cal.month) {
             group { move: 404, 14; Ib(cal_prev) { figure Kit.i_chev_l { at: 0, 0; size: 18, 18; color: tk.ink2 } } }
             group { move: 444, 16; Btn("Today", cal_today, w: 72, h: 32) }
@@ -810,8 +841,9 @@ library Panels {
             at: 350, 282
             gap: 8
             view: 250, 240
-            for e in cal_events { CalRow(e) }
+            for e in cal_events { CalRow(e, sy: cal.sy) }
         }
+        follow cal.sy = cal_list.scroll
         text "Nothing scheduled" { family: "Geist"; at: 350, 296; anchor: left center; size: 14; weight: 500; color: tk.ink3; show: cal_events.count < 1 }
 
         //  Writing one.
@@ -871,14 +903,16 @@ library Panels {
             group { move: 400, 177; Btn("Cancel", cancel_clear, w: 88, kind: 3, h: 32) }
             group { move: 496, 177; Btn("Clear", do_clear, w: 92, kind: 2, h: 32) }
         }
+        //  The wheel's area goes UNDER the list, not over it: the press belongs
+        //  to the topmost zone, the wheel to every zone under the pointer.
+        zone box history_area { from: 20, cy0; size: 580, 696 - cy0; active: page == history and paging > 0.9 }
+        on scroll history_area { emit history_scroll(wheel) }
         column history_list {
             at: 20, cy0
             view: 580, 696 - cy0
             gap: 6
             for h in past { HistRow(h) }
         }
-        zone box history_area { from: 20, cy0; size: 580, 696 - cy0; active: page == history and paging > 0.9 }
-        on scroll history_area { emit history_scroll(wheel) }
         group {
             show: past.count < 1
             group { move: 292, 330; Bubble(0) { figure Kit.i_history { at: 0, 0; size: 18, 18; color: tk.ink3 } } }
@@ -925,12 +959,14 @@ library Panels {
             box { from: 20, 68; size: 580, 44; corner: 12; stroke: 1; color: tk.line; opacity: 9% }
             figure Kit.i_search { at: 42, 90; size: 18, 18; color: tk.ink3 }
             input drift_q { family: "Geist"; at: 62, 90; width: 520; size: 14; color: tk.ink; placeholder: "Search what she keeps"; selection: #2f5f52 }
+            //  Under the cards, not over them: declared after the grid it took
+            //  every press, and no card could be opened or dragged out.
+            zone box drift_area { from: 20, 128; size: 580, 568; active: page == drift and paging > 0.9 }
+            on scroll drift_area { emit drift_scroll(wheel) }
             grid {
                 at: 20, 128; columns: 2; gap: 12; width: 580; row: 196
                 for d in drift { DriftCard(d) }
             }
-            zone box drift_area { from: 20, 128; size: 580, 568; active: page == drift and paging > 0.9 }
-            on scroll drift_area { emit drift_scroll(wheel) }
         }
         group {
             show: drift.kept < 1 and not drift.missing
@@ -991,14 +1027,24 @@ library Panels {
             group { move: 456, 21; show: compositor_halley; Tag("Halley field shaders", w: 140, tone: 0) }
         }
         figure Kit.i_folder { at: 30, 88; size: 18, 18; color: tk.ink3 }
-        text wall.dir { family: "Geist Mono"; at: 48, 88; anchor: left center; size: 13; weight: 500; width: 460; lines: 1; color: tk.ink2 }
+        text wall.dir { family: "Geist Mono"; at: 48, 88; anchor: left center; size: 13; weight: 500; width: 320; lines: 1; color: tk.ink2 }
+        //  More than fit: which ones are shown, and a step either way (the
+        //  wheel over the grid does the same).
+        group {
+            show: wall.total > 6
+            text "{wall.at + 1, 0}–{min(wall.at + 6, wall.total), 0} of {wall.total, 0}" { family: "Geist"; at: 470, 88; anchor: right center; size: 12; weight: 500; color: tk.ink3 }
+            group { move: 478, 72; Ib(walls_prev, d: 32, live: wall.at > 0) { figure Kit.i_chev_l { at: 0, 0; size: 16, 16; color: if(wall.at > 0, tk.ink2, tk.ink3) } } }
+            group { move: 514, 72; Ib(walls_next, d: 32, live: wall.at + 6 < wall.total) { figure Kit.i_chev_r { at: 0, 0; size: 16, 16; color: if(wall.at + 6 < wall.total, tk.ink2, tk.ink3) } } }
+        }
         group { move: 568, 72; Btn("Rescan", walls_rescan, w: 112, kind: 3, h: 32) }
+        //  Under the cards, not over them: declared after the grid it took
+        //  every press, and no shader could be chosen.
+        zone box walls_area { from: 20, 112; size: 660, 348; active: page == walls and paging > 0.9 }
+        on scroll walls_area { emit walls_scroll(wheel) }
         grid {
             at: 20, 112; columns: 3; gap: 12; width: 660; row: 168
             for w in walls { WallCard(w) }
         }
-        zone box walls_area { from: 20, 112; size: 660, 348; active: page == walls and paging > 0.9 }
-        on scroll walls_area { emit walls_scroll(wheel) }
         group {
             show: walls.count < 1
             group { move: 332, 230; Bubble(0) { figure Kit.i_image { at: 0, 0; size: 18, 18; color: tk.ink3 } } }
@@ -1130,18 +1176,21 @@ library Panels {
     // ── background apps (the tray) ───────────────────────────────
     component TrayApp(i: record) {
         size: 200, 52
-        zone box touch { from: 0, 0; size: 160, 52; corner: 12; cursor: pointer; active: page == systray and paging > 0.9 }
+        zone box touch { from: 0, 0; size: 160, 52; corner: 12; cursor: pointer; active: page == systray and paging > 0.9 and i.index < 7 }
         box { from: 0, 0; size: 200, 52; corner: 12; color: mix(tk.s2, tk.mint_soft, if(tray.sel == i.index, 1, 0)); opacity: max(touch.hover * 0.6, if(tray.sel == i.index, 1, 0)) }
         image i.icon { at: 12, 15; size: 22, 22 }
         text i.title { family: "Geist"; at: 46, 26; anchor: left center; size: 14; weight: 500; width: 110; lines: 1; color: tk.ink }
         group { move: 164, 10; Ib(noop, d: 32) { figure Kit.i_window { at: 0, 0; size: 16, 16; color: tk.ink3 } } }
-        zone box show_it { from: 164, 10; size: 32, 32; corner: 16; cursor: pointer; active: page == systray and paging > 0.9 }
+        zone box show_it { from: 164, 10; size: 32, 32; corner: 16; cursor: pointer; active: page == systray and paging > 0.9 and i.index < 7 }
         on press touch { emit systray_menu(i.index) }
         on press show_it { emit systray_activate(i.index) }
     }
-    component MenuOption(r: record) {
+    //  `r.y` is the row's top in the list (the logic adds it up: separators
+    //  are 10 tall) and `sy` how far the list has scrolled: a row outside the
+    //  420-px window must not take the press —it lay over × or under the card—.
+    component MenuOption(r: record, sy: number = 0) {
         size: 340, if(r.separator, 10, 40)
-        zone box touch { from: 0, 0; size: 340, 40; corner: 10; cursor: pointer; active: r.enabled and not r.separator and page == systray and paging > 0.9 }
+        zone box touch { from: 0, 0; size: 340, 40; corner: 10; cursor: pointer; active: r.enabled and not r.separator and page == systray and paging > 0.9 and r.y >= sy - 1 and r.y + 40 <= sy + 421 }
         box { from: 0, 0; size: 340, 40; corner: 10; color: tk.s2; opacity: touch.hover * if(r.separator, 0, 1) }
         box { from: 10, 4.5; size: 320, 1; color: tk.line; opacity: if(r.separator, 9%, 0) }
         group {
@@ -1157,7 +1206,7 @@ library Panels {
 
     component TrayPage() {
         size: 620, 520
-        PageHead("Background apps")
+        prop tray.my = 0 ~16ms
         text "RUNNING" { family: "Geist"; at: 26, 80; anchor: left center; size: 12; weight: 600; color: tk.ink3 }
         column {
             at: 20, 96
@@ -1170,8 +1219,11 @@ library Panels {
             at: 250, 74
             view: 340, 420
             gap: 2
-            for r in options { MenuOption(r) }
+            for r in options { MenuOption(r, sy: tray.my) }
         }
+        follow tray.my = menu_list.scroll
+        //  The header after the list, so its ‹ and × are on top of any row.
+        PageHead("Background apps")
         text pick(if(tray.sel < 0, 0, 1), "Choose an app on the left", "Asking it for its menu…") { family: "Geist"; at: 420, 120; anchor: center; size: 13; weight: 500; color: tk.ink3; show: options.count < 1 }
     }
 }

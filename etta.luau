@@ -339,11 +339,30 @@ local home_dir = sys.ask("env", "HOME") or "."
 --  fast leaves the list from three letters ago.
 local generation = 0
 
+--  The extras of the new finder (the calculator, the recent files, the
+--  suggested ones, Tab): one table, so the chunk keeps its locals.
+local fx = { status_gen = 0 }
+
+--  What the scene gets, a row per record: its section's name above the first
+--  of each (`first`), the calculator's row taller (`big`), the key it answers
+--  to (`key`, `kw` its width) and the tag with its kind. Nine at most: that is
+--  what fits in her 640.
+local SECTION_ORDER = { "Applications", "Open windows", "Files", "Folders", "Actions" }
 local function paint(q, list)
-    local out = {}
+    --  Only what fits whole in the body (496 px): a row half under the foot
+    --  was a row you could see the top of and press through the keys' hints.
+    local out, last, y = {}, nil, 0
     for _, e in ipairs(list) do
-        if #out < 7 then out[#out + 1] = e end
+        local first = e.section ~= nil and e.section ~= "" and e.section ~= last
+        local h = (e.big and 60 or 52) + (first and 30 or 0)
+        if #out >= 9 or y + h > 496 then break end
+        y = y + h + 4
+        e.first = first
+        last = e.section
+        e.section = e.section and tr(e.section):upper() or ""
+        out[#out + 1] = e
     end
+    fx.shown = out
     model.results = out
     fact.typing = q ~= ""
     fact.selected = 0
@@ -355,17 +374,23 @@ end
 --  ones. With no usage data, this is the most honest thing that can be done —a
 --  short list of the ones almost everybody has at hand— and the day there are
 --  usage counts, it is changed here and that is it.
-local AT_HAND = { "firefox", "zen", "nautilus", "files", "archivos", "kitty", "alacritty", "terminal", "code", "gimp" }
+--  What she has learnt comes first: how many times each one was opened from
+--  her (`fx.uses`, kept in settings.json).
+local AT_HAND = { "firefox", "zen", "brave", "chromium", "chrome", "nautilus", "files", "archivos", "thunar", "dolphin",
+                  "ghostty", "kitty", "alacritty", "foot", "wezterm", "terminal", "konsole", "code", "obsidian", "gimp",
+                  "spotify", "discord", "telegram", "steam" }
 
-local function prefer(a, b)
-    local function rank(x)
-        local n = x.name:lower()
-        for k, v in ipairs(AT_HAND) do
-            if n:find(v, 1, true) then return k end
-        end
-        return 99
+local function at_hand(x)
+    local n = x.name:lower()
+    for k, v in ipairs(AT_HAND) do
+        if n:find(v, 1, true) then return k end
     end
-    local pa, pb = rank(a), rank(b)
+    return 99
+end
+local function prefer(a, b)
+    local ua, ub = (fx.uses or {})[a.name] or 0, (fx.uses or {})[b.name] or 0
+    if ua ~= ub then return ua > ub end
+    local pa, pb = at_hand(a), at_hand(b)
     if pa ~= pb then return pa < pb end
     return a.name < b.name
 end
@@ -404,7 +429,8 @@ local OWN = {
     { "Sleep", "sleep dormir siesta nap", 1, function() emit("sleep") end },
     { "Screenshot of a region", "screenshot captura region región recorte shot", 1, function() emit("shot_region") end },
     { "Screenshot of the screen", "screenshot captura pantalla screen shot", 1, function() emit("shot_screen") end },
-    { "Screenshot of a window", "screenshot captura ventana window shot", 1, function() emit("shot_window") end },
+    --  Not on Halley: its API does not say where a window is shown.
+    { "Screenshot of a window", "screenshot captura ventana window shot", 1, function() emit("shot_window") end, "not_halley" },
     { "Record the screen", "record grabar grabacion grabación video vídeo screencast", 1, function() emit("record_toggle") end },
     --  Only in pleamar-wm's own session: its window manager.
     { "Tiled or free windows", "windows ventanas libres free tiled mosaico tiling floating flotantes modo mode", 1,
@@ -435,13 +461,17 @@ local OWN = {
 --  pleamar-wm, to the workspace it is on—.
 local open_windows = {}
 
---  Hers first, when what is written starts one of her words or is in her
---  name: typing «cla» finds the agents before any application.
+--  Her actions that have a key of their own in halley.rune: the row says it.
+local KEYS_OF = { ["Lock the screen"] = "Super Shift L", ["Screenshot of a region"] = "Super Shift S", ["Record the screen"] = "Super Shift V" }
+
+--  Her own things, when what is written starts one of her words or is in her
+--  name. They go under «Actions», last, as the sheet has it.
 local function own_matches(q)
     local found = {}
     if #q < 2 then return found end
     for k, o in ipairs(OWN) do
         if o[5] == "wm" and not hooks.in_wm then continue end
+        if o[5] == "not_halley" and on_halley then continue end
         local name = tr(o[1])
         local hit = name:lower():find(q, 1, true) ~= nil
         if not hit then
@@ -450,42 +480,191 @@ local function own_matches(q)
             end
         end
         if hit and #found < 3 then
-            found[#found + 1] = { name = name, kind_label = "Etta", icon = "", glyph = o[3], own = k }
+            local key = KEYS_OF[o[1]]
+            found[#found + 1] = { name = name, sub = tr(o[6] or "One of hers"), kind_label = tr("Action"), icon = "", glyph = o[3], own = k,
+                                  section = "Actions", key = key or "", kw = key and 108 or 0 }
         end
     end
     return found
+end
+
+--  The calculator: what is written, if it is a sum. The sheet's parser —
+--  + − × ÷ ^ % and brackets, a comma read as a point—, never `load`: what is
+--  typed is not run.
+function fx.calc(q)
+    local t = tostring(q or ""):gsub("%s+", ""):gsub(",", ".")
+    if not t:match("^[%d%.%+%-%*/%(%)%%%^]+$") or not t:match("%d") or not t:match("[%+%-%*/%%%^]") then return nil end
+    local i = 1
+    local expr
+    local function peek() return t:sub(i, i) end
+    local function num()
+        local m = t:match("^%d*%.?%d+", i)
+        if not m then error("n") end
+        i = i + #m
+        return tonumber(m)
+    end
+    local function atom()
+        if peek() == "(" then
+            i = i + 1
+            local v = expr()
+            if peek() ~= ")" then error("p") end
+            i = i + 1
+            return v
+        end
+        if peek() == "-" then i = i + 1; return -atom() end
+        return num()
+    end
+    local function pow()
+        local v = atom()
+        while peek() == "^" do i = i + 1; v = v ^ atom() end
+        if peek() == "%" then i = i + 1; v = v / 100 end
+        return v
+    end
+    local function term()
+        local v = pow()
+        while peek() == "*" or peek() == "/" do
+            local op = peek(); i = i + 1
+            local r = pow()
+            v = op == "*" and v * r or v / r
+        end
+        return v
+    end
+    expr = function()
+        local v = term()
+        while peek() == "+" or peek() == "-" do
+            local op = peek(); i = i + 1
+            local r = term()
+            v = op == "+" and v + r or v - r
+        end
+        return v
+    end
+    local ok, v = pcall(expr)
+    if ok and i == #t + 1 and v == v and v ~= math.huge and v ~= -math.huge then return v end
+    return nil
+end
+--  «1234.5» for the clipboard, «1,234.5» for the eye: six decimals at most.
+function fx.plain(v)
+    local s = string.format("%.6f", math.floor(v * 1e6 + 0.5) / 1e6):gsub("0+$", ""):gsub("%.$", "")
+    if s == "-0" then s = "0" end
+    return s
+end
+function fx.pretty(v)
+    local s = fx.plain(v)
+    local sign, int, dec = s:match("^(%-?)(%d+)(.*)$")
+    if not int then return s end
+    int = int:reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
+    return sign .. int .. dec
+end
+function fx.say(words)
+    fx.status_gen = fx.status_gen + 1
+    local mine = fx.status_gen
+    text["finder.status"] = words
+    after(2600, function() if mine == fx.status_gen then text["finder.status"] = "" end end)
+end
+
+--  While nothing is written: six suggested —the usual applications, and her
+--  Settings— and the last three files you used (the desktop's own list,
+--  ~/.local/share/recently-used.xbel), only those that still exist.
+function fx.idle()
+    local sorted = {}
+    for _, a in ipairs(apps) do sorted[#sorted + 1] = a end
+    table.sort(sorted, prefer)
+    --  Only ones she has reason to suggest —opened from her, or of the usual
+    --  kind—: the alphabet is not a reason («Avahi SSH Server Browser»).
+    local tiles = {}
+    for _, a in ipairs(sorted) do
+        if #tiles >= 5 then break end
+        if ((fx.uses or {})[a.name] or 0) > 0 or at_hand(a) < 99 then
+            tiles[#tiles + 1] = { name = a.name, icon = a.icon, glyph = 0, exec = a.exec }
+        end
+    end
+    tiles[#tiles + 1] = { name = tr("Settings"), icon = "", glyph = 1, own_page = "settings" }
+    fx.tiles = tiles
+    model.suggested = tiles
+    run("cat", { home_dir .. "/.local/share/recently-used.xbel" }, function(out)
+        local found = {}
+        for href, modified in tostring(out or ""):gmatch('<bookmark href="file://([^"]+)"[^>]-modified="([^"]+)"') do
+            found[#found + 1] = { path = href:gsub("%%(%x%x)", function(h) return string.char(tonumber(h, 16)) end), when = modified }
+        end
+        table.sort(found, function(x, y) return x.when > y.when end)
+        local paths = {}
+        for k = 1, math.min(#found, 12) do paths[#paths + 1] = found[k].path end
+        if #paths == 0 then fx.recent = {}; model.recent = {}; fact["recent.n"] = 0; return end
+        local args = { "-d" }
+        for _, p in ipairs(paths) do args[#args + 1] = p end
+        run("ls", args, function(listed)
+            local alive = {}
+            for line in tostring(listed or ""):gmatch("[^\n]+") do alive[line] = true end
+            local today = os.date("%Y-%m-%d")
+            local yesterday = os.date("%Y-%m-%d", os.time() - 86400)
+            local rows = {}
+            for _, f in ipairs(found) do
+                if #rows >= 3 then break end
+                if alive[f.path] then
+                    --  The file says when in UTC (`…Z`); «today» is the local day.
+                    local day = f.when:sub(1, 10)
+                    local y, mo, d, h, mi, sec = f.when:match("^(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
+                    if y then
+                        local as_local = os.time({ year = tonumber(y), month = tonumber(mo), day = tonumber(d), hour = tonumber(h), min = tonumber(mi), sec = tonumber(sec) })
+                        day = os.date("%Y-%m-%d", as_local + (os.time() - os.time(os.date("!*t"))))
+                    end
+                    local name = f.path:match("([^/]+)$") or f.path
+                    local where = f.path:sub(1, #f.path - #name - 1):gsub("^" .. home_dir:gsub("%p", "%%%0"), "~")
+                    rows[#rows + 1] = { name = name, path = where, file = f.path,
+                                        when = day == today and tr("today") or (day == yesterday and tr("yesterday") or day) }
+                end
+            end
+            fx.recent = rows
+            model.recent = rows
+            fact["recent.n"] = #rows
+        end)
+    end)
 end
 
 local function search()
     local q = (text.query or ""):lower()
     generation = generation + 1
     local mine = generation
+    if q == "" then
+        paint(q, {})
+        fx.idle()
+        return
+    end
+    local list = {}
+    --  A sum is answered first, on its own taller row.
+    local v = fx.calc(text.query or "")
+    if v ~= nil then
+        list[#list + 1] = { name = "= " .. fx.pretty(v), sub = tr("Enter copies it"), kind_label = "", icon = "", glyph = 9, big = true, value = fx.plain(v) }
+    end
+    --  Then by section, a few of each so one kind does not crowd out the rest.
     local matches = {}
     for _, a in ipairs(apps) do
-        if q == "" or a.name:lower():find(q, 1, true) then matches[#matches + 1] = a end
+        if a.name:lower():find(q, 1, true) then matches[#matches + 1] = a end
     end
     table.sort(matches, prefer)
-    local list = own_matches(q)
-    --  Then the windows already open whose program or title it names: going
-    --  to one is quicker than opening another.
+    for k = 1, math.min(#matches, 4) do
+        local a = matches[k]
+        list[#list + 1] = { name = a.name, sub = a.comment or a.generic or tr("Application"), kind_label = tr("App"), icon = a.icon, glyph = 0, exec = a.exec, section = "Applications" }
+    end
+    --  The windows already open whose program or title it names: going to one
+    --  is quicker than opening another.
     if #q >= 2 then
         local shown = 0
         for _, w in ipairs(open_windows) do
             local class, title = tostring(w.class or ""), tostring(w.title or "")
             if shown < 2 and (class:lower():find(q, 1, true) or title:lower():find(q, 1, true)) then
                 shown = shown + 1
-                list[#list + 1] = { name = title ~= "" and title or class, kind_label = tr("Window") .. (class ~= "" and " · " .. class or ""), icon = class, window_id = w.id }
+                list[#list + 1] = { name = title ~= "" and title or class, sub = class .. (w.monitor and w.monitor ~= "" and " · " .. tr("on") .. " " .. w.monitor or ""),
+                                    kind_label = tr("Window"), icon = class, glyph = 5, window_id = w.id, section = "Open windows" }
             end
         end
     end
-    for _, a in ipairs(matches) do
-        if #list < 7 then
-            list[#list + 1] = { name = a.name, kind_label = tr("Application"), icon = a.icon, exec = a.exec }
-        end
+    local own = own_matches(q)
+    local function with_own(l)
+        for _, o in ipairs(own) do l[#l + 1] = o end
+        return l
     end
-    --  With no query, «at hand»: what the system gives first.
-    if q == "" then paint(q, list); return end
-    paint(q, list)
+    paint(q, with_own({ table.unpack(list) }))
     --  And the files and folders, which arrive when they arrive. With fewer
     --  than three letters there is no search: `fd` with one letter returns
     --  half your home —thousands of paths that neither fit nor say anything—
@@ -495,22 +674,24 @@ local function search()
                 "--exclude", ".git", "--exclude", "node_modules", "--exclude", ".cache",
                 "--color", "never", q, home_dir }, function(output)
         if mine ~= generation then return end
+        local files, folders = {}, {}
         for line in tostring(output):gmatch("[^\n]+") do
-            if #list < 7 then
-                local is_folder = line:sub(-1) == "/"
-                local clean = is_folder and line:sub(1, -2) or line
-                local name = clean:match("([^/]+)$") or clean
-                local where = clean:sub(#home_dir + 2, #clean - #name - 1)
-                list[#list + 1] = {
-                    name = name,
-                    kind_label = (is_folder and tr("Folder") or tr("File")) .. (where ~= "" and " · " .. where or ""),
-                    icon = is_folder and "folder" or "text-x-generic",
-                    filepath = clean,
-                    path = clean,
-                }
+            local is_folder = line:sub(-1) == "/"
+            local clean = is_folder and line:sub(1, -2) or line
+            local name = clean:match("([^/]+)$") or clean
+            local where = "~/" .. clean:sub(#home_dir + 2, #clean - #name - 1)
+            local row = { name = name, sub = where:gsub("/$", ""), icon = "", filepath = clean, path = clean }
+            if is_folder and #folders < 2 then
+                row.kind_label = tr("Folder"); row.glyph = 7; row.section = "Folders"
+                folders[#folders + 1] = row
+            elseif not is_folder and #files < 3 then
+                row.kind_label = tr("File"); row.glyph = 6; row.section = "Files"
+                files[#files + 1] = row
             end
         end
-        if mine == generation then paint(q, list) end
+        for _, r in ipairs(files) do list[#list + 1] = r end
+        for _, r in ipairs(folders) do list[#list + 1] = r end
+        if mine == generation then paint(q, with_own(list)) end
     end)
 end
 
@@ -520,10 +701,19 @@ end
 on("text:query", search)
 on("fact:searching", function(opened) if opened then search() end end)
 
---  Opening: an app is launched; a file or a folder, to whoever knows how to open it.
+--  Opening: an app is launched; a file or a folder, to whoever knows how to
+--  open it (with Ctrl held, the folder it is in); the sum, to the clipboard.
+--  The finder closes, except for the sum: it stays, saying it was copied.
 on("open_result", function(i)
-    local h = model.results[i + 1]
+    local h = (fx.shown or {})[(tonumber(i) or 0) + 1]
     if h == nil then return end
+    if h.value then
+        if fx.copied_by_her then fx.copied_by_her(h.value) end
+        sys.call("clipboard.set", h.value)
+        fx.say(tr("Copied") .. " " .. h.value)
+        return
+    end
+    fact.searching = false
     if h.own then
         log("opening, of hers:", h.name)
         text.query = ""
@@ -538,33 +728,48 @@ on("open_result", function(i)
     elseif h.exec then
         log("opening", h.name)
         sys.call("apps.launch", h.exec)
-    else
-        --  To whoever knows how to open it: the desktop decides that, not this bar.
-        log("opening", h.filepath or h.name)
-        if h.filepath then run("xdg-open", { h.filepath }, function() end) end
+        if fx.used then fx.used(h.name) end
+    elseif h.filepath then
+        local target = h.filepath
+        if fact["finder.ctrl"] == true then target = target:match("^(.*)/[^/]*$") or target end
+        log("opening", target)
+        run("xdg-open", { target }, function() end)
     end
     text.query = ""
 end)
+--  Tab: to the first row of the next section (round to the first).
+on("finder_tab", function()
+    local list = fx.shown or {}
+    local at = (tonumber(fact.selected) or 0) + 1
+    for k = at + 1, #list do
+        if list[k].first then fact.selected = k - 1; return end
+    end
+    for k = 1, #list do
+        if list[k].first or list[k].big then fact.selected = k - 1; return end
+    end
+end)
+--  The idle page: a suggested application, a recent file.
+on("open_suggested", function(i)
+    local t = (fx.tiles or {})[(tonumber(i) or 0) + 1]
+    if t == nil then return end
+    fact.searching = false
+    if t.exec then
+        sys.call("apps.launch", t.exec)
+        if fx.used then fx.used(t.name) end
+    elseif t.own_page then after(180, function() fact.open = true; fact.page = t.own_page end) end
+end)
+on("open_recent", function(i)
+    local r = (fx.recent or {})[(tonumber(i) or 0) + 1]
+    if r == nil then return end
+    fact.searching = false
+    run("xdg-open", { r.file }, function() end)
+end)
 
 -- ── her menu ───────────────────────────────────────────────────────
---  What the right button offers. The two rows of the house are put by the
---  scene; this brings the plugins' ones, which is the only thing that changes
---  from one machine to another. There is no catalogue here, so they are
---  spelled out: what matters is that the border is written down and that
---  grouping is this side's business.
---
---  `first` says whether it opens a group, and then the row takes 16 px more
---  for the name of whoever brings it. It is a count and not a coordinate:
---  where each row falls is shared out by the scene, which has a column for
---  exactly that.
---  Their visible names go through `tr()` each time the menu is set, so that a
---  change of language reaches them too (see `fact:locale` at the end).
-local plugin_entries = {
-    { id = "desk.walls",    group = "Desktop", title = "Wallpapers" },
-    { id = "drift.open",    group = "Drift", title = "Her library" },
-    { id = "drift.paste",   group = "Drift", title = "Keep what is copied" },
-    { id = "swell.history", group = "Swell", title = "History" },
-}
+--  Its twelve rows are the scene's own: what each one does is a scene event,
+--  and the only thing of the menu that lives here is «Keep what I copy» (see
+--  Deriva, further down). In pleamar-wm's own session the window manager's
+--  tricks are reached from the finder.
 
 --  In pleamar-wm's own session its window manager answers to `wm`: her menu
 --  and her finder can switch it between tiled and free windows, and bring
@@ -646,43 +851,6 @@ hooks.wm_rain = wm_toggle_rain
 hooks.wm_rain_level = wm_rain_level
 hooks.wm_snow = wm_toggle_snow
 hooks.wm_ride = wm_ride
-if in_wm then
-    table.insert(plugin_entries, 1, { id = "wm.free", group = "Windows", title = "Tiled or free windows" })
-    table.insert(plugin_entries, 2, { id = "wm.restore", group = "Windows", title = "Bring back every window" })
-    table.insert(plugin_entries, 3, { id = "wm.rain", group = "Windows", title = "Rain on the windows" })
-    table.insert(plugin_entries, 4, { id = "wm.snow", group = "Windows", title = "Snow on the windows" })
-    table.insert(plugin_entries, 5, { id = "wm.ride", group = "Windows", title = "Ride a window" })
-end
-
-local function set_menu()
-    local group, groups = nil, 0
-    local entries = {}
-    for _, e in ipairs(plugin_entries) do
-        e.first = e.group ~= group
-        if e.first then
-            group = e.group
-            groups = groups + 1
-        end
-        entries[#entries + 1] = { id = e.id, group_name = tr(e.group), title = tr(e.title), first = e.first }
-    end
-    fact.groups = groups
-    model.entries = entries
-end
-set_menu()
-
-on("menu_entry", function(i)
-    local e = plugin_entries[i + 1]
-    if e ~= nil and e.id == "wm.free" then wm_toggle_free(); return end
-    if e ~= nil and e.id == "wm.restore" then wm_restore_all(); return end
-    if e ~= nil and e.id == "wm.rain" then wm_toggle_rain(); return end
-    if e ~= nil and e.id == "wm.snow" then wm_toggle_snow(); return end
-    if e ~= nil and e.id == "swell.history" then emit("show_history"); return end
-    if e ~= nil and e.id == "drift.open" then emit("show_drift"); return end
-    if e ~= nil and e.id == "desk.walls" then emit("show_walls"); return end
-    if e ~= nil and e.id == "drift.paste" then if hooks.keep_copied then hooks.keep_copied() end; return end
-    if e ~= nil and e.id == "wm.ride" then wm_ride(); return end
-    log("a plugin entry from her menu", e ~= nil and e.id or i)
-end)
 
 -- ── the swell, in demo mode ────────────────────────────────────────
 --  pleamar knows how to receive the desktop's real notifications: you ask for
@@ -818,6 +986,9 @@ local function arrive(n)
     fact.cat = n.cat
     show_front(n)
     fact.hush = quiet_for(n)
+    --  In the Haven an urgent one still comes in as usual if the Focus page
+    --  lets it (`haven.urgent`): the scene reads `through` for this one.
+    fact.through = n.urgent == true and fact.haven == true and fact["haven.urgent"] ~= false
     emit("notice")
     if n.urgent then emit("urge") end
 end
@@ -1835,6 +2006,14 @@ local root, path = {}, {}
 local function show_menu(list)
     local rows = #path > 0 and { { back = true, label = tr("‹  Back") } } or {}
     for _, it in ipairs(list) do rows[#rows + 1] = it end
+    --  Where each row starts in the list (separators are 10 tall, the rest 40,
+    --  with 2 between): the scene uses it so a row scrolled out of its window
+    --  does not take the press.
+    local y = 0
+    for _, it in ipairs(rows) do
+        it.y = y
+        y = y + (it.separator and 10 or 40) + 2
+    end
     model.options = rows
 end
 
@@ -1941,9 +2120,16 @@ run("xdg-user-dir", { "PICTURES" }, function(d)
     run("mkdir", { "-p", PHOTOS })
 end)
 
---  The frozen monitor: its name, its file, its scale and its size.
-local frozen = nil
+--  The frozen monitors, by the slot of her scene's copy that lives on each
+--  one (0 or 1): their name, file, scale and size. The overlay opens on every
+--  monitor with its own frame, and the one you press on is the one taken.
+local frozen_at = {}
 local last_photo = nil
+--  Each capture's frames take a new `?n`: the image cache goes by the whole
+--  name, and two captures within the same second (`os.time()`) showed the
+--  old frame. It starts at the clock, so a reload of the logic does not hand
+--  out a number the renderer has already seen.
+local frame_serial = os.time()
 
 --  A monitor photographed alone, the right way up. Halley's screencopy turns
 --  a monitor with `transform 180` over twice and the picture comes out upside
@@ -1964,16 +2150,40 @@ local function stamp()
     return os.date("Screenshot_%Y-%m-%d_%H-%M-%S.png")
 end
 
---  Cropped from the frozen frame, saved, copied, and said.
-local function save(x, y, w, h)
-    if frozen == nil or w == nil or w < 2 or h < 2 then
+--  Which copy of her scene lives on a monitor, by its name.
+local function slot_of(name)
+    for k = 0, 1 do
+        if text["screen." .. k .. ".name"] == name then return k end
+    end
+    return nil
+end
+
+--  The monitor a whole-screen photo is of, with no overlay to choose on:
+--  the one Halley has chosen (the last one clicked, which is where you are
+--  working even with no window focused), else the focused window's, else
+--  the one she is on —not her home: following you, she can be on the other—.
+local function chosen_monitor(mons)
+    for _, m in ipairs(mons) do if m.selected then return m end end
+    for _, m in ipairs(mons) do if m.focused then return m end end
+    for k = 0, 1 do
+        if fact["hosts." .. k] == true then
+            local name = text["screen." .. k .. ".name"]
+            for _, m in ipairs(mons) do if m.name == name then return m end end
+        end
+    end
+    return mons[1]
+end
+
+--  Cropped from a frozen frame, saved, copied, and said.
+local function save(shot, x, y, w, h)
+    if shot == nil or w == nil or w < 2 or h < 2 then
         fact.shooting = false
         emit("shot_cancelled")
         return
     end
-    local k = tonumber(frozen.scale) or 1
+    local k = tonumber(shot.scale) or 1
     local dest = PHOTOS .. "/" .. stamp()
-    run("magick", { frozen.file, "-crop", string.format("%dx%d+%d+%d", math.floor(w * k + 0.5), math.floor(h * k + 0.5), math.floor(x * k + 0.5), math.floor(y * k + 0.5)), "+repage", dest }, function(_, code)
+    run("magick", { shot.file, "-crop", string.format("%dx%d+%d+%d", math.floor(w * k + 0.5), math.floor(h * k + 0.5), math.floor(x * k + 0.5), math.floor(y * k + 0.5)), "+repage", dest }, function(_, code)
         fact.shooting = false
         if code ~= 0 then log("photo · could not be cropped"); emit("shot_cancelled"); return end
         emit("shoot")
@@ -1995,54 +2205,69 @@ on("photo_folder", function() run("xdg-open", { PHOTOS }, function() end) end)
 on("gone", function()
     if fact.purpose ~= "shot" then return end
     local scope = fact.scope
+    --  Halley's API v1 does not say where a window is presented, so a window
+    --  cannot be cut out of the frame: there, «a window» is a region.
+    if on_halley and scope == "active_window" then scope = "region" end
     --  A breather so the compositor can take away whatever was closing.
     after(140, function()
         monitor_info(function(mons)
-            local target = nil
-            for _, m in ipairs(mons) do if m.focused then target = m end end
-            --  No window focused: the monitor she lives on.
-            if target == nil then
-                local home_name = text["screen." .. math.floor(tonumber(fact.home) or 0) .. ".name"]
-                for _, m in ipairs(mons) do if m.name == home_name then target = m end end
-            end
-            target = target or mons[1]
-            if target == nil then
+            if #mons == 0 then
                 log("photo · no monitor to photograph")
                 emit("shot_cancelled")
                 return
             end
-            freeze(target, function(file)
-                if file == nil then log("photo · grim could not freeze the screen"); emit("shot_cancelled"); return end
-                frozen = { name = target.name, file = file, scale = target.scale or 1, w = target.w, h = target.h }
-                emit("frozen")
-                if scope == "display" then
-                    save(0, 0, target.w, target.h)
-                    return
-                end
-                --  The overlay goes on the copy of the scene that lives on that
-                --  monitor, with its frozen frame in its slot.
-                local slot = 0
-                for k = 0, 1 do
-                    if text["screen." .. k .. ".name"] == target.name then slot = k end
-                end
-                local frames = { { pic = "" }, { pic = "" } }
-                frames[slot + 1] = { pic = file .. "?" .. os.time() }
-                model.frames = frames
-                fact["shot.scr"] = slot
-                if scope == "active_window" then fact["shot.mode"] = "sm_window" else fact["shot.mode"] = "sm_region" end
-                fact.shooting = true
-            end)
+            --  The whole screen, straight away: the one you are on.
+            if scope == "display" then
+                local target = chosen_monitor(mons)
+                freeze(target, function(file)
+                    if file == nil then log("photo · grim could not freeze the screen"); emit("shot_cancelled"); return end
+                    emit("frozen")
+                    save({ name = target.name, file = file, scale = target.scale or 1 }, 0, 0, target.w, target.h)
+                end)
+                return
+            end
+            --  Choosing: every monitor that has a copy of her, frozen at once,
+            --  and the overlay on all of them. Until a press, none is «the» one.
+            local todo = {}
+            for _, m in ipairs(mons) do
+                local slot = slot_of(m.name)
+                if slot ~= nil then todo[#todo + 1] = { m = m, slot = slot } end
+            end
+            if #todo == 0 then todo[1] = { m = chosen_monitor(mons), slot = 0 } end
+            frozen_at = {}
+            frame_serial = frame_serial + 1
+            local frames = { { pic = "" }, { pic = "" } }
+            local pending = #todo
+            for _, t in ipairs(todo) do
+                freeze(t.m, function(file)
+                    if file ~= nil then
+                        frozen_at[t.slot] = { name = t.m.name, file = file, scale = t.m.scale or 1, w = t.m.w, h = t.m.h }
+                        fact["shot.w" .. t.slot] = tonumber(t.m.w) or 0
+                        fact["shot.h" .. t.slot] = tonumber(t.m.h) or 0
+                        frames[t.slot + 1] = { pic = file .. "?" .. frame_serial }
+                    end
+                    pending = pending - 1
+                    if pending > 0 then return end
+                    if next(frozen_at) == nil then log("photo · grim could not freeze the screen"); emit("shot_cancelled"); return end
+                    emit("frozen")
+                    model.frames = frames
+                    fact["shot.scr"] = -1
+                    if scope == "active_window" then fact["shot.mode"] = "sm_window" else fact["shot.mode"] = "sm_region" end
+                    fact.shooting = true
+                end)
+            end
         end)
     end)
 end)
 
 on("shot_commit", function()
+    local shot = frozen_at[math.floor(tonumber(fact["shot.scr"]) or -1)]
     local w, h = tonumber(fact["sel.w"]) or 0, tonumber(fact["sel.h"]) or 0
     if w < 0 then
         --  The window under the pointer: Hyprland says where the active one is.
-        --  Halley's API does not tell the presented geometry yet.
+        --  Halley's API does not tell the presented geometry yet, and the
+        --  overlay does not offer it there.
         if on_halley then
-            log("Halley · window capture needs presented geometry, which API v1 does not expose")
             fact.shooting = false
             emit("shot_cancelled")
             return
@@ -2052,14 +2277,14 @@ on("shot_commit", function()
             local aw, ah = (window or ""):match("size: (%d+),(%d+)")
             monitor_info(function(mons)
                 local mx, my = 0, 0
-                for _, m in ipairs(mons) do if m.name == (frozen and frozen.name) then mx, my = m.x, m.y end end
-                if ax then save(tonumber(ax) - mx, tonumber(ay) - my, tonumber(aw), tonumber(ah))
+                for _, m in ipairs(mons) do if m.name == (shot and shot.name) then mx, my = m.x, m.y end end
+                if ax then save(shot, tonumber(ax) - mx, tonumber(ay) - my, tonumber(aw), tonumber(ah))
                 else fact.shooting = false; emit("shot_cancelled") end
             end)
         end)
         return
     end
-    save(tonumber(fact["sel.x"]) or 0, tonumber(fact["sel.y"]) or 0, w, h)
+    save(shot, tonumber(fact["sel.x"]) or 0, tonumber(fact["sel.y"]) or 0, w, h)
 end)
 on("shot_escape", function()
     fact.shooting = false
@@ -2100,16 +2325,16 @@ on("fact:face", function(face)
     if sink_code ~= 0 or sound_sink == "" then sound_sink = nil end
     monitor_info(function(mons)
         if fact.face ~= "rec" then return end          -- she changed her mind during the countdown
+        --  The monitor you are on: the one Halley has chosen (the last clicked),
+        --  the focused window's, or the one she is on (see `chosen_monitor`).
         local monitor = nil
-        for _, output in ipairs(mons) do
-            if output.focused then monitor = output.name end
-        end
-        if monitor == nil and on_halley and #mons == 1 then monitor = mons[1].name end
-        --  No window focused (the focus can be hers): the monitor she lives on.
-        if monitor == nil and on_halley then
-            local home_name = text["screen." .. math.floor(tonumber(fact.home) or 0) .. ".name"]
-            for _, output in ipairs(mons) do if output.name == home_name then monitor = output.name end end
-            monitor = monitor or (mons[1] and mons[1].name)
+        if on_halley then
+            local m = chosen_monitor(mons)
+            monitor = m and m.name
+        else
+            for _, output in ipairs(mons) do
+                if output.focused then monitor = output.name end
+            end
         end
         if on_halley and monitor == nil then
             log("Halley · no focused output is available for recording")
@@ -2296,7 +2521,10 @@ end
 local SPOTS = { "head", "face", "ears", "neck", "side" }
 
 local function save_settings()
-    settings.home = monitors[(fact.home or 0) + 1] or settings.home
+    --  The home is NOT written here: `fact.home` can be a fallback —her saved
+    --  monitor unplugged, or not known yet at startup— and saving any other
+    --  setting then replaced «HDMI-A-1» with whatever was there. It is written
+    --  only when you choose it (`fact:home`, below).
     settings.follow = fact.following == true
     settings.room = fact.taking_room == true
     settings.skin = fact.skin
@@ -2385,9 +2613,10 @@ on("unmute", function(i)
     paint_muted()
     save_settings()
 end)
+--  «Do not disturb» from the finder is the same as her menu's and the
+--  control center's: the Haven, on or off.
 hooks.dnd = function()
-    fact.dnd = not (fact.dnd == true)
-    say(tr(fact.dnd and "Do not disturb: on" or "Do not disturb: off"))
+    emit("tap_dnd")
 end
 
 -- ── the wallpapers, and the tide that brings a new one ────────────
@@ -2414,6 +2643,8 @@ local function show_walls()
                               ready = wall_thumbs[path] ~= nil, current = path == WALLPAPER }
     end
     model.walls = cards
+    fact["wall.at"] = wall_offset
+    fact["wall.total"] = #wall_list
 end
 
 --  The small copies of what is on the page, three at a time.
@@ -2704,9 +2935,75 @@ if in_wm then
     end)
 end
 
-on("fact:home", function() decide(); save_settings() end)
+--  A home only reaches the logic from the scene (Settings → Monitor), never
+--  from `place()`'s own fallback: that is what makes it safe to save by name.
+on("fact:home", function(v)
+    local name = monitors[(tonumber(v) or 0) + 1]
+    if name then settings.home = name end
+    decide()
+    save_settings()
+end)
 on("fact:following", function() decide(); save_settings() end)
 on("fact:taking_room", function() save_settings() end)
+
+--  How many times each application was opened from her finder: what it
+--  suggests first, and what comes first when you type.
+fx.uses = type(settings.launches) == "table" and settings.launches or {}
+fx.used = function(name)
+    fx.uses[name] = (fx.uses[name] or 0) + 1
+    settings.launches = fx.uses
+    save_settings()
+end
+
+--  The Focus page's two options, as they were left.
+;(function()
+    if settings.haven_urgent ~= nil then fact["haven.urgent"] = settings.haven_urgent == true end
+    if settings.haven_summary ~= nil then fact["haven.summary"] = settings.haven_summary == true end
+    on("fact:haven.urgent", function(v) settings.haven_urgent = v == true; save_settings() end)
+    on("fact:haven.summary", function(v) settings.haven_summary = v == true; save_settings() end)
+end)()
+
+--  «Keep what I copy», from her menu: while it is on, every new text you copy
+--  goes to Deriva by itself. `wl-paste --watch` says when the clipboard
+--  changes —the logic never waits on another program—, and only what is new
+--  is kept: not what was there when it was switched on, not what she copied
+--  herself (the finder's sums), not what a password manager marks as secret
+--  (`x-kde-passwordManagerHint`), and nothing huge. It survives a restart.
+;(function()
+    local watcher, last, mine = nil, nil, nil
+    fx.copied_by_her = function(t) mine = t end
+    local function look()
+        run("wl-paste", { "--list-types" }, function(types)
+            types = tostring(types or "")
+            if types:find("x-kde-passwordManagerHint", 1, true) then return end
+            if not (types:find("text/plain", 1, true) or types:find("UTF8_STRING", 1, true)) then return end
+            run("wl-paste", { "--no-newline", "--type", "text" }, function(now)
+                now = tostring(now or "")
+                if now == "" or now == last or now == mine or #now > 100000 then return end
+                last = now
+                keep(now, "text/plain", "drift_drop")
+            end)
+        end)
+    end
+    local function watch(on)
+        if watcher then kill(watcher); watcher = nil end
+        if not on then return end
+        run("wl-paste", { "--no-newline", "--type", "text" }, function(now)
+            last = tostring(now or "")
+            if fact["clip.keep"] ~= true or watcher then return end
+            watcher = spawn("wl-paste", { "--watch", "echo", "changed" }, function() look() end)
+        end)
+    end
+    on("fact:clip.keep", function(v)
+        settings.clip_keep = v == true
+        watch(v == true)
+        save_settings()
+    end)
+    if settings.clip_keep == true then
+        fact["clip.keep"] = true
+        watch(true)
+    end
+end)()
 
 --  Her look, as it was left last time. If the file holds something that is not
 --  one of the three —another version, a hand edit—, the factory one stays.
@@ -3237,6 +3534,8 @@ local function halley_wallpaper()
             cards[#cards + 1] = { name = it.name, file = it.label, thumb = thumb or "", ready = thumb ~= nil, current = it.path == w.shader }
         end
         model.walls = cards
+        fact["wall.at"] = offset
+        fact["wall.total"] = #list
         text["wall.now"] = current_name()
         local now_thumb = nil
         for _, it in ipairs(list) do
@@ -3328,8 +3627,11 @@ end
     on("customize", function() if #list == 0 then scan() else paint() end end)
     on("walls_scroll", function(d)
         local step = (d or 0) > 0 and -3 or 3
-        offset = math.max(0, math.min(offset + step, math.max(#list - 6, 0)))
-        offset = offset - offset % 3
+        --  Row by row (three), up to the row that shows the last one. Bounded
+        --  by `#list - 6` and then floored to a row, seven shaders gave 1 → 0
+        --  and the seventh could never be reached.
+        local last_row = math.max(0, math.ceil((#list - 6) / 3) * 3)
+        offset = math.max(0, math.min(offset + step, last_row))
         paint()
     end)
     on("wall_pick", function(i)

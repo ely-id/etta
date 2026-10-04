@@ -125,6 +125,11 @@ library Kit {
     }
 
     //  Two to four choices in one pill; the chosen one's plate slides to it.
+    //  Each choice is its own copy of `SegOpt`, not a `repeat` of zones: in
+    //  pleamar 0.2.8 a name with `$` (`opt.$i`) loses the copy's suffix even
+    //  inside a component, so every Seg on screen shared the same five zones and
+    //  one press reached all of them —«Face» in the wardrobe also chose Frosted
+    //  and eDP-1—. A plain name inside a copy is that copy's own.
     component Seg(value: number, a: text, b: text, press: event, c: text = "", d: text = "", e: text = "", count: number = 2, w: number = 280, live: bool = true) {
         size: w, 38
         let seg = (w - 6) / count
@@ -133,22 +138,26 @@ library Kit {
         box { from: 0, 0; size: w, 38; corner: 12; color: tk.s1 }
         box { from: 0, 0; size: w, 38; corner: 12; stroke: 1; color: tk.line; opacity: 7% }
         box { from: 3 + pos * seg, 3; size: seg, 32; corner: 9; color: tk.s3 }
-        repeat i in 0..5 {
-            group {
-                show: i < count
-                text pick(i, a, b, c, d, e) { at: 3 + seg * (i + 0.5), 19; anchor: center; size: 13; weight: 500; family: "Geist"
-                                           width: seg - 8; lines: 1; align: center
-                                           color: mix(tk.ink2, tk.ink, max(if(value == i, 1, 0), opt.$i.hover)) }
-                zone box opt.$i { from: 3 + seg * i, 3; size: seg, 32; corner: 9; cursor: pointer; active: live }
-                on press opt.$i { emit press(i) }
-            }
-        }
+        group { move: 3, 3; SegOpt(a, 0, value, seg, press, live: live) }
+        group { move: 3 + seg, 3; SegOpt(b, 1, value, seg, press, live: live) }
+        group { move: 3 + seg * 2, 3; show: count > 2; SegOpt(c, 2, value, seg, press, live: live) }
+        group { move: 3 + seg * 3, 3; show: count > 3; SegOpt(d, 3, value, seg, press, live: live) }
+        group { move: 3 + seg * 4, 3; show: count > 4; SegOpt(e, 4, value, seg, press, live: live) }
+    }
+
+    //  One choice of a Seg: its word and its zone. `k` is its place.
+    component SegOpt(label: text, k: number, value: number, seg: number, press: event, live: bool = true) {
+        size: seg, 32
+        zone box touch { from: 0, 0; size: seg, 32; corner: 9; cursor: pointer; active: live }
+        text label { at: seg / 2, 16; anchor: center; size: 13; weight: 500; family: "Geist"; width: seg - 8; lines: 1; align: center
+                     color: mix(tk.ink2, tk.ink, max(if(value == k, 1, 0), touch.hover)) }
+        on press touch { emit press(k) }
     }
 
     //  A chip: a choice that filters. `on` lights it.
-    component Chip(label: text, press: event, w: number = 96, on: number = 0, dot: color = tk.ink3, hasdot: number = 0) {
+    component Chip(label: text, press: event, w: number = 96, on: number = 0, dot: color = tk.ink3, hasdot: number = 0, live: bool = true) {
         size: w, 30
-        zone box touch { from: 0, 0; size: w, 30; corner: 15; cursor: pointer }
+        zone box touch { from: 0, 0; size: w, 30; corner: 15; cursor: pointer; active: live }
         box { from: 0, 0; size: w, 30; corner: 15; color: mix(mix(tk.s1, tk.s2, touch.hover), tk.mint_soft, on) }
         box { from: 0, 0; size: w, 30; corner: 15; stroke: 1; color: mix(tk.line, tk.mint, on); opacity: 7% + 30% * on }
         ellipse { at: 15, 15; radius: 4; color: dot; opacity: hasdot }
@@ -179,6 +188,7 @@ library Kit {
         zone box touch { from: 0, 0; size: w, h; corner: 12; cursor: pointer; active: live }
         box { from: 0, 0; size: w, h; corner: 12; color: tk.s2; opacity: touch.hover * (1 - 0.3 * touch.pressed) }
         children
+        on press touch { emit press }
     }
 
     //  The round badge an icon sits in. tone: 0 off · 1 on (mint) · 2 warn · 3 bad.

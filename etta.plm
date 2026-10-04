@@ -29,11 +29,11 @@ scene Etta {
         //  your home lives; the session, to be able to say goodbye. What is NOT
         //  here is `notifications`: the first one to ask for it keeps the spot,
         //  and on this machine that spot is Marea's.
-        services: "audio", "audio.*", "battery", "clock", "media", "media.*", "network", "brightness", "brightness.*", "apps", "apps.launch", "env", "session.*", "tray", "tray.*", "notifications", "notifications.*", "auth", "files", "files.write", "window", "window.*", "network.*", "bluetooth", "bluetooth.*"
+        services: "audio", "audio.*", "battery", "clock", "media", "media.*", "network", "brightness", "brightness.*", "apps", "apps.launch", "env", "session.*", "tray", "tray.*", "notifications", "notifications.*", "auth", "files", "files.write", "window", "window.*", "network.*", "bluetooth", "bluetooth.*", "clipboard", "clipboard.*"
         //  The network and the headphones are pleamar's own services now
         //  (NetworkManager and BlueZ, spoken to directly): listing, joining
         //  with a password, pairing. And `fd` finds the files and the folders.
-        run: "curl", "timedatectl", "node", "notify-send", "fd", "deriva-worker", "kill", "xdg-open", "grim", "slurp", "hyprctl", "magick", "wl-copy", "mkdir", "wf-recorder", "xdg-user-dir", "test", "pgrep", "swaybg", "pactl", "pleamar-wm", "etta-halley", "cat", "ls", "rfkill", "systemd-inhibit", "powerprofilesctl", "wlsunset", "etta-shader-thumb", "ffmpeg", "rm"
+        run: "curl", "timedatectl", "node", "notify-send", "fd", "deriva-worker", "kill", "xdg-open", "grim", "slurp", "hyprctl", "magick", "wl-copy", "mkdir", "wf-recorder", "xdg-user-dir", "test", "pgrep", "swaybg", "pactl", "pleamar-wm", "etta-halley", "cat", "ls", "rfkill", "systemd-inhibit", "powerprofilesctl", "wlsunset", "etta-shader-thumb", "ffmpeg", "rm", "wl-paste"
     }
     service clock as now { time: text = "--:--"; date: text; hour: number; minute: number; day: number; month: number; weekday: number }
     service audio as sound { volume: number; muted: bool; input: number; input_muted: bool }
@@ -108,6 +108,7 @@ scene Etta {
         enabled: bool = true
         checked: number = -1            // -1: not a checkbox · 0: empty · 1: ticked
         children: number                // how many it holds inside: it is a submenu
+        y: number                       // its top in the list, for the scroll guard
     }
     text systray.title = ""
     event systray_activate ->           // (i): the usual click
@@ -185,15 +186,22 @@ scene Etta {
         //  only what changed, the monitor's rate costs the same (measured on
         //  HDMI-A-1 at 100 Hz: 7.5–10 % of a core, as at 60).
         //  Keyboard only while something of hers is open, and handed back on
-        //  closing: «the click gives keyboard focus, but does not leave them
-        //  stuck to the screen». Exclusive once used to close the menu by
-        //  itself —reconfiguring the surface sends a «the pointer has left» and
-        //  its grace zone emptied—; nothing closes on leaving any more.
-        //  On demand: Hyprland hands it over when the mouse moves over her or
-        //  the catcher. Exclusive was tried —so Esc worked without moving the
-        //  mouse— and on closing the window below did not get the keyboard
-        //  back.
-        keyboard: on_demand while searching or menu_open or open or tray_open or reel_open
+        //  closing. This is the ONLY `keyboard:` of the scene, and on purpose:
+        //  in pleamar 0.2.8 the condition is one for the whole scene —each
+        //  `keyboard: … while` written further down replaced this one, and the
+        //  last, the lock preview's, left her without keyboard everywhere
+        //  else— and the mode is this surface's, given to every open copy. So
+        //  the capture overlay and the lock preview are named here too.
+        //  Exclusive, not on demand: Halley gives an on-demand layer the
+        //  keyboard only once it is clicked or hovered while ALREADY on demand,
+        //  and the click that opens a panel lands before that —Esc never
+        //  arrived—. An exclusive one gets it at once, and when it ends Halley
+        //  gives it back to the window that had it. (Hyprland once left the
+        //  window below without it; that was another compositor.)
+        //  The urgent tray that opens by itself and the saved card do not take
+        //  it on arriving —you may be typing somewhere—, only once you go to
+        //  them.
+        keyboard: exclusive while searching or menu_open or open or shooting or lock.preview or (tray_open and not tray_by_itself) or (reel_open and reel_hovered)
         //  Above everything while something of hers is open —so the catcher
         //  below can take the click outside—, and in its layer the rest of the
         //  time, so a video in full screen still covers her.
@@ -275,7 +283,8 @@ scene Etta {
     prop pk = 1.2174 ~calm
     follow pk = pick(pet.size, 46, 52, 56, 64) / 46
     //  At the centre of the monitor; aside, 240 to the left, to present a panel.
-    let cx = 550 - aside * 240
+    //  For the finder, 20 more: it is 760 wide, and its shadow has to fit.
+    let cx = 550 - aside * 240 - 20 * finder
     //  Open, she drops to the height of the card's header, as on the sheet.
     //  And the path bows: the height goes by the square, so she leaves and comes
     //  in from above instead of crossing in a straight line. Something with
@@ -461,7 +470,23 @@ scene Etta {
     text query = ""
     //  What is found, just as the logic delivers it: apps from the system's
     //  service, and files and folders from `fd`. The icon travels in the record.
-    model results max 7 { name: text; kind_label: text; icon: image 40, 40; glyph: number; path: text }
+    //  What is found, as the logic delivers it, a row each: its section's name
+    //  over the first of each (Applications, Open windows, Files, Folders,
+    //  Actions), the calculator's row taller (`big`), the key it answers to.
+    //  `glyph` says its picture: 0 the application's icon, 1–4 a little her
+    //  (her own things), 5 a window, 6 a file, 7 a folder, 9 the sum.
+    model results max 9 { name: text; sub: text; kind_label: text; icon: image 40, 40; glyph: number; path: text; section: text; first: bool; big: bool; key: text; kw: number }
+    //  With nothing written: six suggested and the last files used.
+    model suggested max 6 { name: text; icon: image 44, 44; glyph: number }
+    model recent max 3 { name: text; path: text; when: text }
+    fact recent.n = 0
+    text finder.status = ""
+    event open_suggested ->
+    event open_recent ->
+    event finder_tab ->
+    //  Ctrl held: the field takes Enter whatever is held, so a Ctrl pressed a
+    //  moment before is what says «open its folder».
+    fact finder.ctrl = false
     fact selected = 0
     prop magnifier = 0 ~320ms          // the face, turning into a magnifying glass
     prop finder = 0 ~290ms             // the panel's geometry
@@ -567,7 +592,27 @@ scene Etta {
     prop calmness = 0 ~320ms           // 0 awake, 1 in the Haven
     prop glance = 0 ~260ms             // the urgency being looked at, without opening anything
     prop drawing = 0 ~320ms            // the wave the bubble draws, once
-    prop summary = 0 ~500ms            // on coming back, a single summary
+    //  On coming back, a single line: «Welcome back», what arrived, and Show.
+    //  It stays while the pointer is on it (its clock does not run then).
+    fact back.open = false
+    fact back.hovered = false
+    prop back.clock = 0 ~16ms
+    prop summary = 0 ~500ms
+    //  Not over her menu or the card, which come out on the same side.
+    follow summary = if(back.open and out > 0.9 and not menu_open and not open, 1, 0)
+    on change back.clock > 0.5 while back.clock > 0.5 { back.open = false }
+    //  Its five seconds start when it can be seen, not when the Haven ends:
+    //  ending by itself, she is usually tucked in, and the line used to run
+    //  out before she came out to say it. So she is called out to say it,
+    //  and let go after.
+    on change summary > 0.9 while summary > 0.9 { back.clock: 0 ~16ms; back.clock: if(back.hovered, 0, 1) ~16ms after 5s }
+    on change back.open while back.open { needed = true; wanted = true }
+    on change back.open while not back.open { wanted = false }
+    //  And she is glad you are back: the little wink and hop of «found it».
+    //  A gesture, not `face = happy`: that one is undone by a one-shot rule,
+    //  and when its moment passed with something else going on she stayed
+    //  happy —and blind behind the finder's magnifier— for good.
+    on change back.open while back.open { play happy }
     //  The tide: there and back in 7.6 s. No nervous loops; this is the only
     //  thing that moves, and it moves like water.
     pose tide = 0
@@ -575,13 +620,51 @@ scene Etta {
     //  Entering takes 320 ms and waking 500: it is not the same journey, so it is
     //  not the same spring. And the wave the membrane drew is undone on leaving,
     //  in the same time she takes to wake up.
-    on enter_haven { haven = true; glanced = false; calmness: 1 ~320ms; drawing: 0 ~16ms; drawing: 1 ~320ms after 30ms }
-    on leave_haven { haven = false; remaining = 0; calmness: 0 ~500ms; drawing: 0 ~500ms; summary: 1 ~500ms; summary: 0 ~300ms after 4200ms }
+    //  What she keeps while you focus, by category (1 messages · 2 work ·
+    //  3 calendar · 4 system), for the capsule and for the welcome back.
+    fact haven.kept = 0
+    repeat k in 1..5 { fact kept.$k = 0 }
+    //  The capsule's clock, to the second: what is left and the whole of it.
+    //  One tick a second only while she is in the Haven, which costs nothing.
+    fact haven.left = 0
+    fact haven.total = 1
+    //  The Focus page's options, kept in settings.json: an urgent notice still
+    //  arrives as usual (the logic says `through` for each one), and a line on
+    //  coming back saying what arrived.
+    fact haven.urgent = true
+    fact haven.summary = true
+    fact through = false
+    on enter_haven {
+        haven = true
+        glanced = false
+        haven.kept = 0
+        kept.1 = 0
+        kept.2 = 0
+        kept.3 = 0
+        kept.4 = 0
+        haven.left = remaining * 60
+        haven.total = max(remaining * 60, 1)
+        calmness: 1 ~320ms
+        drawing: 0 ~16ms
+        drawing: 1 ~320ms after 30ms
+    }
+    on leave_haven { haven = false; remaining = 0; calmness: 0 ~500ms; drawing: 0 ~500ms }
+    on leave_haven while haven.summary { back.open = true; back.clock: 0 ~16ms }
     //  And it ends by itself: one minute less every minute, and on reaching zero
     //  she comes out. A «do not disturb» you have to remember to remove stays on
     //  all afternoon, and then it is no longer a haven but a plug.
-    every 60s while haven and remaining > 0 { remaining = remaining - 1 }
+    //  The seconds lead, and the minutes follow them: two clocks drifted
+    //  apart when the duration changed halfway, and she came out while the
+    //  capsule still said «0:50 left».
+    every 1s while haven and haven.left > 0 and remaining < 9999 { haven.left = haven.left - 1; remaining = floor((haven.left + 59) / 60) }
     on change remaining while haven and remaining < 1 { emit leave_haven }
+    //  What arrives while she keeps it is counted, and where from.
+    on notice while haven and not through { haven.kept = haven.kept + 1 }
+    repeat k in 1..5 {
+        on notice while haven and not through and cat == k { kept.$k = kept.$k + 1 }
+    }
+    //  «Rules» in the capsule: the Focus page, where they are.
+    on view_rules { open = true; page = concentration }
 
     //  «Something urgent has arrived»: the logic says so. The face is alarmed
     //  with an exclamation mark and a short jump; the numbers are those of
@@ -641,14 +724,18 @@ scene Etta {
     event unmute ->
     on flip_dnd { toggle dnd }
     on flip_quiet_rec { toggle quiet_rec }
-    on urge while not haven and not hush and not alarmed { alarmed = true; face = alert; sign: 0 ~100ms; play alarm_jump; filter = 0; tray_by_itself = true; emit open_tray }
+    event flip_haven_urgent
+    event flip_haven_summary
+    on flip_haven_urgent { toggle haven.urgent }
+    on flip_haven_summary { toggle haven.summary }
+    on urge while (not haven or through) and not hush and not alarmed { alarmed = true; face = alert; sign: 0 ~100ms; play alarm_jump; filter = 0; tray_by_itself = true; emit open_tray }
     on still face for 1.6s while face == alert { face = eye }
     //  In the Haven an allowed urgency **does not open the tray or steal the
     //  focus**: an amber pearl appears over the membrane and only the eye beside
     //  it turns round to look at it. 1.1 s, and back to her own business.
     //  Once per episode, just like the alarmed face: what bothers about an
     //  urgent notice is not the first one, it is the fourth.
-    on urge while (haven or hush) and not glanced { glanced = true; glance: 1; glance: 0 ~260ms after 840ms }
+    on urge while ((haven and not through) or hush) and not glanced { glanced = true; glance: 1; glance: 0 ~260ms after 840ms }
     on still any_urgent for 1.6s while not any_urgent { glanced = false; alarmed = false }
     //  What each row is about. The logic would set it; here it is born with something.
     prop tray = 0 ~240ms               // 0 inside her, 1 whole card
@@ -877,19 +964,27 @@ scene Etta {
     let notecard.wants = note and not open and not haven and not menu_open and face == eye and out > 0.9 and phase == 0 and (pending < 1 or in.clock) and osd.kind == none
     follow fan = if(note and not open and not tray_open and not haven and not menu_open and face == eye and out > 0.9 and phase == 0 and pending > 0, 1, 0)
     // ── her menu, the right-button one ───────────────────────────
-    //  «The right button opens her menu, which closes the same way on leaving
-    //  her and the menu.» The house rows —Settings and Customize— and, below a
-    //  line, what the add-ons bring, grouped by the name of each one's add-on:
-    //  an entry called «History» says whose history it is.
-    //  It comes out on the same side as the time and from the same box, because
-    //  it is the same thing: what she has to say when you ask her there.
+    //  The right button opens it, beside her and out of her, like the time:
+    //  twelve rows in four groups (the sheet's Menu): what she does for you
+    //  —search, capture, record—, two switches —do not disturb, keep the
+    //  screen awake—, her library —Deriva, keeping what you copy, the
+    //  history— and her own things —wardrobe, wallpaper, settings, sleep—.
+    //  The switches flip in place and the menu stays; the rest go and close it.
     fact menu_open = false
-    fact menu_selected = -1            // the keyboard's row: 0 and 1 the house, 2+ the rest
-    fact groups = 0                    // how many add-ons bring something
+    fact menu_selected = -1            // the row pointed at, 0–11: by the mouse or the arrows
+    //  «Keep what I copy»: while on, the logic keeps in Deriva whatever text
+    //  you copy (it is said in settings.json).
+    fact clip.keep = false
     event customize ->
-    event menu_entry ->                // an add-on's entry, by its number
     event point_at ->
-    model entries max 9 { group_name: text; title: text; first: bool = false }
+    event menu_record
+    event menu_wardrobe
+    event menu_sleep
+    event flip_clip
+    on menu_record { emit record_toggle; menu_open = false }
+    on menu_wardrobe { emit customize; menu_open = false; open = true; page = wardrobe }
+    on menu_sleep { emit sleep; menu_open = false }
+    on flip_clip { toggle clip.keep }
     prop menu = 0 ~190ms
     follow menu = if(menu_open, 1, 0)
 
@@ -938,8 +1033,8 @@ scene Etta {
     //  that is why they are born the same way: from her centre, sliding to the
     //  right until they sit 11 px away. Their half width goes in the sum, as in
     //  the note.
-    let capsule.x = cx + (23 + 11 + 104) * capsule
-    let summary.x = cx + (23 + 11 + 98) * summary
+    let capsule.x = cx + (r + 11 + 150) * capsule
+    let summary.x = cx + (r + 11 + 150) * summary
 
     prop card = 0 ~290ms
     prop content = 0 ~200ms
@@ -1283,13 +1378,20 @@ scene Etta {
     on shot_cancelled { away: 0 ~lively; face = eye; shooting = false; sel.on = false }
 
     // ── choosing what: the capture overlay ───────────────────────
-    //  Over the frozen frame of one monitor: dimmed, with guides through the
-    //  pointer and its coordinates. Pressing anchors a corner, dragging draws
+    //  Over the frozen frame of EVERY monitor, each its own: dimmed, with guides
+    //  through the pointer and its coordinates on the one it is over. Pressing
+    //  anchors a corner —and makes that monitor the one taken—, dragging draws
     //  the selection with its measures, and she follows as the size HUD —her
-    //  camera face, W × H px beside her—. Releasing takes it at once; Esc
-    //  leaves with nothing. Screen takes the whole monitor with a click.
+    //  camera face, W × H px beside her—. Releasing takes it at once; Esc, the
+    //  right button or Cancel leave with nothing. Screen takes the whole
+    //  monitor you click. Window needs to know where windows are shown, which
+    //  Halley's API does not say yet: there it is not offered.
     fact shooting = false
-    fact shot.scr = 0                  // which monitor's copy shows it
+    fact shot.scr = -1                 // the copy that was pressed: −1 until then
+    fact shot.w0 = 0                   // each copy's monitor, as the logic measures it
+    fact shot.h0 = 0
+    fact shot.w1 = 0
+    fact shot.h1 = 0
     fact shot.mode: sm_region | sm_window | sm_screen = sm_region
     fact sel.on = false
     fact sel.ax = 0
@@ -1306,25 +1408,75 @@ scene Etta {
     follow shot.in = if(shooting, 1, 0)
     prop shot.flash = 0 ~350ms
     on shoot { shot.flash: 0.85 ~16ms; shot.flash: 0 ~350ms after 30ms }
-    on pick_shot_mode(i) { shot.mode = pick(i, sm_region, sm_window, sm_screen); sel.on = false }
+    //  The order on the bar is Region, Screen, Window: the one Halley cannot
+    //  do goes last, and there the bar simply has two.
+    on pick_shot_mode(i) { shot.mode = pick(i, sm_region, sm_screen, sm_window); sel.on = false }
     on change shooting while not shooting { sel.on = false }
+    //  The keys reach the rules only with no text cursor anywhere: pleamar puts
+    //  one in some field when she gets the keyboard, and a field eats letters.
+    on change shooting while shooting { blur }
+    on key Escape while shooting { emit shot_escape }
+    on key r while shooting { shot.mode = sm_region; sel.on = false }
+    on key R while shooting { shot.mode = sm_region; sel.on = false }
+    on key s while shooting { shot.mode = sm_screen; sel.on = false }
+    on key S while shooting { shot.mode = sm_screen; sel.on = false }
+    on key w while shooting and not compositor_halley { shot.mode = sm_window; sel.on = false }
+    on key W while shooting and not compositor_halley { shot.mode = sm_window; sel.on = false }
 
     surface shotlayer {
         size: full, full
         anchor: top_left
         level: overlay
         screens: each max 2
-        open: shot.in > 0.01 and screen.index == shot.scr
-        keyboard: exclusive while shooting
-        let W = shotlayer.width
-        let H = shotlayer.height
-        let px = clamp(pointer.x, 0, W)
-        let py = clamp(pointer.y, 0, H)
+        open: shot.in > 0.01
+        //  Each copy's own size: pleamar 0.2.8 keeps one width and height for
+        //  every copy of a named surface, so the logic says each monitor's.
+        let W = if(screen.index == 0, if(shot.w0 > 0, shot.w0, shotlayer.width), if(shot.w1 > 0, shot.w1, shotlayer.width))
+        let H = if(screen.index == 0, if(shot.h0 > 0, shot.h0, shotlayer.height), if(shot.h1 > 0, shot.h1, shotlayer.height))
+        //  Where the pointer is ON THIS COPY. pleamar 0.2.8 lays every copy of
+        //  a named surface on its own plane, 10000 px apart, and `pointer.x/y`
+        //  are read on that plane: on the second monitor `pointer.y` was 10060
+        //  for a point 60 px down, and clamped to the bottom edge the guides
+        //  and the HUD could never leave it, nor a selection have a height. A
+        //  zone's `local` is right, so each copy learns its offset from its own
+        //  zone the first time the pointer comes in, and works from there.
+        fact ox = 0
+        fact oy = -1
+        let lx = pointer.x - ox
+        let ly = pointer.y - oy
+        let here = oy >= 0 and ly >= 0 and ly <= H and lx >= 0 and lx <= W
+        let mine = shot.scr == screen.index
+        let px = clamp(lx, 0, W)
+        let py = clamp(ly, 0, H)
         let sx0 = min(sel.ax, px)
         let sy0 = min(sel.ay, py)
         let sw = abs(px - sel.ax)
         let sh = abs(py - sel.ay)
-        let dragging = sel.on and (sw > 1 or sh > 1)
+        let dragging = sel.on and mine and (sw > 1 or sh > 1)
+        //  The whole monitor takes the press, under everything drawn: the
+        //  bar's own buttons, declared further down, stay on top of it.
+        zone box shot_zone { from: 0, 0; size: W, H; active: shooting }
+        on enter shot_zone { ox = pointer.x - local.x; oy = pointer.y - local.y }
+        on press shot_zone while shot.mode == sm_region {
+            ox = pointer.x - local.x
+            oy = pointer.y - local.y
+            shot.scr = screen.index
+            sel.on = true
+            sel.ax = local.x
+            sel.ay = local.y
+        }
+        on release shot_zone while sel.on and mine and abs(px - sel.ax) > 3 and abs(py - sel.ay) > 3 {
+            sel.x = min(sel.ax, px)
+            sel.y = min(sel.ay, py)
+            sel.w = abs(px - sel.ax)
+            sel.h = abs(py - sel.ay)
+            sel.on = false
+            emit shot_commit
+        }
+        on release shot_zone while sel.on and mine and (abs(px - sel.ax) <= 3 or abs(py - sel.ay) <= 3) { sel.on = false }
+        on press shot_zone while shot.mode == sm_screen { shot.scr = screen.index; sel.x = 0; sel.y = 0; sel.w = W; sel.h = H; emit shot_commit }
+        on press shot_zone while shot.mode == sm_window and not compositor_halley { shot.scr = screen.index; sel.w = -1; sel.h = -1; emit shot_commit }
+        on press right shot_zone { emit shot_escape }
         group {
             opacity: shot.in
             //  The frozen frame of this monitor: what you choose from.
@@ -1348,9 +1500,10 @@ scene Etta {
                 box { at: max(28, sx0 - 32), sy0 + sh / 2; size: 52, 22; corner: 6; color: tk.mint }
                 text "{sh, 0}" { family: "Geist Mono"; at: max(28, sx0 - 32), sy0 + sh / 2; anchor: center; size: 12; weight: 600; color: tk.mint_ink }
             }
-            //  The guides through the pointer, and where it is.
+            //  The guides through the pointer, and where it is: only on the
+            //  monitor it is over.
             group {
-                show: shot.mode == sm_region
+                show: shot.mode == sm_region and (here or dragging)
                 box { from: px, 0; size: 1, H; color: #ffffff; opacity: 32% }
                 box { from: 0, py; size: W, 1; color: #ffffff; opacity: 32% }
                 group {
@@ -1359,14 +1512,15 @@ scene Etta {
                     text "{px, 0}, {py, 0}" { family: "Geist Mono"; at: px + 18, py - 23; anchor: left center; size: 12; weight: 500; color: tk.ink }
                 }
             }
-            //  Her, as the size HUD: beside the corner being dragged.
+            //  Her, as the size HUD: beside the corner being dragged, on the
+            //  monitor the pointer is on.
             let right = px >= sel.ax or not sel.on
             let below = py >= sel.ay or not sel.on
             let hx = clamp(px + if(right, 50, -50), 34, W - 34)
             let hy = clamp(py + if(below, 46, -46), 34, H - 34)
             let cap.right = hx + 34 + 168 < W
             group {
-                show: shooting
+                show: shooting and (here or dragging)
                 body {
                     color: skin
                     rim: 14%
@@ -1380,34 +1534,23 @@ scene Etta {
                 text pick(if(shot.mode == sm_screen, 1, 0), "{sw, 0} × {sh, 0}", "{W, 0} × {H, 0}") { family: "Geist Mono"; at: capx + 16, hy; anchor: left center; size: 15; weight: 600; color: tk.ink }
                 text "px" { family: "Geist"; at: capx + 134, hy; anchor: right center; size: 12; weight: 500; color: tk.ink3 }
             }
-            //  The modes, at the bottom.
+            //  The modes, at the bottom, and a way out with the mouse.
+            let bar.sw = if(compositor_halley, 220, 330)
+            let bar.w = bar.sw + 16 + 176 + 44 + 104
             group {
-                move: W / 2 - 260, H - 80
-                box { from: 0, 0; size: 520, 54; corner: 18; color: #151616; opacity: 94% }
-                box { from: 0, 0; size: 520, 54; corner: 18; stroke: 1; color: #ffffff; opacity: 9% }
-                group { move: 8, 8; Seg(if(shot.mode == sm_region, 0, if(shot.mode == sm_window, 1, 2)), "Region  R", "Window  W", pick_shot_mode, c: "Screen  S", count: 3, w: 300) }
-                text pick(if(shot.mode == sm_region, if(sel.on, 1, 0), if(shot.mode == sm_window, 2, 3)), "Drag to select", "Release to capture", "Click a window", "Click to capture") { family: "Geist"; at: 320, 27; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
-                text "Esc cancels" { family: "Geist"; at: 506, 27; anchor: right center; size: 12; weight: 500; color: tk.ink3 }
+                move: W / 2 - bar.w / 2, H - 80
+                box { from: 0, 0; size: bar.w, 54; corner: 18; color: #151616; opacity: 94% }
+                box { from: 0, 0; size: bar.w, 54; corner: 18; stroke: 1; color: #ffffff; opacity: 9% }
+                //  The bar's own ground takes a press that misses its buttons:
+                //  it is not the desktop, and a press there took the screen.
+                zone box shot_bar { from: 0, 0; size: bar.w, 54; corner: 18; active: shooting }
+                group { move: 8, 8; Seg(if(shot.mode == sm_region, 0, if(shot.mode == sm_screen, 1, 2)), "Region  R", "Screen  S", pick_shot_mode, c: "Window  W", count: if(compositor_halley, 2, 3), w: bar.sw) }
+                text pick(if(shot.mode == sm_region, if(sel.on, 1, 0), if(shot.mode == sm_window, 2, 3)), "Drag to select", "Release to capture", "Click a window", "Click to capture") { family: "Geist"; at: bar.sw + 22, 27; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
+                group { move: bar.sw + 16 + 176, 16; Kbd("Esc", w: 36) }
+                group { move: bar.w - 104, 8; Btn("Cancel", shot_escape, w: 96, kind: 3, h: 38) }
             }
-            box { from: 0, 0; size: W, H; color: #ffffff; opacity: shot.flash }
+            box { from: 0, 0; size: W, H; color: #ffffff; opacity: shot.flash * if(mine, 1, 0) }
         }
-        zone box shot_zone { from: 0, 0; size: W, H - 100; active: shooting }
-        on press shot_zone while shot.mode == sm_region { sel.on = true; sel.ax = px; sel.ay = py }
-        on release shot_zone while sel.on and abs(px - sel.ax) > 3 and abs(py - sel.ay) > 3 {
-            sel.x = min(sel.ax, px)
-            sel.y = min(sel.ay, py)
-            sel.w = abs(px - sel.ax)
-            sel.h = abs(py - sel.ay)
-            sel.on = false
-            emit shot_commit
-        }
-        on release shot_zone while sel.on and (abs(px - sel.ax) <= 3 or abs(py - sel.ay) <= 3) { sel.on = false }
-        on press shot_zone while shot.mode == sm_screen { sel.x = 0; sel.y = 0; sel.w = W; sel.h = H; emit shot_commit }
-        on press shot_zone while shot.mode == sm_window { sel.w = -1; sel.h = -1; emit shot_commit }
-        on key Escape while shooting { emit shot_escape }
-        on key r while shooting { shot.mode = sm_region; sel.on = false }
-        on key w while shooting { shot.mode = sm_window; sel.on = false }
-        on key s while shooting { shot.mode = sm_screen; sel.on = false }
     }
 
     //  Riding a window, in pleamar-wm's session: she leaves by the top edge the
@@ -1523,11 +1666,10 @@ scene Etta {
     let rise = if(hidden, (1 - out) * 40 * pk, 0)
     //  And on opening the tray she rises 5 px, which is what the contract says.
     let cy_actual = cy + body.y * pk - rise - away * 84 * pk - 5 * tray - 96 * drop_in * pk
-    //  The finder: 640 wide —the sheet's 780 times 46/56— and as tall as its list
-    //  asks, which is what makes it grow and shrink while you type instead of
-    //  leaving a black gap waiting.
+    //  The finder: 760 wide, the sheet's, and as tall as what it holds asks
+    //  —up to 640—, which is what makes it grow and shrink while you type
+    //  instead of leaving a black gap waiting.
     prop finder_h = 150 ~quick
-    prop sel_y = 0 ~quick
     prop stagger = 0 ~520ms            // the list's staggering
     fact typing = false
     event list_ready                   // the logic has left another list
@@ -1536,7 +1678,7 @@ scene Etta {
     //  It is the same thing the tray's swell does, and for the same reason: a
     //  list that appears whole all at once is a table, not something arriving.
     on list_ready { stagger: 0 ~16ms; stagger: 1 ~520ms after 30ms }
-    let finder.w = 640 * finder
+    let finder.w = 760 * finder
     let finder.h = finder_h * finder
     let finder.x = cx + 6 + finder.w / 2
     let finder.y = cy_actual + finder.h / 2 - 8
@@ -1545,20 +1687,21 @@ scene Etta {
     let panel = clamp(max(max(card, tray), finder) * 2, 0, 1)
     //  The capsule, 12 px lower than her: it measures 92 tall and, centred on
     //  her centre, it stuck out through the top edge.
-    let capsule.y = cy_actual + 12
+    //  The capsule, 300 × 124 (the sheet's Haven): its top a little above
+    //  hers, so its first line is at the height of her face.
+    let capsule.y = cy_actual - r - 10 + 62
     //  And the saved recording's card, a little lower still.
     let reel.y = cy_actual + 20
-    //  The menu: 163 wide —the sheet's 248 times 46/70— and as tall as whatever
-    //  there is asks. Each entry measures 23 and the first of each group takes
-    //  16 more for the name of whoever brings it.
-    //  It is born from her centre and slides to the right until it sits 9 px
-    //  away, like the time: its half width goes in the sum.
-    let menu.x = cx + (23 + 9 + 82) * menu
-    let menu.w = 163
-    let menu.h = 8 + 92 + 6 + entries.count * 23 + groups * 16
-    //  Its first row at the height of her face, and the rest hanging.
-    let menu.y0 = cy_actual - 15
-    let menu.cy = menu.y0 + menu.h / 2
+    //  The menu: 300 × 539, the sheet's —six of padding, twelve rows of 40 with
+    //  one between, three separators of 11—. It is born from her centre and
+    //  slides to her right until it sits 6 px from her, like the time: its
+    //  half width goes in the sum. Its top at hers, so the first row is at the
+    //  height of her face and the rest hang.
+    let menu.w = 300
+    let menu.h = 539
+    let menu.x = cx + (r + 6 + 150) * menu
+    let menu.top = cy_actual - r - 6
+    let menu.cy = menu.top + menu.h / 2
 
     //  And she leans towards where she is going. Nobody leads it by the hand: it
     //  comes from the VELOCITY of her own spring, so she leans on setting off,
@@ -1708,8 +1851,8 @@ scene Etta {
         //  else, put there.
         box capsule_box {
             at: capsule.x, capsule.y
-            size: 208 * clamp(capsule * 1.6, 0, 1), 92 * clamp(capsule * 2.4, 0, 1)
-            corner: 16
+            size: 300 * clamp(capsule * 1.6, 0, 1), 124 * clamp(capsule * 2.4, 0, 1)
+            corner: 20
             blend: 18 * 4 * capsule * (1 - capsule)
         }
         //  And the saved recording's card, the same way.
@@ -1724,7 +1867,7 @@ scene Etta {
         box finder_box {
             at: finder.x, finder.y
             size: finder.w, finder.h
-            corner: max(22 * finder, min(finder.w, finder.h) / 2 * (1 - finder))
+            corner: max(24 * finder, min(finder.w, finder.h) / 2 * (1 - finder))
             blend: 30 * 4 * finder * (1 - finder) + 24 * finder
         }
         //  And her menu, on the same side and from the same box as the time: «in
@@ -1732,14 +1875,14 @@ scene Etta {
         box menu_box {
             at: menu.x, menu.cy
             size: menu.w * clamp(menu * 1.6, 0, 1), menu.h * clamp(menu * 2.4, 0, 1)
-            corner: 9
+            corner: 18
             blend: 18 * 4 * menu * (1 - menu)
         }
         //  And the summary on coming back: the last thing the Haven does is give
         //  back what it kept, and it gives it back coming out of her.
         box summary_box {
             at: summary.x, cy_actual
-            size: 196 * clamp(summary * 1.6, 0, 1), 40 * clamp(summary * 2.4, 0, 1)
+            size: 300 * clamp(summary * 1.6, 0, 1), 60 * clamp(summary * 2.4, 0, 1)
             corner: 20
             blend: 18 * 4 * summary * (1 - summary)
         }
@@ -2254,28 +2397,39 @@ scene Etta {
     //  topmost zone, and declared at the end it kept the click on «End». It is
     //  the fourth time this happens; it is no longer a slip, it is a shape of
     //  the scene, and that is why it is written here and not only there.
-    zone box capsule_area { at: cx + 70, cy_actual + 8; size: 260, 136; corner: 30; active: capsule > 0.01 }
+    zone box capsule_area { at: cx + (11 + 300) / 2, capsule.y; size: 2 * r + 11 + 300 + 20, 124 + 20; corner: 30; active: capsule > 0.01 }
     on away capsule_area for 300ms { note = false }
 
-    //  On hovering, what needs to be known: what she is in, how long she has
-    //  left, how many she has kept, and how to get out. Nothing more: if you had
-    //  to open something to find out, it would be of no use.
+    //  On hovering, what needs to be known: what she is in, how long is left,
+    //  what she has kept, and how to get out. Nothing more: if you had to open
+    //  something to find out, it would be of no use.
     let capsule.reveal = clamp(capsule * 2.2 - 1.2, 0, 1)
+    let cap.l = capsule.x - 150 + 16
+    let cap.t = capsule.y - 62 + 14
+    let hl.m = floor(haven.left / 60)
+    let hl.s = mod(haven.left, 60)
     group {
         opacity: capsule.reveal
         move: (1 - capsule.reveal) * -8, 0
-        arc { at: capsule.x - 76, capsule.y - 22; radius: 7.5; span: 210deg; width: 5; rotate: 145deg; color: #8fa2e8 }
-        text pick(if(remaining > 9999, 1, 0), "Do not disturb · {remaining, 0} min", "Do not disturb") { family: "Geist"; at: capsule.x - 60, capsule.y - 26; anchor: left center; size: 12; weight: 500; color: ink }
-        text "{pending, 0} notices kept" { family: "Geist"; at: capsule.x - 60, capsule.y - 9; anchor: left center; size: 10.5; color: #8b8f95 }
+        group { move: cap.l, cap.t; Bubble(1) { figure Kit.i_moon { at: 0, 0; size: 20, 20; color: tk.mint_ink } } }
+        text pick(if(remaining > 9999, 1, 0), "Do not disturb · {hl.m, 0}:{floor(hl.s / 10), 0}{mod(hl.s, 10), 0} left", "Do not disturb · until you turn it off") { family: "Geist"; at: cap.l + 48, cap.t + 8; anchor: left center; size: 15; weight: 600; width: 220; lines: 1; color: tk.ink }
+        text pick(if(haven.kept < 0.5, 0, if(haven.kept < 1.5, 1, 2)), "Nothing kept yet", "1 notification kept for later", "{haven.kept, 0} notifications kept for later") { family: "Geist"; at: cap.l + 48, cap.t + 28; anchor: left center; size: 12; weight: 500; width: 220; lines: 1; color: tk.ink3 }
+        //  What is left of it, as a bar; «until you turn it off» has none.
+        group {
+            show: remaining < 9999
+            box { from: cap.l, cap.t + 48; size: 268, 4; corner: 2; color: tk.s3 }
+            box { from: cap.l, cap.t + 48; size: max(4, 268 * clamp(haven.left / haven.total, 0, 1)), 4; corner: 2; color: tk.mint }
+        }
+        //  End now, soft red with its stop square, and Rules.
         prop end_haven.glow = 0 ~140ms
         prop rules.glow = 0 ~140ms
-        box { at: capsule.x - 52, capsule.y + 22; size: 96, 30; corner: 10; color: mix(#2a1b1b, #3a2424, end_haven.glow) }
-        box { at: capsule.x - 84, capsule.y + 22; size: 11, 11; corner: 3; color: #e0655a }
-        text "End" { family: "Geist"; at: capsule.x - 44, capsule.y + 22; anchor: center; size: 11.5; weight: 500; color: ink }
-        box { at: capsule.x + 52, capsule.y + 22; size: 96, 30; corner: 10; color: mix(#1b1b1c, #232425, rules.glow) }
-        text "View rules" { family: "Geist"; at: capsule.x + 52, capsule.y + 22; anchor: center; size: 11.5; color: #8b8f95 }
-        zone box end_haven { at: capsule.x - 52, capsule.y + 22; size: 96, 30; corner: 10; cursor: pointer; active: capsule > 0.8 }
-        zone box rules { at: capsule.x + 52, capsule.y + 22; size: 96, 30; corner: 10; cursor: pointer; active: capsule > 0.8 }
+        box { from: cap.l, cap.t + 64; size: 130, 32; corner: 10; color: mix(tk.red_soft, #42282a, end_haven.glow) }
+        box { at: cap.l + 36, cap.t + 80; size: 11, 11; corner: 3; color: #ffb3aa }
+        text "End now" { family: "Geist"; at: cap.l + 74, cap.t + 80; anchor: center; size: 13; weight: 600; color: #ffb3aa }
+        box { from: cap.l + 138, cap.t + 64; size: 130, 32; corner: 10; color: tk.s2; opacity: rules.glow }
+        text "Rules" { family: "Geist"; at: cap.l + 203, cap.t + 80; anchor: center; size: 13; weight: 600; color: mix(tk.ink2, tk.ink, rules.glow) }
+        zone box end_haven { from: cap.l, cap.t + 64; size: 130, 32; corner: 10; cursor: pointer; active: capsule > 0.8 }
+        zone box rules { from: cap.l + 138, cap.t + 64; size: 130, 32; corner: 10; cursor: pointer; active: capsule > 0.8 }
         on enter end_haven { end_haven.glow: 1 }
         on leave end_haven { end_haven.glow: 0 }
         on enter rules { rules.glow: 1 }
@@ -2331,17 +2485,44 @@ scene Etta {
         on press reel_b.2 while reel.kind == rk_photo { reel_open = false; emit shot_region }
     }
 
-    //  On coming back, a single summary. The normal drops stay hidden while it is
-    //  there: releasing the whole queue at once would be the opposite of what
-    //  the Haven came to do.
+    //  On coming back, a single line out of her: the drops of what was kept,
+    //  «Welcome back», how many arrived, and Show —the swell, with them—. The
+    //  normal drops stay hidden while it is there: releasing the whole queue
+    //  at once would be the opposite of what the Haven came to do.
     let summary.reveal = clamp(summary * 2 - 1, 0, 1)
+    let bk.l = summary.x - 150
+    //  Props, not lets: a `let` does not see the facts a `repeat` declares.
+    prop bk.k1 = 0 ~16ms
+    prop bk.k2 = 0 ~16ms
+    prop bk.k3 = 0 ~16ms
+    prop bk.k4 = 0 ~16ms
+    follow bk.k1 = if(kept.1 > 0, 1, 0)
+    follow bk.k2 = if(kept.2 > 0, 1, 0)
+    follow bk.k3 = if(kept.3 > 0, 1, 0)
+    follow bk.k4 = if(kept.4 > 0, 1, 0)
+    let bk.dots = bk.k1 + bk.k2 + bk.k3 + bk.k4
+    let bk.tx = bk.l + 16 + if(bk.dots > 0, bk.dots * 13 + 8, 0)
+    zone box back_area { at: summary.x, cy_actual; size: 300, 60; corner: 20; active: summary > 0.5 }
+    on enter back_area { back.hovered = true }
+    on leave back_area { back.hovered = false; back.clock: 0 ~16ms; back.clock: if(back.hovered, 0, 1) ~16ms after 2s }
     group {
         opacity: summary.reveal
         move: (1 - summary.reveal) * -10, 0
-        ellipse { at: summary.x - 78, cy_actual; radius: 8; color: blue }
-        text "{pending, 0} important updates" { family: "Geist"; at: summary.x - 62, cy_actual; anchor: left center; size: 11.5; color: ink }
-        path { at: summary.x + 86, cy_actual - 5; color: #8b8f95; stroke: 1.6; move 0, 0; line 5, 5; line 0, 10 }
+        //  One drop per category that kept something, in its colour.
+        let d1 = bk.l + 16 + 4.5
+        let d2 = d1 + 13 * bk.k1
+        let d3 = d2 + 13 * bk.k2
+        let d4 = d3 + 13 * bk.k3
+        ellipse { at: d1, cy_actual; radius: 4.5; color: blue; show: bk.k1 > 0.5 }
+        ellipse { at: d2, cy_actual; radius: 4.5; color: lilac; show: bk.k2 > 0.5 }
+        ellipse { at: d3, cy_actual; radius: 4.5; color: green; show: bk.k3 > 0.5 }
+        ellipse { at: d4, cy_actual; radius: 4.5; color: amber; show: bk.k4 > 0.5 }
+        text "Welcome back" { family: "Geist"; at: bk.tx, cy_actual - 9; anchor: left center; size: 15; weight: 600; color: tk.ink }
+        text pick(if(haven.kept < 0.5, 0, if(haven.kept < 1.5, 1, 2)), "Nothing arrived while you focused", "1 arrived while you focused", "{haven.kept, 0} arrived while you focused") { family: "Geist"; at: bk.tx, cy_actual + 10; anchor: left center; size: 12; weight: 500; width: 200; lines: 1; color: tk.ink3 }
+        group { move: bk.l + 300 - 12 - 64, cy_actual - 16; show: haven.kept > 0.5; Btn("Show", back_show, w: 64, h: 32, live: summary > 0.8) }
     }
+    event back_show
+    on back_show { back.open = false; filter = 0; emit open_tray }
 
     // ── the Haven's membrane ─────────────────────────────────────
     //  All of this lives INSIDE her silhouette: going into the Haven does not
@@ -2659,10 +2840,15 @@ scene Etta {
     follow clk.vis = if(not open and not tray_open and not searching and not menu_open and phase == 0 and capsule < 0.05 and reel < 0.05 and summary < 0.05 and not corner and not adventuring and not travelling and away < 0.5 and catch < 0.05, 1, 0)
     //  The card grows out of the pill: geometry first, then what is read; on
     //  closing what is read goes first. The same beats as her panels.
+    //  Every target says the truth, not a number: a delayed step is not
+    //  cancelled by a newer one, and its target is read when it lands. With
+    //  `1` written there, wanting it for less than 90 ms —her hover becoming a
+    //  click on her— left the reading switched on over a folded card, and it
+    //  showed, frameless, the moment the panel closed.
     prop clk.card = 0 ~290ms
     prop clk.inner = 0 ~200ms
-    on change notecard.wants while notecard.wants { clk.card: 1 ~290ms; clk.inner: 1 ~200ms after 90ms }
-    on change notecard.wants while not notecard.wants { clk.inner: 0 ~50ms; clk.card: 0 ~210ms after 30ms }
+    on change notecard.wants while notecard.wants { clk.card: if(notecard.wants, 1, 0) ~290ms; clk.inner: if(notecard.wants, 1, 0) ~200ms after 90ms }
+    on change notecard.wants while not notecard.wants { clk.inner: if(notecard.wants, 1, 0) ~50ms; clk.card: if(notecard.wants, 1, 0) ~210ms after 30ms }
 
     // ── what changed: the OSD ────────────────────────────────────
     //  Whatever changes it —a key, a slider, another program—, the clock
@@ -2753,76 +2939,80 @@ scene Etta {
             }
         }
 
-        //  The time card.
+        //  The time card, clipped to the card: whatever is read goes inside it
+        //  and never floats outside, whatever the springs are doing.
         group {
-            opacity: clk.inner
-            move: 0, (1 - clk.inner) * -4
-            let L = clk.x
-            //  Her sky, in a band of its own: the time is no longer written on
-            //  top of clouds and rain.
+            clip box { from: clk.x, 12; size: clk.w, clk.h; corner: 18 + 2 * clk.lift }
             group {
-                clip box { from: L + 12, 24; size: 316, 72; corner: 14 }
-                body {
-                    gradient: L + 12, 24 to L + 328, 96, mix(mix(mix(#141c33, #4f78a6, sky.day), #5a4a7a, clamp(sky.warm, 0, 1) * (1 - wx.gloom * 0.7)), #2a303a, wx.gloom), mix(mix(mix(#2a3555, #8fa3b5, sky.day), #c98a6a, clamp(sky.warm, 0, 1) * (1 - wx.gloom * 0.7)), #4a535f, wx.gloom)
-                    box { from: L + 12, 24; size: 316, 72 }
+                opacity: clk.inner
+                move: 0, (1 - clk.inner) * -4
+                let L = clk.x
+                //  Her sky, in a band of its own: the time is no longer written on
+                //  top of clouds and rain.
+                group {
+                    clip box { from: L + 12, 24; size: 316, 72; corner: 14 }
+                    body {
+                        gradient: L + 12, 24 to L + 328, 96, mix(mix(mix(#141c33, #4f78a6, sky.day), #5a4a7a, clamp(sky.warm, 0, 1) * (1 - wx.gloom * 0.7)), #2a303a, wx.gloom), mix(mix(mix(#2a3555, #8fa3b5, sky.day), #c98a6a, clamp(sky.warm, 0, 1) * (1 - wx.gloom * 0.7)), #4a535f, wx.gloom)
+                        box { from: L + 12, 24; size: 316, 72 }
+                    }
+                    group {
+                        glow: 8, 90%, #ffd36b
+                        ellipse { at: L + 300, 40; radius: 7; color: #ffd36b; show: sun.up > 0.5 }
+                    }
+                    ellipse { at: L + 300, 40; radius: 6.5; color: #e8ecf5; show: sun.up < 0.5 }
+                    ellipse { at: L + 303, 38; radius: 5.5; color: mix(#22304f, #2a303a, wx.gloom); show: sun.up < 0.5 }
+                    group {
+                        blur: 1.5
+                        opacity: if(wx.ok and wx.cloud > 0.2, 0.5, 0)
+                        ellipse { at: L + 286, 50; radius: 11; scale: 1.6, 0.7; color: #e6ecf2 }
+                        ellipse { at: L + 300, 46; radius: 9; scale: 1.4, 0.8; color: #e6ecf2 }
+                    }
+                    group {
+                        mask: L + 12, 60 to L + 250, 60
+                        box { from: L + 12, 24; size: 316, 72; color: #0a0c10; opacity: 55% }
+                    }
                 }
                 group {
-                    glow: 8, 90%, #ffd36b
-                    ellipse { at: L + 300, 40; radius: 7; color: #ffd36b; show: sun.up > 0.5 }
+                    show: wx.ok
+                    figure Kit.i_storm { at: L + 38, 60; size: 28, 28; color: tk.ink; show: wx.storm > 0.5 }
+                    figure Kit.i_snow { at: L + 38, 60; size: 28, 28; color: tk.ink; show: wx.storm < 0.5 and wx.snow > 0.05 }
+                    figure Kit.i_rain { at: L + 38, 60; size: 28, 28; color: tk.ink; show: wx.storm < 0.5 and wx.snow < 0.05 and wx.rain > 0.05 }
+                    figure Kit.i_fog { at: L + 38, 60; size: 28, 28; color: tk.ink; show: wx.storm < 0.5 and wx.snow < 0.05 and wx.rain < 0.05 and wx.fog > 0.5 }
+                    figure Kit.i_cloud { at: L + 38, 60; size: 28, 28; color: tk.ink; show: wx.storm < 0.5 and wx.snow < 0.05 and wx.rain < 0.05 and wx.fog < 0.5 and wx.cloud > 0.4 }
+                    figure Kit.i_sun { at: L + 38, 60; size: 28, 28; color: #ffd36b; show: wx.storm < 0.5 and wx.snow < 0.05 and wx.rain < 0.05 and wx.fog < 0.5 and wx.cloud < 0.4 and sky.day > 0.3 }
+                    figure Kit.i_moon { at: L + 38, 60; size: 26, 26; color: #e8ecf5; show: wx.storm < 0.5 and wx.snow < 0.05 and wx.rain < 0.05 and wx.fog < 0.5 and wx.cloud < 0.4 and sky.day <= 0.3 }
+                    text "{wx.temp, 0}°" { family: "Geist"; at: L + 62, 50; anchor: left center; size: 26; weight: 600; color: tk.ink }
+                    text wx.summary { family: "Geist"; at: L + 62, 76; anchor: left center; size: 13; weight: 500; width: 150; lines: 1; color: #e6ebe8 }
+                    text "H {wx.hi, 0}° · L {wx.lo, 0}°" { family: "Geist"; at: L + 314, 66; anchor: right center; size: 12; weight: 600; color: #e6ebe8 }
+                    text wx.place { family: "Geist"; at: L + 314, 84; anchor: right center; size: 12; weight: 500; width: 120; lines: 1; align: right; color: #cfd6d2 }
                 }
-                ellipse { at: L + 300, 40; radius: 6.5; color: #e8ecf5; show: sun.up < 0.5 }
-                ellipse { at: L + 303, 38; radius: 5.5; color: mix(#22304f, #2a303a, wx.gloom); show: sun.up < 0.5 }
-                group {
-                    blur: 1.5
-                    opacity: if(wx.ok and wx.cloud > 0.2, 0.5, 0)
-                    ellipse { at: L + 286, 50; radius: 11; scale: 1.6, 0.7; color: #e6ecf2 }
-                    ellipse { at: L + 300, 46; radius: 9; scale: 1.4, 0.8; color: #e6ecf2 }
-                }
-                group {
-                    mask: L + 12, 60 to L + 250, 60
-                    box { from: L + 12, 24; size: 316, 72; color: #0a0c10; opacity: 55% }
-                }
-            }
-            group {
-                show: wx.ok
-                figure Kit.i_storm { at: L + 38, 60; size: 28, 28; color: tk.ink; show: wx.storm > 0.5 }
-                figure Kit.i_snow { at: L + 38, 60; size: 28, 28; color: tk.ink; show: wx.storm < 0.5 and wx.snow > 0.05 }
-                figure Kit.i_rain { at: L + 38, 60; size: 28, 28; color: tk.ink; show: wx.storm < 0.5 and wx.snow < 0.05 and wx.rain > 0.05 }
-                figure Kit.i_fog { at: L + 38, 60; size: 28, 28; color: tk.ink; show: wx.storm < 0.5 and wx.snow < 0.05 and wx.rain < 0.05 and wx.fog > 0.5 }
-                figure Kit.i_cloud { at: L + 38, 60; size: 28, 28; color: tk.ink; show: wx.storm < 0.5 and wx.snow < 0.05 and wx.rain < 0.05 and wx.fog < 0.5 and wx.cloud > 0.4 }
-                figure Kit.i_sun { at: L + 38, 60; size: 28, 28; color: #ffd36b; show: wx.storm < 0.5 and wx.snow < 0.05 and wx.rain < 0.05 and wx.fog < 0.5 and wx.cloud < 0.4 and sky.day > 0.3 }
-                figure Kit.i_moon { at: L + 38, 60; size: 26, 26; color: #e8ecf5; show: wx.storm < 0.5 and wx.snow < 0.05 and wx.rain < 0.05 and wx.fog < 0.5 and wx.cloud < 0.4 and sky.day <= 0.3 }
-                text "{wx.temp, 0}°" { family: "Geist"; at: L + 62, 50; anchor: left center; size: 26; weight: 600; color: tk.ink }
-                text wx.summary { family: "Geist"; at: L + 62, 76; anchor: left center; size: 13; weight: 500; width: 150; lines: 1; color: #e6ebe8 }
-                text "H {wx.hi, 0}° · L {wx.lo, 0}°" { family: "Geist"; at: L + 314, 66; anchor: right center; size: 12; weight: 600; color: #e6ebe8 }
-                text wx.place { family: "Geist"; at: L + 314, 84; anchor: right center; size: 12; weight: 500; width: 120; lines: 1; align: right; color: #cfd6d2 }
-            }
-            text "Set your city in the calendar for her sky" { family: "Geist"; at: L + 170, 60; anchor: center; size: 13; weight: 500; color: #e6ebe8; show: not wx.ok }
+                text "Set your city in the calendar for her sky" { family: "Geist"; at: L + 170, 60; anchor: center; size: 13; weight: 500; color: #e6ebe8; show: not wx.ok }
 
-            //  The time, big, and its seconds beside it.
-            text now.time { family: "Geist"; at: L + 16, 134; anchor: left center; size: 44; weight: 500; color: tk.ink; measure: clk.big; show: clock24 }
-            text "{mod(now.hour + 11, 12) + 1, 0}:{floor(now.minute / 10), 0}{mod(now.minute, 10), 0}" { family: "Geist"; at: L + 16, 134; anchor: left center; size: 44; weight: 500; color: tk.ink; measure: clk.big12; show: not clock24 }
-            text ":{floor(tick.second / 10), 0}{mod(tick.second, 10), 0}" { family: "Geist"; at: L + 20 + if(clock24, clk.big.width, clk.big12.width), 140; anchor: left center; size: 20; weight: 500; color: tk.ink3; show: clock.secs }
-            text pick(if(now.hour < 12, 0, 1), "AM", "PM") { family: "Geist"; at: L + 324, 140; anchor: right center; size: 15; weight: 600; color: tk.ink3; show: not clock24 }
-            row {
-                at: L + 16, 172
-                anchor: left middle
-                gap: 0
-                text pick(now.weekday, "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday") { family: "Geist"; size: 15; weight: 600; color: tk.ink2 }
-                text ", {now.day, 0} " { family: "Geist"; size: 15; weight: 600; color: tk.ink2 }
-                text pick(now.month - 1, "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December") { family: "Geist"; size: 15; weight: 600; color: tk.ink2 }
+                //  The time, big, and its seconds beside it.
+                text now.time { family: "Geist"; at: L + 16, 134; anchor: left center; size: 44; weight: 500; color: tk.ink; measure: clk.big; show: clock24 }
+                text "{mod(now.hour + 11, 12) + 1, 0}:{floor(now.minute / 10), 0}{mod(now.minute, 10), 0}" { family: "Geist"; at: L + 16, 134; anchor: left center; size: 44; weight: 500; color: tk.ink; measure: clk.big12; show: not clock24 }
+                text ":{floor(tick.second / 10), 0}{mod(tick.second, 10), 0}" { family: "Geist"; at: L + 20 + if(clock24, clk.big.width, clk.big12.width), 140; anchor: left center; size: 20; weight: 500; color: tk.ink3; show: clock.secs }
+                text pick(if(now.hour < 12, 0, 1), "AM", "PM") { family: "Geist"; at: L + 324, 140; anchor: right center; size: 15; weight: 600; color: tk.ink3; show: not clock24 }
+                row {
+                    at: L + 16, 172
+                    anchor: left middle
+                    gap: 0
+                    text pick(now.weekday, "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday") { family: "Geist"; size: 15; weight: 600; color: tk.ink2 }
+                    text ", {now.day, 0} " { family: "Geist"; size: 15; weight: 600; color: tk.ink2 }
+                    text pick(now.month - 1, "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December") { family: "Geist"; size: 15; weight: 600; color: tk.ink2 }
+                }
+                box { from: L + 16, 196; size: 308, 1; color: tk.line; opacity: 8% }
+                figure Kit.i_calendar { at: L + 26, 220; size: 18, 18; color: tk.ink3 }
+                text next.event { family: "Geist"; at: L + 44, 220; anchor: left center; size: 14; width: 280; lines: 1; color: tk.ink }
+                group {
+                    show: bat.present
+                    figure Kit.i_battery { at: L + 26, 248; size: 18, 18; color: bat.tone }
+                    text "{bat.percent, 0}%" { family: "Geist"; at: L + 44, 248; anchor: left center; size: 14; weight: 600; color: bat.tone; measure: clk.pct2 }
+                    text bat.txt { family: "Geist"; at: L + 52 + clk.pct2.width, 248; anchor: left center; size: 14; width: 230; lines: 1; color: tk.ink2 }
+                }
+                text "Open the calendar" { family: "Geist"; at: L + 16, 284; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
+                figure Kit.i_chev_r { at: L + 322, 284; size: 14, 14; color: tk.ink3 }
             }
-            box { from: L + 16, 196; size: 308, 1; color: tk.line; opacity: 8% }
-            figure Kit.i_calendar { at: L + 26, 220; size: 18, 18; color: tk.ink3 }
-            text next.event { family: "Geist"; at: L + 44, 220; anchor: left center; size: 14; width: 280; lines: 1; color: tk.ink }
-            group {
-                show: bat.present
-                figure Kit.i_battery { at: L + 26, 248; size: 18, 18; color: bat.tone }
-                text "{bat.percent, 0}%" { family: "Geist"; at: L + 44, 248; anchor: left center; size: 14; weight: 600; color: bat.tone; measure: clk.pct2 }
-                text bat.txt { family: "Geist"; at: L + 52 + clk.pct2.width, 248; anchor: left center; size: 14; width: 230; lines: 1; color: tk.ink2 }
-            }
-            text "Open the calendar" { family: "Geist"; at: L + 16, 284; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
-            figure Kit.i_chev_r { at: L + 322, 284; size: 14, 14; color: tk.ink3 }
         }
 
         //  What changed, said: its name, where, how much.
@@ -3232,12 +3422,15 @@ scene Etta {
     //  It no longer closes on leaving: a card is closed with Esc, a click
     //  outside (the catcher) or its ×. Closing on leaving it took away the
     //  page you were reading as soon as the mouse went to write something.
-    zone box card_area { at: cx + card * 300, cy_actual + card.h / 2 - 8; size: 200 + card.w + 80, 2 * r + 30 + card.h; corner: 30; active: open }
+    //  And it is the card's size, no more: with no grace left to give, a wider
+    //  zone only ate the clicks just outside the card that were meant to
+    //  close it. Her body has its own zone.
+    zone box card_area { at: card.x, card.y; size: card.w, card.h; corner: card.corner; active: open }
 
 
     //  And the grace zone —her and the menu— goes BELOW the rows, like all the
     //  others: declared after, it kept their clicks. That makes five.
-    zone box menu_area { at: cx + 60, menu.cy; size: 300, menu.h + 90; corner: 24; active: menu > 0.01 }
+    zone box menu_area { at: menu.x, menu.cy; size: menu.w, menu.h; corner: 18; active: menu > 0.01 }
 
     // ── the notice that arrives while she sleeps ─────────────────
     //  The drop forms hanging from the top edge —from the same place she hangs
@@ -3471,64 +3664,121 @@ scene Etta {
 
     // ── what is seen of the finder ───────────────────────────────
     //  It goes here for the same reason as the menu: the card's clip is loose and
-    //  takes with it everything that comes after.
-    let bx0 = finder.x - 300
+    //  takes with it everything that comes after. `bx0, by0` is the panel's
+    //  top-left corner; inside, 14 of margin and 732 of width.
+    let bx0 = finder.x - finder.w / 2
     let by0 = finder.y - finder.h / 2
+    //  The body's height with nothing written: the suggested, the quick
+    //  actions and, if there are any, the recent files.
+    let finder.idle_h = if(recent.n > 0, 230 + recent.n * 56, 196)
 
-    //  A row. The logic brings the list, so it is a component: each copy with its
-    //  spring and its zone.
-    component ResultRow(h: record, pick: event, cue: number) {
-        size: 600, 44
+    //  A row. The logic brings the list, so it is a component: each copy with
+    //  its spring and its zone. Over the first of its section, the section's
+    //  name; the selected one is lit (the pointer selects too).
+    component ResultRow(h: record, cue: number) {
+        size: 732, if(h.big, 60, 52) + 30 * h.first
+        let top = 30 * h.first
+        let rh = if(h.big, 60, 52)
+        let mid = top + rh / 2
         prop glow = 0 ~140ms
+        follow glow = if(selected == h.index, 1, 0)
         //  Its turn: the top one comes in earlier, and the last one somewhat later.
         let arrive = clamp(cue * 8 - h.index, 0, 1)
-        //  Only with the finder open. Closed, these rows are still filled —«At
-        //  hand» is loaded on starting— and below the control center: a click on
-        //  a gap in the panel went through them and launched a terminal.
-        //  A file or a folder can be dragged out of her to any program —into a
-        //  browser to upload it, into a folder to copy it—: it carries its path.
-        zone box touch { from: 0, 0; size: 600, 44; corner: 12; cursor: pointer; active: searching; carries: "{h.path}" }
-        box { from: 0, 0; size: 600, 44; corner: 12; color: #23282b; opacity: glow * 70% * arrive }
+        text h.section { family: "Geist"; at: 8, 19; anchor: left center; size: 12; weight: 600; color: tk.ink3; show: h.first; opacity: arrive }
+        //  Only with the finder open: closed, the rows are still filled and lie
+        //  under the control center —a click on a gap in the panel went
+        //  through them and launched a terminal—. A file or a folder can be
+        //  dragged out of her to any program: it carries its path.
+        zone box touch { from: 0, top; size: 732, rh; corner: 12; cursor: pointer; active: searching; carries: "{h.path}" }
+        box { from: 0, top; size: 732, rh; corner: 12; color: tk.s2; opacity: glow * arrive }
+        box { from: 0, top; size: 732, rh; corner: 12; stroke: 1; color: tk.mint; opacity: glow * 35% * arrive }
         group {
             opacity: arrive
             move: (1 - arrive) * -14, 0
-                //  An image's `at` is its CORNER, not its centre —the opposite of
-            //  a box or a figure—, so centring it in a 44 row is (44 − 30) / 2.
-            //  Placed at the centre it came out 8 px too low.
-            image h.icon { at: 8, 7; size: 30, 30; show: h.glyph < 0.5 }
-            //  What is hers —a page, a trick of hers— is not an application:
-            //  it comes with a little her, with the face of what it does. Waves
-            //  for the agents' water, «^ ^» to celebrate, brows for the rage,
-            //  and her plain eyes for the rest. Under the mouse she hops a
-            //  little and looks at what is written.
+            //  Its picture, in a 34 square: the application's own icon, or a
+            //  sign on her colours. An image's `at` is its corner.
+            image h.icon { at: 12, mid - 17; size: 34, 34; show: h.glyph < 0.5 }
+            box { from: 12, mid - 17; size: 34, 34; corner: 9; color: if(h.glyph == 9, tk.mint, tk.s2); show: h.glyph > 0.5 }
+            figure Kit.i_window { at: 29, mid; size: 18, 18; color: tk.ink; show: h.glyph == 5 }
+            figure Kit.i_file { at: 29, mid; size: 18, 18; color: tk.ink2; show: h.glyph == 6 }
+            figure Kit.i_folder { at: 29, mid; size: 18, 18; color: tk.sand; show: h.glyph == 7 }
+            text "=" { family: "Geist"; at: 29, mid - 1; anchor: center; size: 22; weight: 700; color: tk.mint_ink; show: h.glyph == 9 }
+            //  What is hers —a page, a trick of hers— is not an application: it
+            //  comes with a little her, with the face of what it does. Waves for
+            //  the agents' water, «^ ^» to celebrate, brows for the rage, and her
+            //  plain eyes for the rest. Under the mouse she hops a little.
             group {
-                show: h.glyph > 0.5
-                move: 0, -2.5 * glow
-                ellipse { at: 23, 22; radius: 14; color: #2b2f33 }
-                ellipse { at: 23, 22; radius: 13.4; stroke: 1.2; color: #ffffff; opacity: 16% + glow * 14% }
-                box { at: 19 + 1.5 * glow, 22; size: 3.4, 6.6; corner: 1.7; color: #f5f7f5; show: h.glyph == 1 or h.glyph == 3 }
-                box { at: 27 + 1.5 * glow, 22; size: 3.4, 6.6; corner: 1.7; color: #f5f7f5; show: h.glyph == 1 or h.glyph == 3 }
-                arc { at: 19, 23.5; radius: 2.8; span: 170deg; width: 1.8; color: #f5f7f5; show: h.glyph == 2 }
-                arc { at: 27, 23.5; radius: 2.8; span: 170deg; width: 1.8; color: #f5f7f5; show: h.glyph == 2 }
+                show: h.glyph > 0.5 and h.glyph < 4.5
+                move: 6, mid - 22 - 2.5 * glow
+                ellipse { at: 23, 22; radius: 13; color: #2b2f33 }
+                ellipse { at: 23, 22; radius: 12.4; stroke: 1.2; color: #ffffff; opacity: 16% + glow * 14% }
+                box { at: 19 + 1.5 * glow, 22; size: 3.2, 6.2; corner: 1.6; color: #f5f7f5; show: h.glyph == 1 or h.glyph == 3 }
+                box { at: 27 + 1.5 * glow, 22; size: 3.2, 6.2; corner: 1.6; color: #f5f7f5; show: h.glyph == 1 or h.glyph == 3 }
+                arc { at: 19, 23.5; radius: 2.6; span: 170deg; width: 1.8; color: #f5f7f5; show: h.glyph == 2 }
+                arc { at: 27, 23.5; radius: 2.6; span: 170deg; width: 1.8; color: #f5f7f5; show: h.glyph == 2 }
                 line { from: 16.5, 16.5; to: 21, 18.5; width: 1.6; color: #f5f7f5; show: h.glyph == 3 }
                 line { from: 29.5, 16.5; to: 25, 18.5; width: 1.6; color: #f5f7f5; show: h.glyph == 3 }
-                repeat e in 0..2 {
-                    arc { at: 17.6 + e * 8, 23; radius: 1.7; span: 170deg; width: 1.5; color: #9ed6bd; show: h.glyph == 4 }
-                    arc { at: 21 + e * 8, 21.4; radius: 1.7; span: 170deg; width: 1.5; rotate: 180deg; color: #9ed6bd; show: h.glyph == 4 }
-                }
+                arc { at: 17.6, 23; radius: 1.6; span: 170deg; width: 1.4; color: #9ed6bd; show: h.glyph == 4 }
+                arc { at: 21, 21.4; radius: 1.6; span: 170deg; width: 1.4; rotate: 180deg; color: #9ed6bd; show: h.glyph == 4 }
+                arc { at: 25.6, 23; radius: 1.6; span: 170deg; width: 1.4; color: #9ed6bd; show: h.glyph == 4 }
+                arc { at: 29, 21.4; radius: 1.6; span: 170deg; width: 1.4; rotate: 180deg; color: #9ed6bd; show: h.glyph == 4 }
             }
-            text h.name { family: "Geist"; at: 48, 22; anchor: left center; size: 14; width: 400; lines: 1
-                            color: mix(#dfe1e3, #f6f6f5, glow) }
-            text h.kind_label { family: "Geist"; at: 592, 22; anchor: right center; size: 11.5; color: #8b8f95 }
+            //  Its name and what it is; the sum, big, with how to take it.
+            text h.name { family: "Geist"; at: 58, mid - 9; anchor: left center; size: 15; weight: 500; width: 440; lines: 1; color: tk.ink; show: not h.big }
+            text h.sub { family: "Geist"; at: 58, mid + 10; anchor: left center; size: 12; weight: 500; width: 440; lines: 1; color: tk.ink3; show: not h.big }
+            text h.name { family: "Geist"; at: 58, mid; anchor: left center; size: 28; weight: 600; width: 520; lines: 1; color: tk.ink; show: h.big }
+            text h.sub { family: "Geist"; at: 716, mid; anchor: right center; size: 12; weight: 500; color: tk.ink3; show: h.big }
+            group { show: h.kw > 0 and not h.big; move: 732 - 12 - 66 - 8 - h.kw, mid - 11; Kbd(h.key, w: h.kw) }
+            group { show: not h.big; move: 732 - 12 - 66, mid - 11; Tag(h.kind_label, w: 66) }
         }
-        on enter touch { glow: 1 }
-        on leave touch { glow: 0 }
+        on enter touch { selected = h.index }
         //  On letting go, not on pressing: a press may be the start of dragging
         //  it out, and then it is not opened.
-        on release touch { emit pick(h.index) }
+        on release touch { emit open_result(h.index) }
         //  Dragged out, the finder goes: what it is let go on is what is
         //  underneath, not her catcher.
         on carry touch { searching = false }
+    }
+
+    //  With nothing written, the suggested: a grid of six (it draws all six
+    //  places, so the empty ones say so).
+    component FinderTile(a: record) {
+        size: 118, 96
+        group {
+            show: a.index < suggested.count
+            zone box touch { from: 0, 0; size: 118, 96; corner: 14; cursor: pointer; active: searching and not typing }
+            box { from: 0, 0; size: 118, 96; corner: 14; color: tk.s2; opacity: touch.hover }
+            image a.icon { at: 37, 14; size: 44, 44; show: a.glyph < 0.5 }
+            group {
+                show: a.glyph > 0.5
+                box { from: 37, 14; size: 44, 44; corner: 12; color: tk.sand }
+                figure Kit.i_settings { at: 59, 36; size: 22, 22; color: #101112 }
+            }
+            text a.name { family: "Geist"; at: 59, 76; anchor: center; size: 13; weight: 500; width: 108; lines: 1; align: center; color: tk.ink }
+            on press touch { emit open_suggested(a.index) }
+        }
+    }
+    //  A quick action: a word and the key it already has.
+    component QuickChip(label: text, press: event, w: number, kbd: text = "", kw: number = 0) {
+        size: w, 34
+        zone box touch { from: 0, 0; size: w, 34; corner: 17; cursor: pointer; active: searching and not typing }
+        box { from: 0, 0; size: w, 34; corner: 17; color: mix(tk.s1, tk.s2, touch.hover) }
+        box { from: 0, 0; size: w, 34; corner: 17; stroke: 1; color: tk.line; opacity: 7% }
+        text label { family: "Geist"; at: 14, 17; anchor: left center; size: 14; weight: 500; color: mix(tk.ink2, tk.ink, touch.hover) }
+        group { show: kw > 0; move: w - 10 - kw, 6; Kbd(kbd, w: kw) }
+        on press touch { emit press }
+    }
+    //  A file used lately: its name, where it is, and when.
+    component RecentRow(r: record) {
+        size: 732, 52
+        zone box touch { from: 0, 0; size: 732, 52; corner: 12; cursor: pointer; active: searching and not typing }
+        box { from: 0, 0; size: 732, 52; corner: 12; color: tk.s2; opacity: touch.hover }
+        box { from: 12, 9; size: 34, 34; corner: 9; color: tk.s2 }
+        figure Kit.i_file { at: 29, 26; size: 16, 16; color: tk.ink2 }
+        text r.name { family: "Geist"; at: 58, 17; anchor: left center; size: 14; weight: 500; width: 520; lines: 1; color: tk.ink }
+        text r.path { family: "Geist Mono"; at: 58, 35; anchor: left center; size: 12; weight: 500; width: 520; lines: 1; color: tk.ink3 }
+        text r.when { family: "Geist"; at: 720, 26; anchor: right center; size: 12; weight: 500; color: tk.ink3 }
+        on press touch { emit open_recent(r.index) }
     }
 
     // ── the shots ────────────────────────────────────────────────
@@ -3682,120 +3932,115 @@ scene Etta {
     //  surface, which is what happened right after writing it. A clip ends where
     //  its group ends, and that is what is wanted here.
     group {
-    clip inset 2 box { at: finder.x, finder.y; size: finder.w, finder.h; corner: 22 * finder }
+    clip inset 2 box { at: finder.x, finder.y; size: finder.w, finder.h; corner: 24 * finder }
     group {
         opacity: finder_content
         move: 0, (1 - finder_content) * 10
-        text "MAREA" { family: "Geist"; at: bx0, by0 + 22; anchor: left center; size: 9; weight: 600; color: mint; opacity: 80% }
-        //  The field's magnifying glass: the same one she wears on her face.
-        arc { at: bx0 + 14, by0 + 54; radius: 8; span: 360deg; width: 2.2; color: ink; opacity: 75% }
-        line { from: bx0 + 20, by0 + 60; to: bx0 + 26, by0 + 66; width: 2.4; color: ink; opacity: 75% }
-        input query { family: "Geist"; at: bx0 + 40, by0 + 54; width: 470; size: 21; color: ink
-                         placeholder: "What do you want to find?"; selection: #2f5f52 }
-        box { at: bx0 + 570, by0 + 54; size: 44, 26; corner: 8; color: #202021 }
-        text "Esc" { family: "Geist"; at: bx0 + 570, by0 + 54; anchor: center; size: 11.5; color: #8b8f95 }
-        text "Apps, windows, files and folders" { family: "Geist"; at: bx0 + 40, by0 + 86; anchor: left center; size: 11.5; color: #8b8f95 }
-        line { from: bx0, by0 + 108; to: bx0 + 600, by0 + 108; width: 1; color: ink; opacity: 10% }
-        text "At hand" { family: "Geist"; at: bx0 + 8, by0 + 126; anchor: left center; size: 11; weight: 600; color: #8b8f95
-                        show: not typing }
-        text "Results" { family: "Geist"; at: bx0 + 8, by0 + 126; anchor: left center; size: 11; weight: 600; color: #8b8f95
-                            show: typing }
-        //  The selection is ONE single one that travels between rows with its
-        //  spring, not one per row lighting up and going out. It is what makes
-        //  choosing with the arrows read as moving something and not as blinking.
-        box { at: finder.x - 2, sel_y; size: 600, 44; corner: 12; color: mint; opacity: 16% * clamp(results.count, 0, 1) }
-        box { at: bx0 + 2, sel_y; size: 3, 24; corner: 1.5; color: mint; opacity: clamp(results.count, 0, 1) }
-        column result_list {
-            at: bx0, by0 + 140
-            gap: 2
-            for h in results { ResultRow(h, pick: open_result, cue: stagger) }
+        //  The field, starting clear of her, and Esc at the other end.
+        input query { family: "Geist"; at: bx0 + 64, by0 + 38; width: 600; size: 24; color: tk.ink
+                      placeholder: "Search apps, windows, files and actions"; selection: #2f5f52 }
+        group { move: bx0 + 760 - 18 - 40, by0 + 27; Kbd("Esc", w: 40) }
+        box { from: bx0, by0 + 76; size: 760, 1; color: #ffffff; opacity: 7% }
+
+        //  Nothing written: what is usually wanted, at hand.
+        group {
+            show: not typing
+            let iy = by0 + 88
+            text "SUGGESTED" { family: "Geist"; at: bx0 + 22, iy + 12; anchor: left center; size: 12; weight: 600; color: tk.ink3 }
+            grid {
+                at: bx0 + 14, iy + 28; columns: 6; gap: 4; width: 732; row: 96
+                for a in suggested { FinderTile(a) }
+            }
+            text "QUICK ACTIONS" { family: "Geist"; at: bx0 + 22, iy + 150; anchor: left center; size: 12; weight: 600; color: tk.ink3 }
+            group { move: bx0 + 20, iy + 162; QuickChip("Lock", quick_lock, 174, kbd: "Super Shift L", kw: 108) }
+            group { move: bx0 + 202, iy + 162; QuickChip("Capture", quick_shot, 196, kbd: "Super Shift S", kw: 108) }
+            group { move: bx0 + 406, iy + 162; QuickChip("Record", quick_record, 192, kbd: "Super Shift V", kw: 108) }
+            group { move: bx0 + 606, iy + 162; QuickChip("Do not disturb", quick_dnd, 128) }
+            group {
+                show: recent.n > 0
+                text "RECENT FILES" { family: "Geist"; at: bx0 + 22, iy + 222; anchor: left center; size: 12; weight: 600; color: tk.ink3 }
+                column recent_list {
+                    at: bx0 + 14, iy + 234
+                    gap: 4
+                    for r in recent { RecentRow(r) }
+                }
+            }
         }
-        text "↑↓ choose · Enter open" { family: "Geist"; at: finder.x, by0 + finder_h - 20; anchor: center; size: 11; color: #8b8f95; opacity: 70% }
-        text "Nothing here" { family: "Geist"; at: finder.x, by0 + 164; anchor: center; size: 12.5; color: #8b8f95
-                               show: results.count < 1 }
+        //  Written: what is found, by section; or, if nothing, said so.
+        column result_list {
+            at: bx0 + 14, by0 + 88
+            gap: 4
+            for h in results { ResultRow(h, cue: stagger) }
+        }
+        group {
+            show: typing and results.count < 1
+            text "Nothing for “{query}”" { family: "Geist"; at: finder.x, by0 + 126; anchor: center; size: 15; weight: 600; width: 640; lines: 1; align: center; color: tk.ink }
+            text "Try part of the name, or a folder you remember" { family: "Geist"; at: finder.x, by0 + 148; anchor: center; size: 12; weight: 500; color: tk.ink3 }
+        }
+
+        //  The keys, at the foot, and what just happened at the other end.
+        let fy = by0 + finder.h - 22
+        box { from: bx0, by0 + finder.h - 44; size: 760, 1; color: #ffffff; opacity: 7% }
+        group { move: bx0 + 20, fy - 11; Kbd("↑", w: 22) }
+        group { move: bx0 + 46, fy - 11; Kbd("↓", w: 22) }
+        text "Move" { family: "Geist"; at: bx0 + 74, fy; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
+        group { move: bx0 + 124, fy - 11; Kbd("Enter", w: 50) }
+        text "Open" { family: "Geist"; at: bx0 + 180, fy; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
+        group { move: bx0 + 230, fy - 11; Kbd("Ctrl Enter", w: 84) }
+        text "Open its folder" { family: "Geist"; at: bx0 + 320, fy; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
+        group { move: bx0 + 434, fy - 11; Kbd("Tab", w: 38) }
+        text "Next group" { family: "Geist"; at: bx0 + 478, fy; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
+        text finder.status { family: "Geist"; at: bx0 + 740, fy; anchor: right center; size: 12; weight: 500; width: 160; lines: 1; align: right; color: tk.mint }
     }
     }
 
     // ── what is seen of her menu ─────────────────────────────────
-    //  The drawing goes here and the zones at the very end, and it is not a
-    //  whim: the card's clip is loose and takes with it everything that comes
-    //  after up to the next named surface, so a menu written further down came
-    //  out clipped to a closed card —that is, it did not come out—.
-    //  An add-on's entry. It is a piece and not six copies written by hand
-    //  because the logic brings the list: each copy has its spring and its zone,
-    //  and the row pointed at with the keyboard is passed in from outside.
-    component MenuRow(e: record, marked: number, pick: event) {
-        size: 155, 23 + e.first * 16
+    //  The drawing goes here, after the card's loose clip has ended, and the
+    //  rows are pieces: each copy has its own zone and its own glow (a `$`
+    //  name inside a piece would be shared by all twelve).
+    //  A row: its icon (inside), its word, and at the right its key or its
+    //  little switch. `k` is its place, for the arrows; `kw` the key's width
+    //  (0, none); `sw` whether it is a switch and `on` whether it is on.
+    component MenuItem(label: text, k: number, press: event, kbd: text = "", kw: number = 0, sw: number = 0, on: number = 0) {
+        size: 288, 40
         prop glow = 0 ~110ms
-        let fy = e.first * 16
-        let is_marked = if(marked == e.index, 1, 0)
-        //  The name of whoever brings it, only above the first of its group.
-        text e.group_name { family: "Geist"; at: 8, 8; anchor: left center; size: 9.5; weight: 600; color: #6f7378
-                       width: 139; lines: 1; show: e.first }
-        //  At rest the row has no background: the box's is hers, since the box is
-        //  hers. The only thing painted is what is pointed at.
-        box { from: 0, fy; size: 155, 23; corner: 7; color: #23282b; opacity: glow }
-        //  The pointer's highlight is filled; the keyboard's is an outline. They
-        //  are two different things and that is why they look different.
-        box { from: 0, fy; size: 155, 23; corner: 7; stroke: 1; color: mint; opacity: is_marked * (1 - glow) }
-        //  Without an icon catalogue, an entry's glyph is its little square.
-        box { at: 13, fy + 11.5; size: 9, 9; corner: 2.5; stroke: 1.4; color: mix(#8b8f95, #f6f6f5, glow) }
-        text e.title { family: "Geist"; at: 26, fy + 11.5; anchor: left center; size: 12; width: 122; lines: 1
-                        color: mix(#dfe1e3, #f6f6f5, glow) }
-        zone box touch { from: 0, fy; size: 155, 23; corner: 7; cursor: pointer }
-        on enter touch { glow: 1 }
-        on leave touch { glow: 0 }
-        on press touch { emit pick(e.index) }
+        follow glow = if(menu_selected == k, 1, 0)
+        prop pos = 0 ~200ms
+        follow pos = on
+        zone box touch { from: 0, 0; size: 288, 40; corner: 10; cursor: pointer; active: menu > 0.9 }
+        box { from: 0, 0; size: 288, 40; corner: 10; color: tk.s2; opacity: glow }
+        children { move: 20, 20 }
+        text label { family: "Geist"; at: 42, 20; anchor: left center; size: 14; weight: 400; width: 190; lines: 1; color: tk.ink }
+        group { show: kw > 0; move: 278 - kw, 9; Kbd(kbd, w: kw) }
+        group {
+            show: sw > 0.5
+            box { from: 236, 10; size: 32, 20; corner: 10; color: mix(tk.s3, tk.mint, pos) }
+            ellipse { at: 246 + 12 * pos, 20; radius: 7; color: #f4f4f2 }
+        }
+        on enter touch { menu_selected = k }
+        on press touch { emit press }
     }
 
     group {
         opacity: clamp(menu * 4 - 3, 0, 1)
         move: (1 - menu) * -13, 0
-        let mx0 = menu.x - menu.w / 2 + 4
-        //  The two house ones. They are written out and not in the model because
-        //  they are hers: an add-on cannot add or remove Settings.
-        repeat m in 0..4 {
-            prop own.$m = 0 ~110ms
-            box { at: menu.x, menu.y0 + 15.5 + m * 23; size: 155, 23; corner: 7
-                  color: #23282b; opacity: own.$m }
-            box { at: menu.x, menu.y0 + 15.5 + m * 23; size: 155, 23; corner: 7; stroke: 1; color: mint
-                  opacity: if(menu_selected == m, 1, 0) * (1 - own.$m) }
-        }
-        let ry.search = menu.y0 + 15.5
-        let ry.settings = menu.y0 + 38.5
-        let ry.custom = menu.y0 + 61.5
-        let ry.sleep = menu.y0 + 84.5
-        //  Search goes first because it is what is done most. And its icon is the
-        //  magnifying glass, the same one that appears on her face.
-        arc { at: mx0 + 12, ry.search - 1; radius: 4.6; span: 360deg; width: 1.5; color: mix(#8b8f95, #f6f6f5, own.0) }
-        line { from: mx0 + 15, ry.search + 2; to: mx0 + 18, ry.search + 5; width: 1.6; color: mix(#8b8f95, #f6f6f5, own.0) }
-        text "Search…" { family: "Geist"; at: mx0 + 26, ry.search; anchor: left center; size: 12; color: mix(#dfe1e3, #f6f6f5, own.0) }
-        //  The Settings gear, the same one as in the panel's header.
-        arc { at: mx0 + 13, ry.settings; radius: 5; span: 300deg; width: 1.4; color: mix(#8b8f95, #f6f6f5, own.1) }
-        ellipse { at: mx0 + 13, ry.settings; radius: 1.9; color: mix(#8b8f95, #f6f6f5, own.1) }
-        text "Settings" { family: "Geist"; at: mx0 + 26, ry.settings; anchor: left center; size: 12; color: mix(#dfe1e3, #f6f6f5, own.1) }
-        //  And Customize's sparkle: a four-pointed star, which is a square whose
-        //  sides have been eaten away.
-        path { at: mx0 + 13, ry.custom; color: mix(#8b8f95, #f6f6f5, own.2)
-               move 0, -5.5; curve 5.5, 0 via 1.2, -1.2; curve 0, 5.5 via 1.2, 1.2
-               curve -5.5, 0 via -1.2, 1.2; curve 0, -5.5 via -1.2, -1.2; close }
-        text "Customize" { family: "Geist"; at: mx0 + 26, ry.custom; anchor: left center; size: 12; color: mix(#dfe1e3, #f6f6f5, own.2) }
-        //  And the third house one: sleep. In Marea these are the control
-        //  center's «zZ»; here the center is the sheet's —three cards, and none of
-        //  them is this one—, so it goes with hers, which is where the things
-        //  SHE does are.
-        text "z" { family: "Geist"; at: mx0 + 10, ry.sleep - 3; anchor: center; size: 9; weight: 600
-                   color: mix(#8b8f95, #f6f6f5, own.3) }
-        text "z" { family: "Geist"; at: mx0 + 16, ry.sleep + 3; anchor: center; size: 12; weight: 600
-                   color: mix(#8b8f95, #f6f6f5, own.3) }
-        text "Sleep" { family: "Geist"; at: mx0 + 26, ry.sleep; anchor: left center; size: 12; color: mix(#dfe1e3, #f6f6f5, own.3) }
-        //  The line, and below it the add-ons' stuff.
-        line { from: mx0 + 8, menu.y0 + 99; to: mx0 + 147, menu.y0 + 99; width: 1; color: #1f2226 }
-        column menu_col {
-            at: mx0, menu.y0 + 102
-            gap: 0
-            for e in entries { MenuRow(e, marked: menu_selected - 4, pick: menu_entry) }
-        }
+        let mx = menu.x - menu.w / 2 + 6
+        let my = menu.top + 6
+        group { move: mx, my; MenuItem("Search…", 0, search, kbd: "Super Space", kw: 96) { figure Kit.i_search { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+        group { move: mx, my + 41; MenuItem("Capture", 1, shot_region, kbd: "Super Shift S", kw: 108) { figure Kit.i_capture { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+        group { move: mx, my + 82; MenuItem("Record the screen", 2, menu_record, kbd: "Super Shift V", kw: 108) { figure Kit.i_record { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+        box { from: mx + 8, my + 128; size: 272, 1; color: tk.line; opacity: 7% }
+        group { move: mx, my + 135; MenuItem("Do not disturb", 3, tap_dnd, sw: 1, on: if(haven, 1, 0)) { figure Kit.i_moon { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+        group { move: mx, my + 176; MenuItem("Keep awake", 4, tap_awake, sw: 1, on: if(awake_on, 1, 0)) { figure Kit.i_coffee { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+        box { from: mx + 8, my + 222; size: 272, 1; color: tk.line; opacity: 7% }
+        group { move: mx, my + 229; MenuItem("Deriva, her library", 5, show_drift) { figure Kit.i_inbox { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+        group { move: mx, my + 270; MenuItem("Keep what I copy", 6, flip_clip, sw: 1, on: if(clip.keep, 1, 0)) { figure Kit.i_copy { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+        group { move: mx, my + 311; MenuItem("Notification history", 7, show_history) { figure Kit.i_history { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+        box { from: mx + 8, my + 357; size: 272, 1; color: tk.line; opacity: 7% }
+        group { move: mx, my + 364; MenuItem("Wardrobe", 8, menu_wardrobe) { figure Kit.i_shirt { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+        group { move: mx, my + 405; MenuItem("Wallpaper", 9, show_walls) { figure Kit.i_image { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+        group { move: mx, my + 446; MenuItem("Settings", 10, settings) { figure Kit.i_settings { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+        group { move: mx, my + 487; MenuItem("Sleep", 11, menu_sleep) { figure Kit.i_sleep { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
     }
 
     // ── the card ─────────────────────────────────────────────────
@@ -3977,6 +4222,14 @@ scene Etta {
     fact wall.intensity = 0.667
     fact wall.animated = false
     text wall.status = ""
+    //  Where the grid is in the whole list, for its «1–6 of 7»: the first
+    //  shown (from 0) and how many there are. The grid shows six.
+    fact wall.at = 0
+    fact wall.total = 0
+    event walls_prev
+    event walls_next
+    on walls_prev { emit walls_scroll(1) }
+    on walls_next { emit walls_scroll(-1) }
     event pick_base
     event pick_accent
     event set_wall_intensity
@@ -4088,9 +4341,8 @@ scene Etta {
     on go_wardrobe { emit customize; page = wardrobe }
     on systray_menu(i) { page = systray; tray.sel = i }
     on change page while page != systray { tray.sel = -1 }
-    //  Esc steps back one, and from the overview it closes.
-    on key Escape while open and page == none and not searching { open = false }
-    on key Escape while open and page != none and asking < 0 and not sky.editing { emit go_back }
+    //  Esc does not step back here: it closes the card from any page (further
+    //  down, with her menu's keys). Stepping back is the ‹ in the header.
 
     // ── the quick settings ───────────────────────────────────────
     on tap_wifi { emit flip(1) }
@@ -4098,7 +4350,7 @@ scene Etta {
     on tap_dnd while haven { emit leave_haven }
     on tap_dnd while not haven { remaining = pick(focus.dur, 25, 45, 60, 100000); emit enter_haven }
     on pick_dur(i) { focus.dur = i }
-    on pick_dur(i) while haven { remaining = pick(i, 25, 45, 60, 100000) }
+    on pick_dur(i) while haven { remaining = pick(i, 25, 45, 60, 100000); haven.left = pick(i, 25, 45, 60, 100000) * 60; haven.total = pick(i, 25, 45, 60, 100000) * 60 }
     on pick_snooze(i) { snooze_k = i }
     on scan_wifi { emit scan(1) }
     on submit wifi_pw { emit join }
@@ -4216,10 +4468,13 @@ scene Etta {
     //  closing, the other way round: 50 ms of fade and then 210 of folding away,
     //  which is what makes it look like she swallows it and not like it switches
     //  off.
+    //  The delayed steps read the truth when they land (`if(open, …)`): a
+    //  delayed step is never cancelled, and with a `1` written there an open
+    //  and close inside 90 ms left the content on over a folded card.
     on change open while open {
         offset: 1 ~290ms
         card: 1 ~290ms
-        content: 1 ~200ms after 90ms
+        content: if(open, 1, 0) ~200ms after 90ms
     }
     //  Closing is three beats, and that is the whole trick: **they do not happen
     //  at the same time**. What is read switches off (50 ms), she drinks it —the
@@ -4234,7 +4489,7 @@ scene Etta {
     //  alone fading out in a corner.
     on change open while not open {
         content: 0 ~50ms
-        card: 0 ~210ms after 30ms
+        card: if(open, 1, 0) ~210ms after 30ms
     }
 
     // ── one thing of hers out, and only one ──────────────────────
@@ -4273,7 +4528,7 @@ scene Etta {
     //  once, because it is the same movement. And on closing, the usual order
     //  —first what is read, then the geometry— and she comes back afterwards,
     //  with her spring.
-    on search { searching = true }
+    on search while not locked { searching = true }
     on change searching while searching {
         open = false
         menu_open = false
@@ -4285,21 +4540,42 @@ scene Etta {
         offset: 1 ~290ms
         magnifier: 1 ~320ms
         finder: 1 ~290ms
-        finder_content: 1 ~200ms after 90ms
+        finder_content: if(searching, 1, 0) ~200ms after 90ms
         focus query
     }
     on change searching while not searching {
         finder_content: 0 ~50ms
-        finder: 0 ~210ms after 30ms
-        magnifier: 0 ~280ms after 60ms
+        finder: if(searching, 1, 0) ~210ms after 30ms
+        magnifier: if(searching, 1, 0) ~280ms after 60ms
         blur
     }
     on key Escape while searching { searching = false }
     //  The arrows choose and Enter opens. The logic sorts the list; here it is
-    //  only said which one is pointed at.
+    //  only said which one is pointed at. Enter goes to the logic, which closes
+    //  the finder —except for a sum, which is copied and stays saying so—.
     on key Down while searching { selected = min(selected + 1, max(results.count - 1, 0)) }
     on key Up while searching { selected = max(selected - 1, 0) }
-    on submit query { emit open_result(selected); searching = false }
+    on submit query { emit open_result(selected) }
+    //  Tab: to the next section's first row (the logic knows where they start).
+    on key Tab while searching and typing { emit finder_tab }
+    //  Ctrl + Enter opens a file's folder. The field takes Enter whatever is
+    //  held, so a Ctrl pressed a moment before is what says it: it is
+    //  forgotten a second later. (The press can come before or after the
+    //  compositor says Ctrl is down: both names.)
+    on key Control_L while searching { finder.ctrl = true }
+    on key Control_R while searching { finder.ctrl = true }
+    on key Ctrl+Control_L while searching { finder.ctrl = true }
+    on key Ctrl+Control_R while searching { finder.ctrl = true }
+    on still finder.ctrl for 1s while finder.ctrl { finder.ctrl = false }
+    //  The quick actions of the empty finder.
+    event quick_lock
+    event quick_shot
+    event quick_record
+    event quick_dnd
+    on quick_lock { searching = false; emit lock }
+    on quick_shot { emit shot_region }
+    on quick_record { searching = false; emit record_toggle }
+    on quick_dnd { searching = false; emit tap_dnd }
     //  «Opens»: the sheet draws her with happy eyes. A short wink and a jump, and
     //  back to her business: what she celebrates is having found it, not herself.
     gesture happy reflex {
@@ -4307,12 +4583,11 @@ scene Etta {
         220ms out_back { eyes: 6.5; sx: 0.97; sy: 1.05; body.y: -3.2 }
         240ms          { eyes: 8 }
     }
-    on open_result { searching = false; play happy }
-    //  The height follows what the list takes up, and the selection travels to
-    //  its row. Both things with a spring, so typing moves the panel and the
-    //  arrows move the mark, without anyone rearranging them.
-    follow finder_h = 176 + result_list.height
-    follow sel_y = by0 + 140 + selected * 46 + 22
+    on open_result { play happy }
+    //  The height follows what it holds —the field and the foot, 76 + 44, and
+    //  12 above and below the body—, with a spring, so typing moves the panel
+    //  without anyone rearranging it. Never more than 640.
+    follow finder_h = 144 + if(not typing, finder.idle_h, if(results.count > 0, min(result_list.height, 496), 96))
 
     // ── the level ────────────────────────────────────────────────
     //  It fires with whatever changes the volume, wherever it comes from. And it
@@ -4327,19 +4602,19 @@ scene Etta {
     //  in the other.
     //  In the Haven it is kept and that is it: no card, no jump, no opening.
     //  Only her pearl grows under the waterline.
-    on notice while haven or hush { seq = seq + 1; emit direct }
+    on notice while (haven and not through) or hush { seq = seq + 1; emit direct }
     //  Asleep: no card, no jump, no opening. The drop forms, falls, and she
     //  opens one eye. What raises the count is the `direct` afterwards, on sinking
     //  in: the drop **is** the notice arriving, so the count goes up when it goes
     //  in and not when someone sends it.
-    on notice while asleep and not haven and not hush { reading_cat = cat; seq = seq + 1; play trickle }
+    on notice while asleep and (not haven or through) and not hush { reading_cat = cat; seq = seq + 1; play trickle }
     //  And an urgent one does wake her, and opens the tray. It is the only thing
     //  allowed to do it.
     on urge while asleep { asleep = false }
-    on notice while not haven and not hush and not asleep and phase == 0 and out > 0.9 { reading_cat = cat; phase = 1; burst = 1; seq = seq + 1; arrival_seq = seq; mark = mark + 1; needed = true; wanted = true; play startle; arrive: 1 ~220ms
+    on notice while (not haven or through) and not hush and not asleep and phase == 0 and out > 0.9 { reading_cat = cat; phase = 1; burst = 1; seq = seq + 1; arrival_seq = seq; mark = mark + 1; needed = true; wanted = true; play startle; arrive: 1 ~220ms
         land: 0 ~16ms; land: 1 ~850ms after 16ms; write: 0 ~16ms; write: 1 ~1100ms after 560ms; read.t: 0 ~16ms
         sign: 1 ~200ms; sign: 0 ~260ms after 1600ms }
-    on notice while not haven and not hush and not asleep and phase == 0 and out <= 0.9 { reading_cat = cat; phase = 1; burst = 1; seq = seq + 1; arrival_seq = seq; needed = true; wanted = true; play startle; arrive: 1 ~220ms after 560ms
+    on notice while (not haven or through) and not hush and not asleep and phase == 0 and out <= 0.9 { reading_cat = cat; phase = 1; burst = 1; seq = seq + 1; arrival_seq = seq; needed = true; wanted = true; play startle; arrive: 1 ~220ms after 560ms
         land: 0 ~16ms; land: 1 ~850ms after 580ms; write: 0 ~16ms; write: 1 ~1100ms after 1120ms; read.t: 0 ~16ms
         sign: 1 ~200ms after 560ms; sign: 0 ~260ms after 2160ms }
     on change out > 0.9 while phase == 1 { mark = mark + 1 }
@@ -4351,9 +4626,9 @@ scene Etta {
     //  Another one while it is still being read: it stacks, and the reading
     //  starts over. Not one more jump: the gesture is already on, and a mascot
     //  that jumps for every message in a group ends up switched off.
-    on notice while not haven and not hush and phase == 1 { seq = seq + 1; burst = burst + 1; mark = mark + 1; read.t: 0 ~16ms; write: 0 ~16ms; write: 1 ~900ms after 60ms }
+    on notice while (not haven or through) and not hush and phase == 1 { seq = seq + 1; burst = burst + 1; mark = mark + 1; read.t: 0 ~16ms; write: 0 ~16ms; write: 1 ~900ms after 60ms }
     //  With the burst already flying, the one that arrives goes straight to its drop.
-    on notice while not haven and not hush and phase == 2 { seq = seq + 1; emit direct }
+    on notice while (not haven or through) and not hush and phase == 2 { seq = seq + 1; emit direct }
 
     //  3.2 s to read it, which the pointer over it stops: when it leaves, it
     //  counts again. It is `on still` again: «when it has gone that long without
@@ -4691,47 +4966,78 @@ scene Etta {
     //  Open, the time, the fan and the capsule fold away: «whatever the pointer
     //  had brought out there, goes away». Whoever arrives last, wins.
     on press right body_zone { toggle menu_open }
-    on change menu_open while menu_open { open = false; note = false; menu_selected = -1; searching = false; tray_open = false }
+    //  The menu has no field: a cursor left in a page's (the calendar's new
+    //  event, a search) would take Enter from its rows.
+    on change menu_open while menu_open { open = false; note = false; menu_selected = -1; searching = false; tray_open = false; blur }
     //  It closes like the note: after being outside the whole —her and the menu—
     //  for a while, with Esc, on choosing something, or with another right click.
     //  And not before it is open: while it grows, its zone is not there yet, and
     //  «I've been outside for 300 ms» came true without anyone having moved. The
     //  menu closed by itself 370 ms after opening it if the pointer stayed on her.
     on key Escape while menu_open { menu_open = false }
-    //  Esc closes whatever is open. The session's confirmation is the only
-    //  thing that goes back a step first: it is the one that cannot be undone.
-    on key Escape while open and not (page == session and confirming != none) { open = false }
+    //  Esc closes whatever is open, from any page. What is half-answered goes
+    //  back a step first: the session's confirmation —the one that cannot be
+    //  undone—, the Wi-Fi password being asked and the city being written. All
+    //  the guards are read before anything changes, so one Esc is one of these
+    //  and never two.
+    on key Escape while open and asking < 0 and not sky.editing and not (page == session and confirming != none) { open = false }
+    //  On gaining the keyboard pleamar puts the cursor in some field: the one
+    //  that had it, else the first drawn, else the first in the scene even if
+    //  hidden —the finder's—, and a field eats letters and Enter before any
+    //  rule. Only where a field is meant to take the typing does it stay.
+    on focus while not searching and not locked and not lock.preview and not (open and ((page == wifi and asking >= 0) or page == calendar or page == history or page == drift)) { blur }
+    //  While she holds the keyboard (exclusive), Halley's own shortcuts are
+    //  off: the keys come to her. So she answers the ones that are hers in
+    //  halley.rune, and the volume, brightness and media keys, the same way
+    //  Halley would. A key with no rule here still goes nowhere while a panel
+    //  is open, which is what exclusive means. Shift with Super is in the name,
+    //  and the letter comes upper case: both spellings, to be sure.
+    //  Never on the lock screen (its keys come through here too): the finder
+    //  would take the cursor from the password box.
+    on key Super+space while searching { searching = false }
+    on key Super+space while not searching and not locked and not lock.preview { emit search }
+    on key Super+Shift+L while not locked and not lock.preview { emit lock }
+    on key Super+Shift+l while not locked and not lock.preview { emit lock }
+    on key Super+Shift+S while not shooting and not locked and not lock.preview { emit shot_region }
+    on key Super+Shift+s while not shooting and not locked and not lock.preview { emit shot_region }
+    on key Super+Shift+V while not locked and not lock.preview { emit record_toggle }
+    on key Super+Shift+v while not locked and not lock.preview { emit record_toggle }
+    on key XF86AudioRaiseVolume { emit volume_up }
+    on key XF86AudioLowerVolume { emit volume_down }
+    on key XF86AudioMute { emit mute_output }
+    on key XF86AudioMicMute { emit mute_mic }
+    on key XF86MonBrightnessUp { emit bright_up }
+    on key XF86MonBrightnessDown { emit bright_down }
+    on key XF86AudioPlay { emit play_pause }
+    on key XF86AudioNext { emit next }
+    on key XF86AudioPrev { emit previous }
+    //  The pages with a search field put the cursor in it, so you just type.
+    on change page while page == history { focus hist_q }
+    on change page while page == drift { focus drift_q }
     on key Escape while tray_open { tray_open = false }
     on key Escape while reel_open { reel_open = false }
     //  «Escape goes back to the menu without executing; a second Escape closes.»
     on key Escape while page == session and confirming != none { confirming = none }
-    //  With the keyboard: the arrows move the pointed row and Enter chooses it.
-    //  Enter without having pointed at anything takes the first one, which is
-    //  Settings: what the right button used to do is still one key away.
-    on key Down while menu_open { menu_selected = min(menu_selected + 1, 3 + entries.count) }
+    //  With the keyboard: the arrows move the pointed row (the mouse moves the
+    //  same mark) and Enter does what that row does. Enter without having
+    //  pointed at anything takes the first one, Search.
+    on key Down while menu_open { menu_selected = min(menu_selected + 1, 11) }
     on key Up while menu_open { menu_selected = max(menu_selected - 1, 0) }
-    on key Return while menu_open and menu_selected < 1 { emit search; menu_open = false }
-    on key Return while menu_open and menu_selected == 1 { emit settings; menu_open = false }
+    on key Return while menu_open and menu_selected < 1 { emit search }
+    on key Return while menu_open and menu_selected == 1 { emit shot_region }
+    on key Return while menu_open and menu_selected == 2 { emit menu_record }
+    on key Return while menu_open and menu_selected == 3 { emit tap_dnd }
+    on key Return while menu_open and menu_selected == 4 { emit tap_awake }
+    on key Return while menu_open and menu_selected == 5 { emit show_drift }
+    on key Return while menu_open and menu_selected == 6 { emit flip_clip }
+    on key Return while menu_open and menu_selected == 7 { emit show_history }
+    on key Return while menu_open and menu_selected == 8 { emit menu_wardrobe }
+    on key Return while menu_open and menu_selected == 9 { emit show_walls }
+    on key Return while menu_open and menu_selected == 10 { emit settings }
+    on key Return while menu_open and menu_selected == 11 { emit menu_sleep }
     //  «Settings», from her menu or from outside, opens its page in the control
-    //  center.
+    //  center (opening the card closes the menu).
     on settings { open = true; page = settings }
-    on key Return while menu_open and menu_selected == 2 { emit customize; menu_open = false; open = true; page = wardrobe }
-    on key Return while menu_open and menu_selected == 3 { emit sleep; menu_open = false }
-    on key Return while menu_open and menu_selected > 3 { emit menu_entry(menu_selected - 4); menu_open = false }
-    on menu_entry { menu_open = false }
-
-    //  The house zones, outside the drawing and after the whole.
-    repeat m in 0..4 {
-        zone box own_zone.$m { at: menu.x, menu.y0 + 4 + 11.5 + m * 23; size: 155, 23
-                                corner: 7; cursor: pointer; active: menu > 0.9 }
-        on enter own_zone.$m { own.$m: 1; menu_selected = -1 }
-        on leave own_zone.$m { own.$m: 0 }
-    }
-    on press own_zone.0 { emit search; menu_open = false }
-    on press own_zone.1 { emit settings; menu_open = false }
-    on press own_zone.3 { emit sleep; menu_open = false }
-    //  «Customize» opens her wardrobe, which is where this lives.
-    on press own_zone.2 { emit customize; menu_open = false; open = true; page = wardrobe }
 
     // ── the corner ───────────────────────────────────────────────
     //  She peeks out 82 %: with a little more than half, the red eye spent the
@@ -4824,10 +5130,17 @@ scene Etta {
     on lock_poweroff while lock.off.armed and locked { emit session(5) }
     on still lock.off.armed for 3s while lock.off.armed { lock.off.armed = false }
     on lock_suspend while locked { emit session(2) }
+    event end_preview
+    on end_preview { lock.preview = false }
     on key Escape while lock.preview { lock.preview = false }
+    //  Ending it takes the cursor out of its box: otherwise the next time she
+    //  gets the keyboard, what you type goes into a password nobody sees.
+    on change lock.preview while not lock.preview { blur }
     on change lock.preview while lock.preview { focus password }
 
-    component LockUI(w: number, h: number) {
+    //  `preview` is the Settings one: nothing is locked, so there is nothing
+    //  to suspend or power off from it.
+    component LockUI(w: number, h: number, preview: number = 0) {
         size: 0, 0
         let ex = w / 2
         let ey = h * 0.47
@@ -4953,9 +5266,12 @@ scene Etta {
             text "{pending, 0} notifications kept" { family: "Geist"; at: ex + 8, h - 44; anchor: center; size: 13; weight: 500; color: tk.ink2 }
         }
         //  Suspend and power off, bottom right. Power off asks twice.
-        group { move: w - 120, h - 64; Ib(lock_suspend, d: 40) { figure Kit.i_moon { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
-        group { move: w - 72, h - 64; Ib(lock_poweroff, d: 40) { figure Kit.i_power { at: 0, 0; size: 20, 20; color: if(lock.off.armed, tk.red, tk.ink2) } } }
-        text "Press again to power off" { family: "Geist"; at: w - 136, h - 44; anchor: right center; size: 12; weight: 500; color: tk.red; show: lock.off.armed }
+        group {
+            show: preview < 0.5
+            group { move: w - 120, h - 64; Ib(lock_suspend, d: 40) { figure Kit.i_moon { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+            group { move: w - 72, h - 64; Ib(lock_poweroff, d: 40) { figure Kit.i_power { at: 0, 0; size: 20, 20; color: if(lock.off.armed, tk.red, tk.ink2) } } }
+            text "Press again to power off" { family: "Geist"; at: w - 136, h - 44; anchor: right center; size: 12; weight: 500; color: tk.red; show: lock.off.armed }
+        }
     }
 
     surface lockscreen {
@@ -4969,16 +5285,27 @@ scene Etta {
     }
 
     //  The same screen, to see it without locking anything (Settings).
+    //  On the monitor she is on, not her home: following the focus, she can
+    //  be on the other one. It ends with its Close or with Esc, never with a
+    //  click on the background —you clicked to try the box, not to leave—.
+    //  The background zone goes FIRST, under everything: it only keeps the
+    //  clicks from falling through to the windows behind.
     surface lockpreview {
         size: full, full
         anchor: top_left
         level: overlay
         screens: each max 2
-        open: lock.preview and screen.index == home
-        keyboard: exclusive while lock.preview
-        LockUI(lockpreview.width, lockpreview.height)
-        zone box lockpreview_close { from: 0, 0; size: lockpreview.width, lockpreview.height }
-        on press lockpreview_close { lock.preview = false }
+        open: lock.preview and if(screen.index == 0, hosts.0, hosts.1)
+        zone box lockpreview_bg { from: 0, 0; size: lockpreview.width, lockpreview.height }
+        LockUI(lockpreview.width, lockpreview.height, preview: 1)
+        group {
+            move: lockpreview.width / 2 - 170, 24
+            box { from: 0, 0; size: 340, 48; corner: 24; color: tk.s1 }
+            box { from: 0, 0; size: 340, 48; corner: 24; stroke: 1; color: tk.line; opacity: 9% }
+            figure Kit.i_eye { at: 26, 24; size: 18, 18; color: tk.ink2 }
+            text "Preview · nothing is locked" { family: "Geist"; at: 46, 24; anchor: left center; size: 13; weight: 500; color: tk.ink2 }
+            group { move: 242, 8; Btn("Close", end_preview, w: 90, h: 32) }
+        }
     }
 
     // ── the adventure's stage ────────────────────────────────────

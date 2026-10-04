@@ -125,7 +125,10 @@ impl Dispatch<ZxdgOutputV1, u32> for Outputs {
     }
 }
 
-fn output_value(output: &Output, focused: &str) -> Value {
+/// `focused` is the output of the focused window; `selected` is the output
+/// Halley itself has chosen (the last one clicked), which is the one its own
+/// capture and new windows go to, and exists even with no window focused.
+fn output_value(output: &Output, focused: &str, selected: &str) -> Value {
     let scale = output.scale.max(1);
     let (width, height) = output.logical_size.unwrap_or_else(|| {
         let (w, h) = output.size;
@@ -137,7 +140,7 @@ fn output_value(output: &Output, focused: &str) -> Value {
     });
     json!({"name": output.name, "x": output.position.0, "y": output.position.1,
         "w": width, "h": height, "scale": scale, "transform": output.turn, "flipped": output.flipped,
-        "focused": output.name == focused})
+        "focused": output.name == focused, "selected": output.name == selected})
 }
 
 fn outputs(client: &Client) -> Result<Value, Box<dyn std::error::Error>> {
@@ -147,6 +150,8 @@ fn outputs(client: &Client) -> Result<Value, Box<dyn std::error::Error>> {
         .find(|n| n.focused)
         .and_then(|n| n.output)
         .unwrap_or_default();
+    // A trail list without an output answers for the selected one.
+    let selected = client.trail(None).map(|t| t.output).unwrap_or_default();
     let connection = Connection::connect_to_env()?;
     let (globals, mut queue) = registry_queue_init::<Outputs>(&connection)?;
     let qh = queue.handle();
@@ -177,7 +182,7 @@ fn outputs(client: &Client) -> Result<Value, Box<dyn std::error::Error>> {
             .0
             .values()
             .filter(|o| !o.name.is_empty())
-            .map(|o| output_value(o, &focused))
+            .map(|o| output_value(o, &focused, &selected))
             .collect(),
     ))
 }
@@ -268,24 +273,25 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            output_value(&output, "DP-1"),
-            json!({"name":"DP-1","x":-1280,"y":-720,"w":1280,"h":720,"scale":2,"transform":0,"flipped":false,"focused":true})
+            output_value(&output, "DP-1", "HDMI-A-1"),
+            json!({"name":"DP-1","x":-1280,"y":-720,"w":1280,"h":720,"scale":2,"transform":0,"flipped":false,"focused":true,"selected":false})
         );
         let rotated = Output {
             rotated: true,
             ..output
         };
-        assert_eq!(output_value(&rotated, "")["w"], 720);
+        assert_eq!(output_value(&rotated, "", "")["w"], 720);
+        assert_eq!(output_value(&rotated, "", "DP-1")["selected"], true);
         let logical = Output {
             logical_size: Some((853, 480)),
             ..rotated
         };
-        assert_eq!(output_value(&logical, "")["w"], 853);
+        assert_eq!(output_value(&logical, "", "")["w"], 853);
         let upside_down = Output {
             turn: 180,
             ..Default::default()
         };
-        assert_eq!(output_value(&upside_down, "")["transform"], 180);
+        assert_eq!(output_value(&upside_down, "", "")["transform"], 180);
     }
 
     #[test]
