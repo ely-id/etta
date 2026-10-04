@@ -447,6 +447,7 @@ local OWN = {
       function() if hooks.wm_ride then hooks.wm_ride() end end, "wm" },
     { "Wallpapers", "wallpaper wallpapers fondo fondos pantalla escritorio desktop background imagen tema theme", 1, function() emit("show_walls") end },
     { "Deriva", "deriva drift biblioteca library guardado saved kept enlaces links recortes bookmarks marcadores", 1, function() emit("show_drift") end },
+    { "Pick a colour", "colour color cor pick picker pipette eyedropper conta-gotas cuentagotas hex rgb paleta palette swatch", 1, function() emit("pick_color") end },
     { "Tailscale", "tailscale devices dispositivos tailnet iphone phone telefone celular taildrop send enviar files arquivos archivos vpn", 1, function() if hooks.ts_open then hooks.ts_open() end end },
     { "Do not disturb", "do not disturb no molestar dnd silencio silence quiet callar avisos notices notificaciones notifications", 1,
       function() if hooks.dnd then hooks.dnd() end end },
@@ -2553,6 +2554,11 @@ on("gone", function()
                     emit("frozen")
                     model.frames = frames
                     fact["shot.scr"] = -1
+                    --  A colour, not a photo: the picker over the same frames.
+                    if scope == "swatch" then
+                        if hooks.pick_start then hooks.pick_start() end
+                        return
+                    end
                     if scope == "active_window" then fact["shot.mode"] = "sm_window" else fact["shot.mode"] = "sm_region" end
                     fact.shooting = true
                 end)
@@ -4265,5 +4271,172 @@ end)
         if f == nil or T.dir == nil then return end
         fact.ts_open = false
         run("xdg-open", { T.dir .. "/" .. f.name }, function() end)
+    end)
+end)()
+
+-- ── the colour picker, and her colours ─────────────────────────────
+--  The picker opens over the frames the capture froze (the `gone` above,
+--  with `scope = swatch`). Each frame is turned once into raw RGB next to
+--  it, so the colour of a pixel is three bytes at a known place, read with
+--  `od` —quick enough to follow the pointer— and never a whole picture
+--  decoded at every step. A pick goes to her colours, newest first, twelve
+--  at most, kept in settings.json, and to the clipboard as HEX or RGB; the
+--  first colour makes the little her, and clearing takes her back in.
+;(function()
+    --  `gen` orders the answers to the pointer; `session` is the picker
+    --  being shown, which a raw frame, a retry or a late answer belongs to.
+    local P = { gen = 0, session = 0, list = {} }
+
+    local function hex_of(r, g, b) return string.format("#%02X%02X%02X", r, g, b) end
+    local function rgb_of(r, g, b) return string.format("rgb(%d, %d, %d)", r, g, b) end
+
+    --  What the scene needs of the list, and the colour she wears.
+    local function paint()
+        local rows = {}
+        for i, c in ipairs(P.list) do
+            rows[i] = { hex = hex_of(c[1], c[2], c[3]), rgb = rgb_of(c[1], c[2], c[3]), r = c[1] / 255, g = c[2] / 255, b = c[3] / 255 }
+        end
+        model.colors = rows
+        fact["colors.n"] = #P.list
+        local first = P.list[1]
+        if first then
+            fact["mini.r"] = first[1] / 255
+            fact["mini.g"] = first[2] / 255
+            fact["mini.b"] = first[3] / 255
+        end
+        fact["mini.has"] = #P.list > 0
+    end
+    local function save()
+        local out = {}
+        for i, c in ipairs(P.list) do out[i] = hex_of(c[1], c[2], c[3]) end
+        settings.colors = out
+        settings.color_format = fact["pick.fmt"] == 1 and "rgb" or "hex"
+        save_settings()
+    end
+    --  What she had.
+    for _, h in ipairs(type(settings.colors) == "table" and settings.colors or {}) do
+        local r, g, b = tostring(h):match("^#(%x%x)(%x%x)(%x%x)$")
+        if r and #P.list < 12 then P.list[#P.list + 1] = { tonumber(r, 16), tonumber(g, 16), tonumber(b, 16) } end
+    end
+    if settings.color_format == "rgb" then fact["pick.fmt"] = 1 end
+    paint()
+
+    --  Copying: hers, so «Keep what I copy» does not keep it.
+    local function copy(t)
+        if fx.copied_by_her then fx.copied_by_her(t) end
+        sys.call("clipboard.set", t)
+    end
+
+    --  The frames, as raw RGB.
+    hooks.pick_start = function()
+        P.session = P.session + 1
+        P.taking = false
+        local mine = P.session
+        for slot, fr in pairs(frozen_at) do
+            fr.rgb = nil
+            local raw = fr.file .. ".rgb"
+            run("magick", { fr.file, "-depth", "8", "rgb:" .. raw }, function(_, code)
+                if code ~= 0 then return end
+                if mine == P.session and fact.picking == true and frozen_at[slot] == fr then
+                    fr.rgb = raw
+                    --  Ask again where the pointer is: a still pointer asked
+                    --  before the frame was ready, and got nothing.
+                    fact["pick.lx"] = -1
+                else
+                    run("rm", { "-f", raw }, function() end)
+                end
+            end)
+        end
+        fact["pick.ok"] = false
+        fact.picking = true
+    end
+
+    --  The colour at a pixel of the copy under the pointer, or nil.
+    local function sample(v, done)
+        local fr = frozen_at[math.floor(tonumber(fact["pick.scr"]) or -1)]
+        if fr == nil or fr.rgb == nil then done(nil) return end
+        v = math.floor(tonumber(v) or 0)
+        local k = tonumber(fr.scale) or 1
+        local w = math.floor((tonumber(fr.w) or 0) * k + 0.5)
+        local x = math.floor((v % 4096) * k)
+        local y = math.floor(math.floor(v / 4096) * k)
+        if w <= 0 or x >= w then done(nil) return end
+        run("od", { "-An", "-tu1", "-v", "-j", tostring((y * w + x) * 3), "-N3", fr.rgb }, function(out, code)
+            local r, g, b = tostring(out or ""):match("(%d+)%s+(%d+)%s+(%d+)")
+            if code ~= 0 or r == nil then done(nil) return end
+            done(tonumber(r), tonumber(g), tonumber(b))
+        end)
+    end
+
+    --  Following the pointer: only the newest answer counts.
+    on("pick_probe", function(v)
+        P.gen = P.gen + 1
+        local mine = P.gen
+        sample(v, function(r, g, b)
+            if mine ~= P.gen or r == nil then return end
+            fact["pick.r"] = r / 255
+            fact["pick.g"] = g / 255
+            fact["pick.b"] = b / 255
+            text["pick.hex"] = hex_of(r, g, b)
+            text["pick.rgb"] = rgb_of(r, g, b)
+            fact["pick.ok"] = true
+        end)
+    end)
+
+    local function finish()
+        P.session = P.session + 1
+        P.taking = false
+        fact.picking = false
+        emit("shot_cancelled")
+        for _, fr in pairs(frozen_at) do
+            run("rm", { "-f", fr.file .. ".rgb" }, function() end)
+            fr.rgb = nil
+        end
+    end
+    --  Taking it. If the raw frame is not ready yet (a click at once), it
+    --  waits for it a little —for this picker only, and one take at a time—.
+    local function take(v, tries, session)
+        if session ~= P.session or fact.picking ~= true then return end
+        sample(v, function(r, g, b)
+            if session ~= P.session or fact.picking ~= true then return end
+            if r == nil then
+                if (tries or 0) < 25 then after(80, function() take(v, (tries or 0) + 1, session) end) else finish() end
+                return
+            end
+            local h = hex_of(r, g, b)
+            for i = #P.list, 1, -1 do
+                if hex_of(P.list[i][1], P.list[i][2], P.list[i][3]) == h then table.remove(P.list, i) end
+            end
+            table.insert(P.list, 1, { r, g, b })
+            while #P.list > 12 do table.remove(P.list) end
+            copy(fact["pick.fmt"] == 1 and rgb_of(r, g, b) or h)
+            paint()
+            save()
+            finish()
+            emit("picked")
+            say(string.format(tr("%s copied"), fact["pick.fmt"] == 1 and rgb_of(r, g, b) or h))
+            log("colour ·", h)
+        end)
+    end
+    on("pick_commit", function(v)
+        if P.taking then return end
+        P.taking = true
+        P.gen = P.gen + 1
+        take(v, 0, P.session)
+    end)
+    on("pick_escape", finish)
+    on("fact:pick.fmt", function() save() end)
+
+    --  Her colours: copying a format (2·row + 0 HEX / 1 RGB), and clearing.
+    on("col_copy", function(v)
+        v = math.floor(tonumber(v) or 0)
+        local c = P.list[math.floor(v / 2) + 1]
+        if c == nil then return end
+        copy(v % 2 == 1 and rgb_of(c[1], c[2], c[3]) or hex_of(c[1], c[2], c[3]))
+    end)
+    on("col_clear", function()
+        P.list = {}
+        paint()
+        save()
     end)
 end)()

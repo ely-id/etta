@@ -54,6 +54,7 @@ library Kit {
     figure i_pause = file "icons/pause.svg"
     figure i_phone = file "icons/phone.svg"
     figure i_pin = file "icons/pin.svg"
+    figure i_pipette = file "icons/pipette.svg"
     figure i_play = file "icons/play.svg"
     figure i_plus = file "icons/plus.svg"
     figure i_power = file "icons/power.svg"

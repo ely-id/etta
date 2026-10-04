@@ -9,7 +9,7 @@
 #                                      it, and writes a report to send when something stutters
 #   etta <event>                      tells her something: search, lock,
 #                                      shot_region, shot_screen,
-#                                      shot_window, record_toggle, celebrate,
+#                                      shot_window, record_toggle, pick_color, celebrate,
 #                                      rage, adventure, volume_up, volume_down,
 #                                      mute_output, mute_mic, bright_up,
 #                                      bright_down, play_pause, next, previous…

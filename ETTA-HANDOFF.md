@@ -1,7 +1,7 @@
 # Etta — handoff
 
-Estado em **2026-10-04**. O marco "estabilidade no Halley + Finder, menu,
-cápsula do Haven" está no commit que acompanha esta versão do arquivo.
+Estado em **2026-10-04**, à tarde. A etapa "campos, launcher, Deriva,
+Tailscale e Color Picker" está nos quatro commits do fim da tabela do §4.
 Escrito para retomar numa sessão nova sem reler a conversa anterior.
 
 ---
@@ -61,7 +61,7 @@ histórico. A atribuição da licença está em `LICENSE` e `NOTICE.md`.
 | `etta.plm` | A cena (≈4 900 linhas): o pet, as superfícies e as regras. Importa `ui/*.plm` e `common/*.plm` |
 | `etta.luau` | A lógica: serviços, persistência e processos externos |
 | `ui/tokens.plm` | Tokens de design (`tk.*`: cores, escala de tipo, raios). Cada token documenta seu uso |
-| `ui/kit.plm` | Kit: `Btn`, `Ib`, `Toggle`, `Slider`, `Seg` (até 5 itens), `Chip`, `Tag`, `Kbd`, `Row`, `Bubble`, mais as figuras `Kit.i_*` (71 ícones SVG em `ui/icons/`) |
+| `ui/kit.plm` | Kit: `Btn`, `Ib`, `Toggle`, `Slider`, `Seg` (até 5 itens), `Chip`, `Tag`, `Kbd`, `Row`, `Bubble`, `FieldBox` (a placa de um campo de texto), mais as figuras `Kit.i_*` (75 ícones SVG em `ui/icons/`) |
 | `ui/panels.plm` | Todas as páginas do control center como componentes (veja §4) |
 | `ui/showcase.plm` | Cena de vitrine do kit |
 | `common/accessories.plm` | Física das peças: `Perched`, `Pinned`, `Tagalong`. **Não mexer** (é do pet) |
@@ -70,7 +70,7 @@ histórico. A atribuição da licença está em `LICENSE` e `NOTICE.md`.
 | `halley/` | Adaptador `etta-halley` (Rust): `outputs` com transform e scale, `window …`. Testes: `cargo test --release --offline` |
 | `tools/shader-thumb/` | `etta-shader-thumb`: GLSL ES do Halley → GLSL 450 → glslangValidator → SPIR-V → wgpu → PNG. Compila offline |
 | `tools/reservas` | Leitor (node) das cotas de Claude Code, Codex, Copilot (via `gh api /copilot_internal/user`) e Grok (sem API: o card diz isso) |
-| `deriva/` | Biblioteca Deriva (`deriva-worker`, já compilado) |
+| `deriva/` | Biblioteca Deriva (`deriva-worker`, já compilado). Testes: `cargo test --release --offline` **com `XDG_DATA_HOME` apontando para uma pasta temporária** (os testes isolam com `ETTA_DERIVA_DIR`; até este marco usavam o nome antigo `MAREA_DERIVA_DIR` e teriam rodado na biblioteca real) |
 | `etta` | Launcher: `start`, `stop`, `status`, `report` e `<evento>`. Coloca `halley/`, `tools/shader-thumb/` e `deriva/` no PATH, exporta `ETTA_DIR` e roda `--stall 0` |
 | `docs/contract/` | Contrato herdado da Marea (animações e medidas) |
 
@@ -132,7 +132,11 @@ só na máquina do usuário.
 | `4efb5c8` | Captura de região própria (frame congelado, guias, medidas, ela como HUD de W×H; soltar salva em `~/Pictures/Screenshots/Screenshot_…png` + clipboard; Esc cancela; R/W/S trocam o modo); cartão "saved" compartilhado com gravações |
 | `0dd7a84` | Look: **Glass bloqueado no Halley** (crash de screencopy); Frosted só translúcido |
 | `c7a2f92` | Gravação nativa testada (NVENC + áudio), `~/Videos/Recordings/Recording_…mp4`, rotação de 180° marcada com `ffmpeg -display_rotation` |
-| (este marco) | **Estabilidade no Halley** (veja §4.1) e **Finder, menu, cápsula do Haven e "Welcome back"** redesenhados conforme os protótipos |
+| `3c51cf2` | **Estabilidade no Halley** (veja §4.1) e **Finder, menu, cápsula do Haven e "Welcome back"** redesenhados conforme os protótipos |
+| `cf036be` | **Campos de texto centrados** (o `at` de um `input` é o canto de cima; `FieldBox` no kit, tokens `tk.field.*`/`tk.mid.*`) e **o Finder vê apps novos**: a Etta lê os `.desktop` ela mesma a cada abertura, com as regras do serviço `apps` do pleamar (o que ela lista é o que `apps.launch` aceita); busca por arquivo, programa, classe, keywords e letras em ordem |
+| `8a9ca38` | **Deriva**: chips por cor (links, arquivos, imagens, notas), «Clear» com caixa de três opções (lixeira · excluir de vez · cancelar) e «Undo» de 5 s; lê a biblioteca inteira por páginas; sem «Clear» durante uma busca. `deriva-worker`: `trash`/`untrash` em lote, `purge` (linhas + arquivos que ninguém mais usa; nunca com `--db`), `list --before` |
+| `42e5a28` | **Tailscale**: pílula ao lado do relógio (os 9 pontos: T aceso = ligado, ondulando = transferência, ponto mint = arquivo recebido) que vira card: este dispositivo, os outros (nome do MagicDNS), copiar endereço, enviar arquivos (zenity ou soltar na linha), recebidos em `~/Downloads/Taildrop` com aviso, ligar/desligar |
+| (este commit) | **Color Picker** (Super+Shift+P, menu, Finder): o overlay da captura, sem escurecer, com lupa ×10 que ela segura, HEX/RGB lidos do frame; a cor vai para o clipboard e para **a mini Etta**, que nasce de dentro dela, a segue (abaixo das pedras com ela fora; à direita, perto do relógio, com ela recolhida), usa o rosto dela (o `Face` ganhou `fg`/`hole`, com o padrão de antes) e abre o painel de cores (HEX em destaque, RGB light, cada formato copia ao clicar; «Clear» a devolve para dentro da Etta) |
 
 ### 4.1 O que a rodada de estabilidade corrigiu (relatório de testes do usuário)
 
@@ -186,6 +190,14 @@ só na máquina do usuário.
 - **Link** `~/.local/bin/etta` → `~/Work/etta/etta`.
 - **A Marea (PID 943) ficou rodando** até o próximo login; o usuário pode
   rodar `marea stop`.
+- **Tailscale:** o usuário se tornou operador (`sudo tailscale set --operator=$USER`,
+  ele mesmo rodou). A Etta criou `~/Downloads/Taildrop` e mantém um
+  `tailscale file get --loop` rodando para receber.
+- **`settings.json`** ganhou `colors` (os HEX, mais novo primeiro) e
+  `color_format` (`hex`/`rgb`).
+- **Pendente de aprovação:** o atalho do Color Picker no `halley.rune`
+  (veja §7). Até lá, Super+Shift+P só funciona enquanto a Etta segura o
+  teclado.
 - **Arquivos de teste nas pastas do usuário** (pode apagar):
   - `~/Pictures/Screenshots/Screenshot_2026-10-03_06-54-25.png`;
   - `~/Videos/Recordings/Recording_2026-10-03_06-57-34.mp4`, `06-58-11`,
@@ -260,11 +272,34 @@ só na máquina do usuário.
   type:abc@…"` simula teclado. Dá para testar componentes reais numa cena
   pequena que importa `ui/`.
 
+- **O `at` de um `input` é o canto de cima à esquerda** (sem `anchor`; linha =
+  tamanho × 1,3). Para centrar num `y`, use `y - tamanho × 0,65`
+  (`tk.mid.s14` etc.). A zona clicável do campo segue o mesmo `at`.
+- **Uma cor não vem de um fact**, mas uma cor são três expressões por canal e
+  `mix` é linear em cada uma: `mix(mix(mix(#000000,#ff0000,r),
+  mix(#00ff00,#ffff00,r),g), mix(mix(#0000ff,#ff00ff,r),
+  mix(#00ffff,#ffffff,r),g), b)` dá exatamente (r, g, b).
+- **Um só slot de gesto na cena**: um gesto `state` longo (5 s) recusa as
+  reações dela enquanto dura. Para um pavio, use `spin` (e termine pelo
+  relógio: `spin` para com reduced motion).
+- `on change X` só dispara quando o valor muda: para "de novo, igual", use um
+  contador (`drift.seq`).
+- Imagens são amostradas com filtro **linear** (a lupa ×10 fica suave).
+- Uma zona `nome.$k` num `repeat` da cena se chama `nome.0`, `nome.1`… para
+  `on("drop:nome.0")` na lógica.
+
 **Luau (lógica):**
 
-- O chunk principal está perto do **limite de 200 locais**: código novo vai
-  dentro de `;(function() … end)()` ou de uma função nomeada (veja o fim de
-  `etta.luau`).
+- O chunk principal **está no limite de 200 locais** (duas funções locais a
+  mais derrubaram a lógica neste marco): código novo vai dentro de
+  `;(function() … end)()`, em `fx.*`/`hooks.*`, ou de uma função nomeada
+  (veja o fim de `etta.luau`).
+- `run` e `spawn` só entregam o **stdout** (o stderr vai para o nulo).
+- O serviço `apps` do pleamar lê os `.desktop` **uma vez**, e um segundo
+  `sys.watch("apps")` só acrescenta um ouvinte (não relê): por isso a
+  varredura própria (`fx.read_apps`).
+- Um argumento de processo tem limite de tamanho (128 KB): listas de ids vão
+  em lotes (`fx.drift_batches`, mil por vez).
 - `files.write` só escreve na pasta de dados da Etta.
 - `sys.watch(serviço)` pode ser registrado **uma vez**. Ganchos extras usam a
   tabela `also.network/bluetooth`.
@@ -298,6 +333,37 @@ só na máquina do usuário.
 ---
 
 ## 7. Próximo marco
+
+**Antes de tudo, o que só o teste ao vivo confirma deste marco:**
+
+- Tailscale: enviar e receber arquivos com o iPhone (Taildrop; o app
+  Tailscale precisa estar aberto/conectado no iPhone); soltar um arquivo numa
+  linha do card; o diálogo do zenity recebendo o teclado no Halley.
+- Color Picker nos dois monitores (o HDMI a 180°), setas para mover o pixel,
+  Enter, H/R, Esc; a mini Etta nascendo, seguindo a Etta (fora e recolhida) e
+  sendo absorvida no «Clear».
+- **Atalho a aprovar** no `halley.rune` (bloco `keybinds:`, ao lado dos
+  outros da Etta):
+
+  ```rune
+    "$var.mod+shift+p" "/home/ely/.local/bin/etta pick_color"
+  ```
+
+  (`Super+Shift+C` já é `cluster-mode` do Halley.)
+
+**Limitações conhecidas deste marco:**
+
+- O `model frames` declara `image 1920, 1080`: num monitor fora de 16:9 o
+  frame congelado é desenhado ajustado, e o picker (que lê o pixel do arquivo)
+  ficaria desalinhado do que mostra. Hoje os dois monitores são 1920×1080.
+- No pleamar, o arrastar-e-soltar (data device) testa as zonas com as
+  coordenadas locais da superfície, sem a origem do plano: sobre o `catcher`
+  um drop cairia numa zona da superfície principal em outro lugar. Por isso o
+  `catcher` fecha enquanto algo é carregado (`drag.over`).
+- A lupa amplia com filtro linear; o pixel que será pego é pintado por cima
+  com a cor exata lida do frame.
+
+**O que veio antes deste marco (ainda vale):**
 
 **Rodada de polimento e otimização**, junto com os resultados do teste ao
 vivo deste marco:
@@ -340,7 +406,10 @@ usuário reescolhe no Settings. Não editar o arquivo sem pedir.
   - zonas que ignoram `clip`/`view`;
   - `pointer.x/y` no plano em superfície nomeada;
   - transição atrasada que não é cancelada;
-  - campo invisível que pega o cursor ao ganhar o teclado.
+  - campo invisível que pega o cursor ao ganhar o teclado;
+  - (desta etapa; o usuário pediu para **não reportar ainda**) o serviço
+    `apps` que não relê os `.desktop`; `input` sem `anchor` nem cor de
+    placeholder; imagem sem filtro `nearest`; cor que não vem de um fact.
 
 ## 8. Como o usuário trabalha
 

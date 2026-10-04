@@ -35,18 +35,26 @@ keybinds:
   "$var.mod+shift+l" "/home/YOU/Work/etta/etta lock"
   "$var.mod+shift+s" "/home/YOU/Work/etta/etta shot_region"
   "$var.mod+shift+v" "/home/YOU/Work/etta/etta record_toggle"
+  "$var.mod+shift+p" "/home/YOU/Work/etta/etta pick_color"
 end
 ```
+
+For her Tailscale pill to send and receive files, your user has to be
+Tailscale's operator, once: `sudo tailscale set --operator=$USER`. What
+arrives goes to `~/Downloads/Taildrop`.
 
 ## Talk to her
 
 ```sh
 etta start | stop | status | report
-etta search | lock | shot_region | shot_screen | shot_window | record_toggle
+etta search | lock | shot_region | shot_screen | shot_window | record_toggle | pick_color
 etta volume_up | volume_down | mute_output | mute_mic | bright_up | bright_down
 ```
 
-Click her for the control center, right-click for her menu. Her settings are
+Click her for the control center, right-click for her menu. The pill beside
+the clock is Tailscale: your devices, their addresses, and files sent to them
+by dropping them on their row. A colour picked (her menu, the finder or
+Super+Shift+P) goes to the clipboard and to a little her who keeps them. Her settings are
 saved in `~/.local/share/pleamar/etta/settings.json`.
 
 ## How she is made

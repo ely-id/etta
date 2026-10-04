@@ -33,7 +33,7 @@ scene Etta {
         //  The network and the headphones are pleamar's own services now
         //  (NetworkManager and BlueZ, spoken to directly): listing, joining
         //  with a password, pairing. And `fd` finds the files and the folders.
-        run: "curl", "timedatectl", "node", "notify-send", "fd", "deriva-worker", "kill", "xdg-open", "grim", "slurp", "hyprctl", "magick", "wl-copy", "mkdir", "wf-recorder", "xdg-user-dir", "test", "pgrep", "swaybg", "pactl", "pleamar-wm", "etta-halley", "cat", "ls", "rfkill", "systemd-inhibit", "powerprofilesctl", "wlsunset", "etta-shader-thumb", "ffmpeg", "rm", "wl-paste", "grep", "tailscale", "zenity"
+        run: "curl", "timedatectl", "node", "notify-send", "fd", "deriva-worker", "kill", "xdg-open", "grim", "slurp", "hyprctl", "magick", "wl-copy", "mkdir", "wf-recorder", "xdg-user-dir", "test", "pgrep", "swaybg", "pactl", "pleamar-wm", "etta-halley", "cat", "ls", "rfkill", "systemd-inhibit", "powerprofilesctl", "wlsunset", "etta-shader-thumb", "ffmpeg", "rm", "wl-paste", "grep", "tailscale", "zenity", "od"
     }
     service clock as now { time: text = "--:--"; date: text; hour: number; minute: number; day: number; month: number; weekday: number }
     service audio as sound { volume: number; muted: bool; input: number; input_muted: bool }
@@ -201,7 +201,7 @@ scene Etta {
         //  The urgent tray that opens by itself and the saved card do not take
         //  it on arriving —you may be typing somewhere—, only once you go to
         //  them.
-        keyboard: exclusive while searching or menu_open or open or shooting or lock.preview or ts_open or (tray_open and not tray_by_itself) or (reel_open and reel_hovered)
+        keyboard: exclusive while searching or menu_open or open or shooting or picking or lock.preview or ts_open or colors_open or (tray_open and not tray_by_itself) or (reel_open and reel_hovered)
         //  Above everything while something of hers is open —so the catcher
         //  below can take the click outside—, and in its layer the rest of the
         //  time, so a video in full screen still covers her.
@@ -211,7 +211,7 @@ scene Etta {
         //  Halley hides the top layer under fullscreen too. Its finder needs
         //  the overlay layer while searching; the Hyprland focus workaround
         //  above still applies on the other backends.
-        level: top, overlay while open or tray_open or menu_open or reel_open or ts_open or (compositor_halley and searching)
+        level: top, overlay while open or tray_open or menu_open or reel_open or ts_open or colors_open or (compositor_halley and searching)
     }
 
     // ── where she lives ──────────────────────────────────────────
@@ -1006,17 +1006,17 @@ scene Etta {
     //  What hovering her —or the clock beside her— asks for: the time card.
     //  With notices waiting, hovering HER shows their fan instead; the clock
     //  still tells the time. And not while something else is being said there.
-    let notecard.wants = note and not open and not ts_open and not haven and not menu_open and face == eye and out > 0.9 and phase == 0 and (pending < 1 or in.clock) and osd.kind == none
-    follow fan = if(note and not open and not tray_open and not ts_open and not haven and not menu_open and face == eye and out > 0.9 and phase == 0 and pending > 0, 1, 0)
+    let notecard.wants = note and not open and not ts_open and not colors_open and not haven and not menu_open and face == eye and out > 0.9 and phase == 0 and (pending < 1 or in.clock) and osd.kind == none
+    follow fan = if(note and not open and not tray_open and not ts_open and not colors_open and not haven and not menu_open and face == eye and out > 0.9 and phase == 0 and pending > 0, 1, 0)
     // ── her menu, the right-button one ───────────────────────────
     //  The right button opens it, beside her and out of her, like the time:
-    //  twelve rows in four groups (the sheet's Menu): what she does for you
-    //  —search, capture, record—, two switches —do not disturb, keep the
+    //  thirteen rows in four groups (the sheet's Menu): what she does for you
+    //  —search, capture, record, pick a colour—, two switches —do not disturb, keep the
     //  screen awake—, her library —Deriva, keeping what you copy, the
     //  history— and her own things —wardrobe, wallpaper, settings, sleep—.
     //  The switches flip in place and the menu stays; the rest go and close it.
     fact menu_open = false
-    fact menu_selected = -1            // the row pointed at, 0–11: by the mouse or the arrows
+    fact menu_selected = -1            // the row pointed at, 0–12: by the mouse or the arrows
     //  «Keep what I copy»: while on, the logic keeps in Deriva whatever text
     //  you copy (it is said in settings.json).
     fact clip.keep = false
@@ -1346,7 +1346,7 @@ scene Etta {
     //  Only a press on her set `needed`: a card opened from the finder, a
     //  shortcut or the logic came out of a ball that was still sunk for the
     //  face, and her eyes sat 4.5 px low in it.
-    follow out = if(hidden and not needed and not open and not tray_open and not celebrating and not reel_open and not raging and not adventuring and osd.kind == none, 0, 1)
+    follow out = if(hidden and not needed and not open and not tray_open and not colors_open and not celebrating and not reel_open and not raging and not adventuring and osd.kind == none, 0, 1)
 
     // ── the photograph ───────────────────────────────────────────
     //  She does not switch off all at once before the screen freezes: she
@@ -1359,7 +1359,7 @@ scene Etta {
     //  What is photographed. All three come in by keyboard —`pleamar --say marea
     //  "emit shot_region"`— and do the same until there is a photo: what changes
     //  is where the crop comes from.
-    fact scope: region | display | active_window = region
+    fact scope: region | display | active_window | swatch = region
     event shot_region                  // Print · SUPER+C
     event shot_screen                  // SHIFT+Print
     event shot_window                  // CTRL+Print
@@ -1378,12 +1378,16 @@ scene Etta {
     //  She leaves the same way for two things, and on reaching the top she does
     //  one or the other.
     fact purpose: shot | nook | travel | adventure | ride = shot
-    on shot_region { scope = region; emit snap }
-    on shot_screen { scope = display; emit snap }
-    on shot_window { scope = active_window; emit snap }
+    on shot_region while not picking { scope = region; emit snap }
+    on shot_screen while not picking { scope = display; emit snap }
+    on shot_window while not picking { scope = active_window; emit snap }
+    //  A colour: the same journey —she leaves the frame, the screens freeze—
+    //  and then the picker over them instead of the capture's frame.
+    event pick_color                   // her menu, the finder, her colours, `etta pick_color`
+    on pick_color while not picking and not shooting { scope = swatch; emit snap }
     //  And whatever was open is folded away: a half-closed panel in the photo is
     //  the only thing she can spoil.
-    on snap { purpose = shot; open = false; page = none; tray_open = false; searching = false; menu_open = false; play retire }
+    on snap { purpose = shot; open = false; page = none; tray_open = false; searching = false; menu_open = false; ts_open = false; colors_open = false; play retire }
 
     //  The shot. The shutter is a pose and the click a gesture: it closes in 80,
     //  holds, opens in 170 —Marea's timings— and gives the face back. And a
@@ -1415,12 +1419,14 @@ scene Etta {
     //  photo —it is cropped from it, not from the live desktop—, so while you
     //  choose she can already be in front: nothing she does gets into an image
     //  that already exists.
-    on gone while purpose == shot {
+    on gone while purpose == shot and scope != swatch {
         away: 1 ~16ms
         face = camera
     }
+    //  Picking a colour she holds a lens, not a camera.
+    on gone while purpose == shot and scope == swatch { away: 1 ~16ms }
     on frozen { away: 0 ~lively }
-    on shot_cancelled { away: 0 ~lively; face = eye; shooting = false; sel.on = false }
+    on shot_cancelled { away: 0 ~lively; face = eye; shooting = false; picking = false; sel.on = false }
 
     // ── choosing what: the capture overlay ───────────────────────
     //  Over the frozen frame of EVERY monitor, each its own: dimmed, with guides
@@ -1450,7 +1456,44 @@ scene Etta {
     event pick_shot_mode
     model frames max 2 { pic: image 1920, 1080 }
     prop shot.in = 0 ~140ms
-    follow shot.in = if(shooting, 1, 0)
+    follow shot.in = if(shooting or picking, 1, 0)
+
+    // ── the colour picker ────────────────────────────────────────
+    //  The same overlay, over the same frozen frames, but nothing dimmed: the
+    //  colour under the pointer has to be the true one. Next to the pointer
+    //  she holds a lens —a drop of her own skin that magnifies ten times,
+    //  with the pixel that will be taken framed in its middle— and under it
+    //  the colour, as a swatch with its HEX and its RGB, read from the frame
+    //  itself by the logic. A click takes it: to her colours, which the
+    //  little her keeps, and to the clipboard. The arrows move the pixel one
+    //  at a time (Shift, ten) and Enter takes it; H and R choose what is
+    //  copied; Esc, the right button or Cancel leave with nothing.
+    fact picking = false
+    fact pick.scr = -1                 // the copy under the pointer
+    fact pick.lx = -1                  // the pixel last asked about
+    fact pick.ly = -1
+    fact pick.dx = 0                   // the arrows' nudge
+    fact pick.dy = 0
+    fact pick.fmt = 0                  // what is copied: 0 HEX · 1 RGB
+    fact pick.ok = false               // a colour has been read
+    fact pick.r = 0
+    fact pick.g = 0
+    fact pick.b = 0
+    text pick.hex = ""
+    text pick.rgb = ""
+    event pick_probe ->                // (x + 4096 · y): which colour is here?
+    event pick_commit ->               // (x + 4096 · y): this one
+    event pick_escape ->
+    event pick_fmt ->
+    on pick_fmt(i) { pick.fmt = i }
+    on change picking while picking { blur; pick.dx = 0; pick.dy = 0; pick.lx = -1; pick.ok = false }
+    on key Escape while picking { emit pick_escape }
+    on key h while picking { pick.fmt = 0 }
+    on key H while picking { pick.fmt = 0 }
+    on key r while picking { pick.fmt = 1 }
+    on key R while picking { pick.fmt = 1 }
+    //  (The arrows are in the overlay, which knows where the pointer is and
+    //  keeps the pixel on its monitor.)
     prop shot.flash = 0 ~350ms
     on shoot { shot.flash: 0.85 ~16ms; shot.flash: 0 ~350ms after 30ms }
     //  The order on the bar is Region, Screen, Window: the one Halley cannot
@@ -1500,9 +1543,9 @@ scene Etta {
         let dragging = sel.on and mine and (sw > 1 or sh > 1)
         //  The whole monitor takes the press, under everything drawn: the
         //  bar's own buttons, declared further down, stay on top of it.
-        zone box shot_zone { from: 0, 0; size: W, H; active: shooting }
+        zone box shot_zone { from: 0, 0; size: W, H; active: shooting or picking }
         on enter shot_zone { ox = pointer.x - local.x; oy = pointer.y - local.y }
-        on press shot_zone while shot.mode == sm_region {
+        on press shot_zone while shooting and shot.mode == sm_region {
             ox = pointer.x - local.x
             oy = pointer.y - local.y
             shot.scr = screen.index
@@ -1519,15 +1562,39 @@ scene Etta {
             emit shot_commit
         }
         on release shot_zone while sel.on and mine and (abs(px - sel.ax) <= 3 or abs(py - sel.ay) <= 3) { sel.on = false }
-        on press shot_zone while shot.mode == sm_screen { shot.scr = screen.index; sel.x = 0; sel.y = 0; sel.w = W; sel.h = H; emit shot_commit }
-        on press shot_zone while shot.mode == sm_window and not compositor_halley { shot.scr = screen.index; sel.w = -1; sel.h = -1; emit shot_commit }
-        on press right shot_zone { emit shot_escape }
+        on press shot_zone while shooting and shot.mode == sm_screen { shot.scr = screen.index; sel.x = 0; sel.y = 0; sel.w = W; sel.h = H; emit shot_commit }
+        on press shot_zone while shooting and shot.mode == sm_window and not compositor_halley { shot.scr = screen.index; sel.w = -1; sel.h = -1; emit shot_commit }
+        on press right shot_zone while shooting { emit shot_escape }
+        on press right shot_zone while picking { emit pick_escape }
+        //  The picker's pixel: under the pointer, moved by the arrows. It is
+        //  asked about at most twenty times a second, and only when it moved.
+        let qx = floor(clamp(px + pick.dx, 0, W - 1))
+        let qy = floor(clamp(py + pick.dy, 0, H - 1))
+        on enter shot_zone while picking { pick.scr = screen.index }
+        every 50ms while picking and here and (qx != pick.lx or qy != pick.ly) {
+            pick.lx = qx
+            pick.ly = qy
+            pick.scr = screen.index
+            emit pick_probe(qx + qy * 4096)
+        }
+        on change floor(lx) + floor(ly) * 8192 while picking and here and (pick.dx != 0 or pick.dy != 0) { pick.dx = 0; pick.dy = 0 }
+        on press shot_zone while picking { pick.scr = screen.index; emit pick_commit(qx + qy * 4096) }
+        on key Return while picking and here { pick.scr = screen.index; emit pick_commit(qx + qy * 4096) }
+        on key Left while picking and here { pick.dx = clamp(pick.dx - 1, -px, W - 1 - px) }
+        on key Right while picking and here { pick.dx = clamp(pick.dx + 1, -px, W - 1 - px) }
+        on key Up while picking and here { pick.dy = clamp(pick.dy - 1, -py, H - 1 - py) }
+        on key Down while picking and here { pick.dy = clamp(pick.dy + 1, -py, H - 1 - py) }
+        on key Shift+Left while picking and here { pick.dx = clamp(pick.dx - 10, -px, W - 1 - px) }
+        on key Shift+Right while picking and here { pick.dx = clamp(pick.dx + 10, -px, W - 1 - px) }
+        on key Shift+Up while picking and here { pick.dy = clamp(pick.dy - 10, -py, H - 1 - py) }
+        on key Shift+Down while picking and here { pick.dy = clamp(pick.dy + 10, -py, H - 1 - py) }
+        on key space while picking and here { pick.scr = screen.index; emit pick_commit(qx + qy * 4096) }
         group {
             opacity: shot.in
             //  The frozen frame of this monitor: what you choose from.
             for f in frames { image f.pic { at: 0, 0; size: W, H; show: f.index == screen.index } }
             //  Dimmed, and clear inside the selection.
-            box { from: 0, 0; size: W, H; color: #04060a; opacity: if(dragging, 0, 0.42) }
+            box { from: 0, 0; size: W, H; color: #04060a; opacity: if(dragging or picking, 0, 0.42) }
             group {
                 show: dragging
                 box { from: 0, 0; size: W, sy0; color: #04060a; opacity: 0.46 }
@@ -1548,7 +1615,7 @@ scene Etta {
             //  The guides through the pointer, and where it is: only on the
             //  monitor it is over.
             group {
-                show: shot.mode == sm_region and (here or dragging)
+                show: shooting and shot.mode == sm_region and (here or dragging)
                 box { from: px, 0; size: 1, H; color: #ffffff; opacity: 32% }
                 box { from: 0, py; size: W, 1; color: #ffffff; opacity: 32% }
                 group {
@@ -1583,6 +1650,7 @@ scene Etta {
             let bar.sw = if(compositor_halley, 220, 330)
             let bar.w = bar.sw + 16 + 176 + 44 + 104
             group {
+                show: shooting
                 move: W / 2 - bar.w / 2, H - 80
                 box { from: 0, 0; size: bar.w, 54; corner: 18; color: #151616; opacity: 94% }
                 box { from: 0, 0; size: bar.w, 54; corner: 18; stroke: 1; color: #ffffff; opacity: 9% }
@@ -1593,6 +1661,75 @@ scene Etta {
                 text pick(if(shot.mode == sm_region, if(sel.on, 1, 0), if(shot.mode == sm_window, 2, 3)), "Drag to select", "Release to capture", "Click a window", "Click to capture") { family: "Geist"; at: bar.sw + 22, 27; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
                 group { move: bar.sw + 16 + 176, 16; Kbd("Esc", w: 36) }
                 group { move: bar.w - 104, 8; Btn("Cancel", shot_escape, w: 96, kind: 3, h: 38) }
+            }
+            //  The picker: her lens, her, and the colour.
+            group {
+                show: picking and here
+                //  The lens goes up and to the right of the pointer, and
+                //  turns to the other side near an edge.
+                let lsx = if(qx + 250 > W, -1, 1)
+                let lsy = if(qy - 200 < 0, -1, 1)
+                let lp.x = qx + 0.5 + lsx * 96
+                let lp.y = qy + 0.5 - lsy * 96
+                let zm = 10
+                body {
+                    color: coal
+                    rim: 14%
+                    shadow: 0, 8, 22, 45%, #05070a
+                    ellipse { at: lp.x, lp.y; radius: 62 }
+                }
+                group {
+                    clip ellipse { at: lp.x, lp.y; radius: 55 }
+                    for f in frames { image f.pic { at: lp.x - (qx + 0.5) * zm, lp.y - (qy + 0.5) * zm; size: W * zm, H * zm; show: f.index == screen.index } }
+                    //  The pixels, as a faint grid, and the one that will be taken.
+                    repeat g in 0..12 {
+                        box { at: lp.x + (g - 5.5) * zm, lp.y; size: 1, 112; color: #000000; opacity: 14% }
+                        box { at: lp.x, lp.y + (g - 5.5) * zm; size: 112, 1; color: #000000; opacity: 14% }
+                    }
+                    //  The picture is magnified smoothly (pleamar samples images
+                    //  linearly), so the pixel that will be taken is painted
+                    //  over it in its exact colour, as read from the frame.
+                    box { at: lp.x, lp.y; size: zm, zm
+                          color: mix(mix(mix(#000000, #ff0000, pick.r), mix(#00ff00, #ffff00, pick.r), pick.g), mix(mix(#0000ff, #ff00ff, pick.r), mix(#00ffff, #ffffff, pick.r), pick.g), pick.b)
+                          opacity: if(pick.ok, 1, 0) }
+                    box { at: lp.x, lp.y; size: zm + 3, zm + 3; stroke: 1.5; color: #000000; opacity: 55% }
+                    box { at: lp.x, lp.y; size: zm, zm; stroke: 1.5; color: #ffffff }
+                }
+                //  Her, holding it, looking where it points.
+                let hd.x = lp.x + lsx * 70
+                let hd.y = lp.y + lsy * 44
+                body {
+                    color: skin
+                    rim: 14%
+                    shadow: 0, 8, 20, 40%
+                    ellipse { at: hd.x, hd.y; radius: 23 * pk }
+                }
+                group { pivot: hd.x, hd.y; scale: pk, pk; Face(hd.x, hd.y, clamp((qx - hd.x) / 24, -4, 4), clamp((qy - hd.y) / 24, -3, 3)) }
+                //  The colour: its swatch, its HEX and its RGB.
+                let cp.y = lp.y - lsy * 92
+                box { at: lp.x, cp.y; size: 184, 46; corner: 23; color: #151616 }
+                box { at: lp.x, cp.y; size: 184, 46; corner: 23; stroke: 1; color: #ffffff; opacity: 9% }
+                ellipse { at: lp.x - 66, cp.y; radius: 12
+                          color: mix(mix(mix(#000000, #ff0000, pick.r), mix(#00ff00, #ffff00, pick.r), pick.g), mix(mix(#0000ff, #ff00ff, pick.r), mix(#00ffff, #ffffff, pick.r), pick.g), pick.b)
+                          opacity: if(pick.ok, 1, 0) }
+                ellipse { at: lp.x - 66, cp.y; radius: 12; stroke: 1.2; color: #ffffff; opacity: 22% }
+                text pick.hex { family: "Geist Mono"; at: lp.x - 46, cp.y - 8; anchor: left center; size: 15; weight: 600; color: tk.ink; show: pick.ok }
+                text pick.rgb { family: "Geist"; at: lp.x - 46, cp.y + 10; anchor: left center; size: 11; weight: 400; color: tk.ink3; show: pick.ok }
+                text "Reading…" { family: "Geist"; at: lp.x - 46, cp.y; anchor: left center; size: 12; weight: 500; color: tk.ink3; show: not pick.ok }
+            }
+            //  What it does, at the bottom, and a way out with the mouse.
+            let pb.w = 560
+            group {
+                show: picking
+                move: W / 2 - pb.w / 2, H - 80
+                box { from: 0, 0; size: pb.w, 54; corner: 18; color: #151616; opacity: 94% }
+                box { from: 0, 0; size: pb.w, 54; corner: 18; stroke: 1; color: #ffffff; opacity: 9% }
+                zone box pick_bar { from: 0, 0; size: pb.w, 54; corner: 18; active: picking }
+                figure Kit.i_pipette { at: 30, 27; size: 20, 20; color: tk.mint }
+                text "Click to pick a colour" { family: "Geist"; at: 50, 27; anchor: left center; size: 13; weight: 500; color: tk.ink2 }
+                group { move: 216, 8; Seg(pick.fmt, "HEX  H", "RGB  R", pick_fmt, w: 160) }
+                group { move: 388, 16; Kbd("Esc", w: 36) }
+                group { move: pb.w - 104, 8; Btn("Cancel", pick_escape, w: 96, kind: 3, h: 38) }
             }
             box { from: 0, 0; size: W, H; color: #ffffff; opacity: shot.flash * if(mine, 1, 0) }
         }
@@ -1605,7 +1742,7 @@ scene Etta {
     //  pressed— it says so, and she drops back into her island.
     event ride_out
     event ride_back ->
-    on ride_out { purpose = ride; asleep = false; open = false; page = none; tray_open = false; searching = false; menu_open = false; ts_open = false; play retire }
+    on ride_out { purpose = ride; asleep = false; open = false; page = none; tray_open = false; searching = false; menu_open = false; ts_open = false; colors_open = false; play retire }
     on gone while purpose == ride { away: 1 ~16ms }
     on ride_back { away: 0 ~lively; face = eye; purpose = shot }
     //  And if the logic did not answer, she does not stay up there forever.
@@ -1650,7 +1787,7 @@ scene Etta {
     on change misplaced while misplaced {
         purpose = travel
         travelling = true
-        open = false; page = none; tray_open = false; searching = false; menu_open = false; ts_open = false
+        open = false; page = none; tray_open = false; searching = false; menu_open = false; ts_open = false; colors_open = false
         splashing: 1 ~16ms
         play leap
     }
@@ -1661,7 +1798,7 @@ scene Etta {
     on still misplaced for 1500ms while misplaced {
         purpose = travel
         travelling = true
-        open = false; page = none; tray_open = false; searching = false; menu_open = false; ts_open = false
+        open = false; page = none; tray_open = false; searching = false; menu_open = false; ts_open = false; colors_open = false
         splashing: 1 ~16ms
         play leap
     }
@@ -1737,13 +1874,13 @@ scene Etta {
     let capsule.y = cy_actual - r - 10 + 62
     //  And the saved recording's card, a little lower still.
     let reel.y = cy_actual + 20
-    //  The menu: 300 × 539, the sheet's —six of padding, twelve rows of 40 with
+    //  The menu: 300 × 580, the sheet's and one row more —six of padding, thirteen rows of 40 with
     //  one between, three separators of 11—. It is born from her centre and
     //  slides to her right until it sits 6 px from her, like the time: its
     //  half width goes in the sum. Its top at hers, so the first row is at the
     //  height of her face and the rest hang.
     let menu.w = 300
-    let menu.h = 539
+    let menu.h = 580
     let menu.x = cx + (r + 6 + 150) * menu
     let menu.top = cy_actual - r - 6
     let menu.cy = menu.top + menu.h / 2
@@ -1866,6 +2003,10 @@ scene Etta {
             //  it swallows her with a neck, and lets her go with one.
             blend: max(neck, 18 * splashing)
         }
+        //  The little her, budding: while she comes out of her —or goes back
+        //  in— she is this same skin, and the neck between them is the melt.
+        //  Once loose she is her own body (below), which takes the colour.
+        ellipse mini_bud { at: mini.x, mini.y; radius: mini.R * if(mini.sep > 0.02 and mini.tint < 0.02, 1, 0) * mini.vis; blend: 14 * 4 * mini.sep * (1 - mini.sep) }
         //  The time note, which comes out from BEHIND her: it is born at her
         //  centre with zero width and slides to the right until it sits 14 px
         //  away, with its neck halfway. It is part of the same body, so the shadow
@@ -1984,7 +2125,11 @@ scene Etta {
     //  It is a component because she can be in two places: at the top, and
     //  tucked into the corner while recording. The same face, the same springs;
     //  the only thing that changes is where she is and where she can look.
-    component Face(x: number, y: number, gx: number, gy: number, sink: number = 0) {
+    //  `fg` and `hole` are what the eyes are drawn with and what cuts their
+    //  holes: hers by default, ink on her skin. The little her that keeps
+    //  the colours wears her face on a skin of any colour, so hers are dark
+    //  on a light one, and her holes are cut in it.
+    component Face(x: number, y: number, gx: number, gy: number, sink: number = 0, fg: color = ink, hole: color = skin) {
         //  When something else is in charge, the eyelid stops counting: a camera
         //  does not blink and neither does a number.
         let g.any = clamp(g.vol + g.mute + g.sun + g.mic + g.micoff + g.caps + g.bolt + g.tired, 0, 1)
@@ -2157,7 +2302,7 @@ scene Etta {
             //  on top does not read as a level; and they go away when the drop
             //  opens.
             body {
-                color: mix(ink, #34373a, meter)
+                color: mix(fg, #34373a, meter)
                 box { at: l.x, eye.y - 2.8 * alarm - 5.2 * padlock; size: v.w, v.h; corner: l.corner; blend: eye.fusion }
                 box { at: r.x + 8.8 * magnifier, eye.y + 6.2 * alarm + 8.8 * magnifier + 5.4 * padlock - 3.4 * power
                       size: v.rw, v.rh; corner: r.corner; rotate: 45deg * magnifier; blend: eye.fusion }
@@ -2165,13 +2310,13 @@ scene Etta {
             //  Happy: the pills flatten into nothing and two arches rise in their
             //  place —«^ ^»—. The same eyes, bent once more; the arch grows from a
             //  point as the pill goes, so there is never a face with none.
-            arc { at: l.x, eye.y + 2; radius: 4.2; span: 170deg * joy; width: 2.4; color: ink; opacity: min(joy * 3, 1) }
-            arc { at: r.x, eye.y + 2; radius: 4.2; span: 170deg * joy; width: 2.4; color: ink; opacity: min(joy * 3, 1) }
+            arc { at: l.x, eye.y + 2; radius: 4.2; span: 170deg * joy; width: 2.4; color: fg; opacity: min(joy * 3, 1) }
+            arc { at: r.x, eye.y + 2; radius: 4.2; span: 170deg * joy; width: 2.4; color: fg; opacity: min(joy * 3, 1) }
             //  The clock: the pills flatten and two hands grow from her centre,
             //  the hour's short and thick, the minute's long.
-            line { from: x, eye.y; to: x + 5.5 * sin(hand.h) * hands, eye.y - 5.5 * cos(hand.h) * hands; width: 2.8; color: ink; opacity: min(hands * 3, 1) }
-            line { from: x, eye.y; to: x + 9 * sin(hand.m) * hands, eye.y - 9 * cos(hand.m) * hands; width: 2; color: ink; opacity: min(hands * 3, 1) }
-            ellipse { at: x, eye.y; radius: 1.9 * hands; color: ink; opacity: min(hands * 3, 1) }
+            line { from: x, eye.y; to: x + 5.5 * sin(hand.h) * hands, eye.y - 5.5 * cos(hand.h) * hands; width: 2.8; color: fg; opacity: min(hands * 3, 1) }
+            line { from: x, eye.y; to: x + 9 * sin(hand.m) * hands, eye.y - 9 * cos(hand.m) * hands; width: 2; color: fg; opacity: min(hands * 3, 1) }
+            ellipse { at: x, eye.y; radius: 1.9 * hands; color: fg; opacity: min(hands * 3, 1) }
             //  What has just arrived, in her eyes for a moment: the pills flatten
             //  and the symbol of its kind grows in their place. A speech bubble
             //  for messages, an envelope for work, a calendar page, a gear for
@@ -2182,27 +2327,27 @@ scene Etta {
                 scale: sign, sign
                 group {
                     show: reading_cat == 1
-                    box { at: x, eye.y - 1; size: 17, 12; corner: 4.5; stroke: 1.9; color: ink }
-                    path { at: x - 4, eye.y + 4.5; color: ink; move 0, 0; line 5, 0; line -1.5, 4.5; close }
+                    box { at: x, eye.y - 1; size: 17, 12; corner: 4.5; stroke: 1.9; color: fg }
+                    path { at: x - 4, eye.y + 4.5; color: fg; move 0, 0; line 5, 0; line -1.5, 4.5; close }
                 }
                 group {
                     show: reading_cat == 2
-                    box { at: x, eye.y; size: 18, 12; corner: 1.8; stroke: 1.8; color: ink }
-                    line { from: x - 8, eye.y - 5; to: x, eye.y + 1; width: 1.6; color: ink }
-                    line { from: x + 8, eye.y - 5; to: x, eye.y + 1; width: 1.6; color: ink }
+                    box { at: x, eye.y; size: 18, 12; corner: 1.8; stroke: 1.8; color: fg }
+                    line { from: x - 8, eye.y - 5; to: x, eye.y + 1; width: 1.6; color: fg }
+                    line { from: x + 8, eye.y - 5; to: x, eye.y + 1; width: 1.6; color: fg }
                 }
                 group {
                     show: reading_cat == 3
-                    box { at: x, eye.y + 0.5; size: 15, 13; corner: 2; stroke: 1.8; color: ink }
-                    box { at: x, eye.y - 4; size: 15, 4; corner: 1; color: ink }
-                    line { from: x - 3.5, eye.y - 8.5; to: x - 3.5, eye.y - 5; width: 1.6; color: ink }
-                    line { from: x + 3.5, eye.y - 8.5; to: x + 3.5, eye.y - 5; width: 1.6; color: ink }
+                    box { at: x, eye.y + 0.5; size: 15, 13; corner: 2; stroke: 1.8; color: fg }
+                    box { at: x, eye.y - 4; size: 15, 4; corner: 1; color: fg }
+                    line { from: x - 3.5, eye.y - 8.5; to: x - 3.5, eye.y - 5; width: 1.6; color: fg }
+                    line { from: x + 3.5, eye.y - 8.5; to: x + 3.5, eye.y - 5; width: 1.6; color: fg }
                 }
                 group {
                     show: reading_cat == 4
-                    ellipse { at: x, eye.y; radius: 5; stroke: 2.2; color: ink }
+                    ellipse { at: x, eye.y; radius: 5; stroke: 2.2; color: fg }
                     repeat t in 0..6 {
-                        box { at: x + 7 * cos(t * 60), eye.y + 7 * sin(t * 60); size: 3.2, 3.2; corner: 0.8; rotate: t * 60deg; color: ink }
+                        box { at: x + 7 * cos(t * 60), eye.y + 7 * sin(t * 60); size: 3.2, 3.2; corner: 0.8; rotate: t * 60deg; color: fg }
                     }
                 }
             }
@@ -2212,71 +2357,71 @@ scene Etta {
                 let ex = if(e == 0, l.x, r.x)
                 let bob = 1.2 * sin(eyewave.phase * 360 + e * 120)
                 let tw = clamp(eyewave, 0, 1)
-                arc { at: ex - 3.1, eye.y + bob; radius: 3.1; span: 180deg * tw; width: 2.4; color: ink; opacity: min(tw * 3, 1) }
-                arc { at: ex + 3.1, eye.y + bob; radius: 3.1; span: 180deg * tw; width: 2.4; rotate: 180deg; color: ink; opacity: min(tw * 3, 1) }
+                arc { at: ex - 3.1, eye.y + bob; radius: 3.1; span: 180deg * tw; width: 2.4; color: fg; opacity: min(tw * 3, 1) }
+                arc { at: ex + 3.1, eye.y + bob; radius: 3.1; span: 180deg * tw; width: 2.4; rotate: 180deg; color: fg; opacity: min(tw * 3, 1) }
             }
             //  Angry: two brows sloping down to the middle, «\ /», and the eyes
             //  narrowed under them.
-            line { from: l.x - 5.5, eye.y - 11 + 2 * (1 - fury); to: l.x + 4, eye.y - 6.5; width: 2.2; color: ink; opacity: fury }
-            line { from: r.x + 5.5, eye.y - 11 + 2 * (1 - fury); to: r.x - 4, eye.y - 6.5; width: 2.2; color: ink; opacity: fury }
+            line { from: l.x - 5.5, eye.y - 11 + 2 * (1 - fury); to: l.x + 4, eye.y - 6.5; width: 2.2; color: fg; opacity: fury }
+            line { from: r.x + 5.5, eye.y - 11 + 2 * (1 - fury); to: r.x - 4, eye.y - 6.5; width: 2.2; color: fg; opacity: fury }
             //  Blowing: a little «o» of a mouth.
-            ellipse { at: x + 6 * side, eye.y + 10; radius: 2.6 * blow; stroke: 1.5; color: ink; opacity: blow }
+            ellipse { at: x + 6 * side, eye.y + 10; radius: 2.6 * blow; stroke: 1.5; color: fg; opacity: blow }
 
             //  What changed, in her eyes: the volume, the light, the microphone,
             //  the capitals, the charger, a battery running out. As thick as her
             //  eyes and two of them, where her eyes are: it is still her looking.
             group {
                 opacity: min(g.vol * 3, 1)
-                box { at: l.x, eye.y; size: 5, 11 * g.vol; corner: 2.5; color: ink }
-                arc { at: r.x - 4, eye.y; radius: 3.6; span: 110deg * g.vol; width: 2.8; rotate: 90deg; color: ink }
-                arc { at: r.x - 4, eye.y; radius: 7.4; span: 100deg * g.vol; width: 2.8; rotate: 90deg; color: ink; opacity: if(sound.volume > 0.34, 1, 0.25) }
-                arc { at: r.x - 4, eye.y; radius: 11.2; span: 86deg * g.vol; width: 2.8; rotate: 90deg; color: ink; opacity: if(sound.volume > 0.67, 1, 0.25) }
+                box { at: l.x, eye.y; size: 5, 11 * g.vol; corner: 2.5; color: fg }
+                arc { at: r.x - 4, eye.y; radius: 3.6; span: 110deg * g.vol; width: 2.8; rotate: 90deg; color: fg }
+                arc { at: r.x - 4, eye.y; radius: 7.4; span: 100deg * g.vol; width: 2.8; rotate: 90deg; color: fg; opacity: if(sound.volume > 0.34, 1, 0.25) }
+                arc { at: r.x - 4, eye.y; radius: 11.2; span: 86deg * g.vol; width: 2.8; rotate: 90deg; color: fg; opacity: if(sound.volume > 0.67, 1, 0.25) }
             }
             group {
                 opacity: min(g.mute * 3, 1)
-                box { at: l.x, eye.y; size: 5, 11 * g.mute; corner: 2.5; color: ink }
-                line { from: r.x - 3.6 * g.mute, eye.y - 3.6 * g.mute; to: r.x + 3.6 * g.mute, eye.y + 3.6 * g.mute; width: 2.8; color: ink }
-                line { from: r.x + 3.6 * g.mute, eye.y - 3.6 * g.mute; to: r.x - 3.6 * g.mute, eye.y + 3.6 * g.mute; width: 2.8; color: ink }
+                box { at: l.x, eye.y; size: 5, 11 * g.mute; corner: 2.5; color: fg }
+                line { from: r.x - 3.6 * g.mute, eye.y - 3.6 * g.mute; to: r.x + 3.6 * g.mute, eye.y + 3.6 * g.mute; width: 2.8; color: fg }
+                line { from: r.x + 3.6 * g.mute, eye.y - 3.6 * g.mute; to: r.x - 3.6 * g.mute, eye.y + 3.6 * g.mute; width: 2.8; color: fg }
             }
             group {
                 opacity: min(g.sun * 3, 1)
                 repeat e in 0..2 {
                     let sun.ex = if(e == 0, l.x, r.x)
-                    ellipse { at: sun.ex, eye.y; radius: 3.2 * g.sun; color: ink }
+                    ellipse { at: sun.ex, eye.y; radius: 3.2 * g.sun; color: fg }
                     repeat t in 0..6 {
-                        ellipse { at: sun.ex + 5.8 * cos(t * 60 + 30), eye.y + 5.8 * sin(t * 60 + 30); radius: 1.15 * g.sun; color: ink }
+                        ellipse { at: sun.ex + 5.8 * cos(t * 60 + 30), eye.y + 5.8 * sin(t * 60 + 30); radius: 1.15 * g.sun; color: fg }
                     }
                 }
             }
             group {
                 opacity: min(max(g.mic, g.micoff) * 3, 1)
-                box { at: l.x, eye.y + 2.5 * g.micoff; size: 5, 11 - 8.4 * g.micoff; corner: 2.5; color: ink }
-                box { at: r.x, eye.y - 2.2; size: 5, 9; corner: 2.5; color: ink }
-                arc { at: r.x, eye.y - 0.5; radius: 4.6; span: 180deg; width: 1.9; rotate: 180deg; color: ink }
-                line { from: r.x, eye.y + 4.1; to: r.x, eye.y + 6.6; width: 1.9; color: ink }
+                box { at: l.x, eye.y + 2.5 * g.micoff; size: 5, 11 - 8.4 * g.micoff; corner: 2.5; color: fg }
+                box { at: r.x, eye.y - 2.2; size: 5, 9; corner: 2.5; color: fg }
+                arc { at: r.x, eye.y - 0.5; radius: 4.6; span: 180deg; width: 1.9; rotate: 180deg; color: fg }
+                line { from: r.x, eye.y + 4.1; to: r.x, eye.y + 6.6; width: 1.9; color: fg }
                 line { from: r.x - 5, eye.y - 7; to: r.x + 5, eye.y + 6.5; width: 2.2; color: #ef6b5e; opacity: g.micoff }
             }
             group {
                 opacity: min(g.caps * 3, 1)
                 repeat e in 0..2 {
                     let caps.ex = if(e == 0, l.x, r.x)
-                    path { at: caps.ex, eye.y - 1.5; stroke: 2.6; color: ink; move -3.8, 2.4; line 0, -2.6; line 3.8, 2.4 }
-                    box { at: caps.ex, eye.y + 4.2; size: 7, 2.4; corner: 1.2; color: ink }
+                    path { at: caps.ex, eye.y - 1.5; stroke: 2.6; color: fg; move -3.8, 2.4; line 0, -2.6; line 3.8, 2.4 }
+                    box { at: caps.ex, eye.y + 4.2; size: 7, 2.4; corner: 1.2; color: fg }
                 }
             }
             group {
                 opacity: min(g.bolt * 3, 1)
                 repeat e in 0..2 {
                     let bolt.ex = if(e == 0, l.x, r.x)
-                    path { at: bolt.ex, eye.y; color: ink; move 1.4, -7; line -3.6, 1; line -0.4, 1; line -1.4, 7; line 3.6, -1; line 0.4, -1; close }
+                    path { at: bolt.ex, eye.y; color: fg; move 1.4, -7; line -3.6, 1; line -0.4, 1; line -1.4, 7; line 3.6, -1; line 0.4, -1; close }
                 }
             }
             group {
                 opacity: min(g.tired * 3, 1)
-                box { at: l.x, eye.y + 3; size: 5.4, 5; corner: 2.5; color: ink }
-                box { at: r.x, eye.y + 3; size: 5.4, 5; corner: 2.5; color: ink }
-                line { from: l.x - 3.6, eye.y; to: l.x + 3.6, eye.y; width: 1.7; color: ink }
-                line { from: r.x - 3.6, eye.y; to: r.x + 3.6, eye.y; width: 1.7; color: ink }
+                box { at: l.x, eye.y + 3; size: 5.4, 5; corner: 2.5; color: fg }
+                box { at: r.x, eye.y + 3; size: 5.4, 5; corner: 2.5; color: fg }
+                line { from: l.x - 3.6, eye.y; to: l.x + 3.6, eye.y; width: 1.7; color: fg }
+                line { from: r.x - 3.6, eye.y; to: r.x + 3.6, eye.y; width: 1.7; color: fg }
             }
 
             //  The level's filled part is **the same track**, painted again and
@@ -2298,7 +2443,7 @@ scene Etta {
             //  here everything is distances, so a hole is one more shape. It is
             //  the same trick as the diaphragm down here.
             body {
-                color: skin
+                color: hole
                 ellipse { at: l.x, eye.y; radius: 6.4 * magnifier * shrink }
                 //  The padlock's shackle: a ring whose lower half is covered,
                 //  which is where the body fits.
@@ -2316,7 +2461,7 @@ scene Etta {
             //  The power symbol's stroke, again on top: the ring's hollow and its
             //  opening were cut after it and ate it whole, so the power-off face
             //  was a ring alone.
-            box { at: l.x, eye.y - 4.3 * power; size: 2.6 * power * shrink, 9.6 * power * shrink; corner: 1.3; color: ink; opacity: min(power * 3, 1) }
+            box { at: l.x, eye.y - 4.3 * power; size: 2.6 * power * shrink, 9.6 * power * shrink; corner: 1.3; color: fg; opacity: min(power * 3, 1) }
             //  And what is not a bent capsule: the door's handle, the arrow going
             //  out through it and the tip of the circular arrow. The turn is a
             //  single one —«do not spin endlessly for decoration»— and is made
@@ -2324,14 +2469,14 @@ scene Etta {
             group {
                 opacity: door * shrink
                 ellipse { at: l.x + 1.6, eye.y + 1.4; radius: 1.1; color: mint }
-                path { at: r.x + 5.2, eye.y; color: ink; stroke: 1.7
+                path { at: r.x + 5.2, eye.y; color: fg; stroke: 1.7
                        move 0, -3.1; line 3.1, 0; line 0, 3.1 }
             }
             group {
                 opacity: turn * shrink
                 pivot: l.x, eye.y
                 rotate: twirl * 360deg
-                path { at: l.x + 7.4, eye.y - 7.4; color: ink
+                path { at: l.x + 7.4, eye.y - 7.4; color: fg
                        move -3.4, -2.2; line 3.4, 0.4; line -1.4, 3.6; close }
             }
 
@@ -2342,7 +2487,7 @@ scene Etta {
             //  also the same sum as always: here everything is distances, and a
             //  hole is one more shape.
             body {
-                color: skin
+                color: hole
                 ellipse { at: x, eye.y; radius: g.w / 2 * aperture * 1.25 }
             }
 
@@ -2351,7 +2496,7 @@ scene Etta {
             //  hole is made when everything is distances. It grows from nothing, so
             //  the eye empties instead of being swapped for a frame.
             body {
-                color: skin
+                color: hole
                 box { at: x, eye.y; size: 21.3 * cam, 14 * cam; corner: 3.3 }
             }
 
@@ -2359,7 +2504,7 @@ scene Etta {
             //  hollow took with it. Same shape and same place as the eye below, so
             //  no crossing is seen: you see an eye emptying around it.
             body {
-                color: ink
+                color: fg
                 opacity: cam
                 ellipse { at: x, eye.y; radius: eye.l / 2 }
             }
@@ -2371,7 +2516,7 @@ scene Etta {
                 at: x - 6.2, eye.y - 11.6
                 size: 5.7 * cam, 2.9 * cam
                 corner: 1.2
-                color: ink
+                color: fg
             }
 
             //  The record disc, right on top of the left eye and its size: it is
@@ -2392,7 +2537,7 @@ scene Etta {
                 anchor: center
                 size: 9
                 weight: 600
-                color: ink
+                color: fg
                 opacity: meter
             }
 
@@ -2409,7 +2554,7 @@ scene Etta {
                     anchor: center
                     size: 24.6
                     weight: 300
-                    color: ink
+                    color: fg
                     //  It comes in before the ring is completely gone: by the time
                     //  the hole shows it, it is already there. If it came in later,
                     //  the diaphragm would open over nothing.
@@ -2742,6 +2887,84 @@ scene Etta {
         //  Nothing looping.
         on landed while reading_cat == k { n.$k = n.$k + burst; last.$k = max(last.$k, arrival_seq); impulse beat.$k 5 }
         on direct while cat == k { n.$k = n.$k + 1; last.$k = seq; impulse beat.$k 5 }
+    }
+
+    // ── the little her, who keeps the colours ────────────────────
+    //  With the first colour picked she buds out of Etta —her skin, with its
+    //  neck—, comes loose and takes the colour; from then on she follows her
+    //  «mother» a little below the stones and not too close: under them, to
+    //  the left, while Etta is out, and at her right, between her and the
+    //  clock, while she is tucked into the edge. Her face is Etta's own face
+    //  —the same eyes, blinks, glances and reactions, an exact mirror— with
+    //  dark eyes on a light colour. No wardrobe. Pressing her opens her
+    //  colours; clearing them, Etta takes her back in.
+    fact mini.has = false              // there is at least one colour
+    fact mini.r = 0                    // the latest colour, 0..1 each
+    fact mini.g = 0
+    fact mini.b = 0
+    fact colors.n = 0
+    fact colors_open = false
+    event picked                       // the logic: a colour has just been taken
+    //  Her colours, newest first: the first is the one she wears.
+    model colors max 12 { hex: text; rgb: text; r: number; g: number; b: number }
+    prop mini.sep = 0 ~620ms           // 0 inside Etta, 1 loose at her place
+    prop mini.tint = 0 ~360ms          // 0 Etta's skin, 1 her colour
+    prop mini.cr = 0 ~calm
+    prop mini.cg = 0 ~calm
+    prop mini.cb = 0 ~calm
+    follow mini.cr = mini.r
+    follow mini.cg = mini.g
+    follow mini.cb = mini.b
+    on change mini.has while mini.has { mini.sep: if(mini.has, 1, 0) ~620ms; mini.tint: if(mini.has, 1, 0) ~360ms after 640ms }
+    on change mini.has while not mini.has { colors_open = false; mini.tint: if(mini.has, 1, 0) ~300ms; mini.sep: if(mini.has, 1, 0) ~560ms after 320ms }
+    on change mini.sep < 0.15 while not mini.has and mini.sep < 0.15 { play gulp }
+    //  Where she goes: the two places of the sheet, by how far out Etta is,
+    //  at Etta's size. She follows with a spring of her own, a beat behind.
+    let mini.k = pk / 1.2174
+    let mini.R = 11 * pk
+    prop mini.fx = 550 ~gentle
+    prop mini.fy = 90 ~gentle
+    //  Reached for, she stays put: tucked, she sits against Etta's and the
+    //  clock's zones, and Etta coming out to greet the pointer would carry her
+    //  away from under it. She lets go when the pointer leaves her (and her
+    //  colours are closed), and goes to her place.
+    fact mini.hold = false
+    fact mini.hx = 0
+    fact mini.hy = 0
+    follow mini.fx = if(mini.hold, mini.hx, cx + (32 - 70 * out) * mini.k)
+    follow mini.fy = if(mini.hold, mini.hy, cy_actual + (36 + 5 * out) * mini.k)
+    let mini.x = cx + (mini.fx - cx) * mini.sep
+    let mini.y = cy_actual + (mini.fy - cy_actual) * mini.sep
+    //  She steps out of the way of whatever else comes out on that side.
+    prop mini.vis = 1 ~200ms
+    follow mini.vis = if(not open and not searching and not tray_open and not ts_open and not corner and not adventuring and not travelling and away < 0.5 and catch < 0.05 and fan < 0.05, 1, 0)
+    //  A wobble when a colour arrives, and a little growth under the pointer.
+    prop mini.wob = 0 ~splash
+    prop mini.hot = 0 ~140ms
+    on picked { impulse mini.wob 8; play happy }
+    //  Her skin: Etta's coal while she buds, her colour once loose. The
+    //  colour is made from its three numbers: in pleamar a colour is three
+    //  channels and `mix` is straight along each, so mixing the corners of
+    //  the RGB cube by them gives back exactly that colour.
+    let mini.col = mix(coal, mix(mix(mix(#000000, #ff0000, mini.cr), mix(#00ff00, #ffff00, mini.cr), mini.cg), mix(mix(#0000ff, #ff00ff, mini.cr), mix(#00ffff, #ffffff, mini.cr), mini.cg), mini.cb), mini.tint)
+    let mini.lum = (0.2126 * mini.cr + 0.7152 * mini.cg + 0.0722 * mini.cb) * mini.tint
+    let mini.s = (1 + 0.08 * mini.hot) * mini.vis
+    group {
+        show: mini.sep > 0.02 and mini.vis > 0.01
+        pivot: mini.x, mini.y
+        scale: mini.s * (1 + 0.1 * mini.wob), mini.s * (1 - 0.06 * mini.wob)
+        body {
+            color: mini.col
+            rim: 14%
+            shadow: 0, 3, 9, 35% * mini.tint, #05070a
+            ellipse { at: mini.x, mini.y; radius: mini.R * if(mini.tint < 0.02, 0, 1) }
+        }
+        group {
+            opacity: clamp(mini.sep * 3 - 1.4, 0, 1)
+            pivot: mini.x, mini.y
+            scale: mini.R / 23, mini.R / 23
+            Face(mini.x, mini.y, gaze.x, gaze.y, 0, fg: if(mini.lum > 0.6, #151616, ink), hole: mini.col)
+        }
     }
 
     // ── the stones: windows put away ─────────────────────────────
@@ -3163,7 +3386,7 @@ scene Etta {
     //  clock grows into its card or its OSD—, and stays while a file is
     //  carried over her desk with nothing else of hers out: Deriva's pool
     //  opening under her hides the clock, not the place to drop it.
-    follow ts.vis = if(ts.state > 0 and (clk.vis > 0.5 or (drag.over > 0.5 and not open and not tray_open and not searching and not menu_open and phase == 0 and capsule < 0.05 and reel < 0.05 and summary < 0.05)), 1, 0)
+    follow ts.vis = if(ts.state > 0 and (clk.vis > 0.5 or (drag.over > 0.5 and not open and not tray_open and not searching and not menu_open and not colors_open and phase == 0 and capsule < 0.05 and reel < 0.05 and summary < 0.05)), 1, 0)
     prop ts.card = 0 ~290ms
     prop ts.inner = 0 ~200ms
     on change ts_open while ts_open { ts.card: if(ts_open, 1, 0) ~290ms; ts.inner: if(ts_open, 1, 0) ~200ms after 90ms }
@@ -3302,6 +3525,137 @@ scene Etta {
             }
         }
     }
+    // ── her colours: the little her's panel ──────────────────────
+    //  It comes out of her the way Etta's panels come out of Etta —it grows
+    //  from her, geometry first, then what is read— and hangs under her,
+    //  wherever she is (opening it brings Etta out, and her to her place
+    //  under the stones). Only she opens it. On it: the colour she wears,
+    //  big —its HEX as the title, its RGB light below—, the ones before it
+    //  as smaller drops, each format copied by pressing it; «Pick a colour»;
+    //  and «Clear», asked first, after which Etta takes her back in.
+    fact col.asking = false
+    fact col.copied = -1               // what was just copied: 2·row + 0 HEX / 1 RGB, −1 none
+    event col_copy ->                  // (2·row + format)
+    event col_clear ->
+    event col_ask
+    event col_cancel
+    event col_close
+    on col_ask { col.asking = true }
+    on col_cancel { col.asking = false }
+    on col_clear { col.asking = false }
+    on col_close { colors_open = false }
+    on col_copy(v) { col.copied = v }
+    on still col.copied for 1.4s while col.copied > -0.5 { col.copied = -1 }
+    on change colors_open while colors_open { open = false; tray_open = false; searching = false; menu_open = false; ts_open = false; note = false; needed = true; wanted = true }
+    on change colors_open while not colors_open { col.asking = false; mini.hold = false }
+    //  Let her go only if nothing else of hers takes over: the card opening
+    //  from here already needs her, and a grace spent now would not come back.
+    on change colors_open while not colors_open and not open and not menu_open and not searching and not tray_open and not ts_open { wanted = false }
+    on change open while open { colors_open = false }
+    on change tray_open while tray_open { colors_open = false }
+    on change searching while searching { colors_open = false }
+    on change menu_open while menu_open { colors_open = false }
+    on change ts_open while ts_open { colors_open = false }
+    on key Escape while colors_open and col.asking { col.asking = false }
+    on key Escape while colors_open and not col.asking { colors_open = false }
+    prop col.card = 0 ~290ms
+    prop col.inner = 0 ~200ms
+    on change colors_open while colors_open { col.card: if(colors_open, 1, 0) ~290ms; col.inner: if(colors_open, 1, 0) ~200ms after 90ms }
+    on change colors_open while not colors_open { col.inner: if(colors_open, 1, 0) ~50ms; col.card: if(colors_open, 1, 0) ~210ms after 30ms }
+    let col.rows = ceil(max(colors.n - 1, 0) / 2)
+    prop col.H = 230 ~240ms
+    follow col.H = 152 + col.rows * 52 + if(col.rows > 0, 8, 0) + 64
+    let col.W = 340
+    let col.L = clamp(mini.x - col.W / 2, 16, 1100 - col.W - 16)
+    let col.T = mini.y + mini.R + 12
+    //  Grown from her: from her little disc to the panel.
+    let col.bx = mini.x + (col.L + col.W / 2 - mini.x) * col.card
+    let col.by = mini.y + (col.T + col.H / 2 - mini.y) * col.card
+    let col.bw = 2 * mini.R + (col.W - 2 * mini.R) * col.card
+    let col.bh = 2 * mini.R + (col.H - 2 * mini.R) * col.card
+    zone box col_area { from: col.L, col.T; size: col.W, col.H; corner: 24; active: colors_open }
+    group {
+        show: col.card > 0.01
+        body {
+            color: coal
+            rim: 14%
+            shadow: 0, 3 + 12 * col.card, 10 + 26 * col.card, 45% * col.card, #05070a
+            box { at: col.bx, col.by; size: col.bw, col.bh; corner: max(mini.R * (1 - col.card), 24 * col.card) }
+        }
+        group {
+            clip box { at: col.bx, col.by; size: col.bw, col.bh; corner: 24 }
+            group {
+                opacity: col.inner
+                move: col.L, col.T + (1 - col.inner) * -4
+                let live = colors_open and col.inner > 0.8
+                //  The head.
+                figure Kit.i_pipette { at: 28, 30; size: 18, 18; color: tk.ink2 }
+                text "Colours" { family: "Geist"; at: 46, 24; anchor: left center; size: 16; weight: 600; color: tk.ink }
+                text pick(if(colors.n == 1, 1, 0), "{colors.n, 0} picked", "1 picked") { family: "Geist"; at: 46, 42; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
+                group { move: col.W - 48 - 78, 14; Btn("Clear", col_ask, w: 74, kind: 3, h: 32, live: live and not col.asking) }
+                group { move: col.W - 48, 12; Ib(col_close, live: live) { figure Kit.i_close { at: 0, 0; size: 18, 18; color: tk.ink2 } } }
+
+                //  The one she wears, big.
+                box { from: 12, 60; size: col.W - 24, 80; corner: 16; color: tk.s1 }
+                body {
+                    color: mix(mix(mix(#000000, #ff0000, colors.0.r), mix(#00ff00, #ffff00, colors.0.r), colors.0.g), mix(mix(#0000ff, #ff00ff, colors.0.r), mix(#00ffff, #ffffff, colors.0.r), colors.0.g), colors.0.b)
+                    rim: 14%
+                    shadow: 0, 3, 8, 35%
+                    ellipse { at: 52, 100; radius: 24 }
+                }
+                //  A faint ring, so a colour as dark as the panel still has an edge.
+                ellipse { at: 52, 100; radius: 24; stroke: 1; color: #ffffff; opacity: 12% }
+                text colors.0.hex { family: "Geist Mono"; at: 90, 90; anchor: left center; size: 20; weight: 700; color: mix(tk.ink, tk.mint, col_h0.hover); show: col.copied != 0 }
+                text "Copied" { family: "Geist"; at: 90, 90; anchor: left center; size: 16; weight: 600; color: tk.mint; show: col.copied == 0 }
+                text colors.0.rgb { family: "Geist"; at: 90, 114; anchor: left center; size: 13; weight: 300; color: mix(tk.ink2, tk.mint, col_r0.hover); show: col.copied != 1 }
+                text "Copied" { family: "Geist"; at: 90, 114; anchor: left center; size: 13; weight: 500; color: tk.mint; show: col.copied == 1 }
+                zone box col_h0 { from: 84, 76; size: 150, 28; corner: 8; cursor: pointer; active: live and colors.n > 0 }
+                zone box col_r0 { from: 84, 104; size: 180, 22; corner: 8; cursor: pointer; active: live and colors.n > 0 }
+                on press col_h0 { emit col_copy(0) }
+                on press col_r0 { emit col_copy(1) }
+
+                //  The ones before it, two by two.
+                repeat k in 1..12 {
+                    let cx0 = 12 + mod(k - 1, 2) * 162
+                    let cy0 = 152 + floor((k - 1) / 2) * 52
+                    group {
+                        show: k < colors.n
+                        box { from: cx0, cy0; size: 154, 46; corner: 12; color: tk.s1; opacity: 0.55 + 0.45 * max(col_h.$k.hover, col_r.$k.hover) }
+                        body {
+                            color: mix(mix(mix(#000000, #ff0000, colors.$k.r), mix(#00ff00, #ffff00, colors.$k.r), colors.$k.g), mix(mix(#0000ff, #ff00ff, colors.$k.r), mix(#00ffff, #ffffff, colors.$k.r), colors.$k.g), colors.$k.b)
+                            rim: 14%
+                            ellipse { at: cx0 + 24, cy0 + 23; radius: 13 }
+                        }
+                        ellipse { at: cx0 + 24, cy0 + 23; radius: 13; stroke: 1; color: #ffffff; opacity: 12% }
+                        text colors.$k.hex { family: "Geist Mono"; at: cx0 + 46, cy0 + 16; anchor: left center; size: 14; weight: 700; color: mix(tk.ink, tk.mint, col_h.$k.hover); show: col.copied != k * 2 }
+                        text "Copied" { family: "Geist"; at: cx0 + 46, cy0 + 16; anchor: left center; size: 13; weight: 600; color: tk.mint; show: col.copied == k * 2 }
+                        text colors.$k.rgb { family: "Geist"; at: cx0 + 46, cy0 + 33; anchor: left center; size: 11; weight: 300; width: 104; lines: 1; color: mix(tk.ink3, tk.mint, col_r.$k.hover); show: col.copied != k * 2 + 1 }
+                        text "Copied" { family: "Geist"; at: cx0 + 46, cy0 + 33; anchor: left center; size: 11; weight: 500; color: tk.mint; show: col.copied == k * 2 + 1 }
+                        zone box col_h.$k { from: cx0 + 40, cy0 + 4; size: 110, 22; corner: 6; cursor: pointer; active: live and k < colors.n }
+                        zone box col_r.$k { from: cx0 + 40, cy0 + 26; size: 110, 16; corner: 6; cursor: pointer; active: live and k < colors.n }
+                        on press col_h.$k { emit col_copy(k * 2) }
+                        on press col_r.$k { emit col_copy(k * 2 + 1) }
+                    }
+                }
+
+                //  Pick another; or, asked to clear, the question.
+                let fy = col.H - 56
+                group {
+                    show: not col.asking
+                    group { move: 12, fy; Btn("Pick a colour", pick_color, w: col.W - 24, kind: 1, h: 42, live: live) }
+                }
+                group {
+                    show: col.asking
+                    box { from: 12, fy - 6; size: col.W - 24, 54; corner: 14; color: tk.s1 }
+                    box { from: 12, fy - 6; size: col.W - 24, 54; corner: 14; stroke: 1; color: tk.red; opacity: 35% }
+                    text "Clear all colours?" { family: "Geist"; at: 26, fy + 21; anchor: left center; size: 14; weight: 600; color: tk.ink }
+                    group { move: col.W - 12 - 10 - 80 - 8 - 76, fy + 5; Btn("Cancel", col_cancel, w: 76, kind: 3, h: 32, live: live) }
+                    group { move: col.W - 12 - 10 - 80, fy + 5; Btn("Clear", col_clear, w: 80, kind: 2, h: 32, live: live) }
+                }
+            }
+        }
+    }
+
     //  Pressing the pill opens it; carrying a file over it, too, after a moment.
     zone box ts_pill { from: ts.px, 12; size: 36, 36; corner: 18; cursor: pointer; active: ts.vis > 0.5 and not ts_open }
     on enter ts_pill { ts.hot: 1 }
@@ -4271,18 +4625,19 @@ scene Etta {
         group { move: mx, my; MenuItem("Search…", 0, search, kbd: "Super Space", kw: 96) { figure Kit.i_search { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
         group { move: mx, my + 41; MenuItem("Capture", 1, shot_region, kbd: "Super Shift S", kw: 108) { figure Kit.i_capture { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
         group { move: mx, my + 82; MenuItem("Record the screen", 2, menu_record, kbd: "Super Shift V", kw: 108) { figure Kit.i_record { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
-        box { from: mx + 8, my + 128; size: 272, 1; color: tk.line; opacity: 7% }
-        group { move: mx, my + 135; MenuItem("Do not disturb", 3, tap_dnd, sw: 1, on: if(haven, 1, 0)) { figure Kit.i_moon { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
-        group { move: mx, my + 176; MenuItem("Keep awake", 4, tap_awake, sw: 1, on: if(awake_on, 1, 0)) { figure Kit.i_coffee { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
-        box { from: mx + 8, my + 222; size: 272, 1; color: tk.line; opacity: 7% }
-        group { move: mx, my + 229; MenuItem("Deriva, her library", 5, show_drift) { figure Kit.i_inbox { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
-        group { move: mx, my + 270; MenuItem("Keep what I copy", 6, flip_clip, sw: 1, on: if(clip.keep, 1, 0)) { figure Kit.i_copy { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
-        group { move: mx, my + 311; MenuItem("Notification history", 7, show_history) { figure Kit.i_history { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
-        box { from: mx + 8, my + 357; size: 272, 1; color: tk.line; opacity: 7% }
-        group { move: mx, my + 364; MenuItem("Wardrobe", 8, menu_wardrobe) { figure Kit.i_shirt { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
-        group { move: mx, my + 405; MenuItem("Wallpaper", 9, show_walls) { figure Kit.i_image { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
-        group { move: mx, my + 446; MenuItem("Settings", 10, settings) { figure Kit.i_settings { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
-        group { move: mx, my + 487; MenuItem("Sleep", 11, menu_sleep) { figure Kit.i_sleep { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+        group { move: mx, my + 123; MenuItem("Pick a colour", 3, pick_color, kbd: "Super Shift P", kw: 108) { figure Kit.i_pipette { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+        box { from: mx + 8, my + 169; size: 272, 1; color: tk.line; opacity: 7% }
+        group { move: mx, my + 176; MenuItem("Do not disturb", 4, tap_dnd, sw: 1, on: if(haven, 1, 0)) { figure Kit.i_moon { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+        group { move: mx, my + 217; MenuItem("Keep awake", 5, tap_awake, sw: 1, on: if(awake_on, 1, 0)) { figure Kit.i_coffee { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+        box { from: mx + 8, my + 263; size: 272, 1; color: tk.line; opacity: 7% }
+        group { move: mx, my + 270; MenuItem("Deriva, her library", 6, show_drift) { figure Kit.i_inbox { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+        group { move: mx, my + 311; MenuItem("Keep what I copy", 7, flip_clip, sw: 1, on: if(clip.keep, 1, 0)) { figure Kit.i_copy { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+        group { move: mx, my + 352; MenuItem("Notification history", 8, show_history) { figure Kit.i_history { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+        box { from: mx + 8, my + 398; size: 272, 1; color: tk.line; opacity: 7% }
+        group { move: mx, my + 405; MenuItem("Wardrobe", 9, menu_wardrobe) { figure Kit.i_shirt { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+        group { move: mx, my + 446; MenuItem("Wallpaper", 10, show_walls) { figure Kit.i_image { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+        group { move: mx, my + 487; MenuItem("Settings", 11, settings) { figure Kit.i_settings { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
+        group { move: mx, my + 528; MenuItem("Sleep", 12, menu_sleep) { figure Kit.i_sleep { at: 0, 0; size: 20, 20; color: tk.ink2 } } }
     }
 
     // ── the card ─────────────────────────────────────────────────
@@ -5143,6 +5498,14 @@ scene Etta {
     //  its grace zone: declared after, it kept the click on «End», which lands
     //  right on top of it. The capsule already has its own.
     zone box body_zone { at: cx, cy_actual; size: 2 * r, 2 * r + 30; corner: r; cursor: pointer }
+    //  The little her: pressing her opens her colours. After Etta's zone, so
+    //  where the two touch the press is hers.
+    zone ellipse mini_zone { at: mini.x, mini.y; radius: mini.R + 5; cursor: pointer; active: mini.has and mini.sep > 0.9 and mini.vis > 0.5 }
+    on enter mini_zone { mini.hot: 1; mini.hx = mini.fx; mini.hy = mini.fy; mini.hold = true }
+    on leave mini_zone { mini.hot: 0 }
+    on leave mini_zone while not colors_open { mini.hold = false }
+    on press mini_zone { toggle colors_open }
+
     zone ellipse drift_drop { at: pool.x, cy_actual + 44; radius: 84; active: drag.over and not ts_open }
     zone ellipse drift_later { at: pool.x - 120, pool.y; radius: 34; active: drag.over and not ts_open }
     zone ellipse drift_insp { at: pool.x + 120, pool.y; radius: 34; active: drag.over and not ts_open }
@@ -5160,7 +5523,7 @@ scene Etta {
     //  time. And 300 of grace on leaving, because the gap between her and the note
     //  is real and must not be lost while crossing it. It goes away if the panel
     //  opens.
-    on hover body_zone for 180ms while not open and not menu_open and not ts_open and drag.over < 0.5 { note = true }
+    on hover body_zone for 180ms while not open and not menu_open and not ts_open and not colors_open and drag.over < 0.5 { note = true }
     //  And this does not rule in the Haven: with the zone switched off, «being
     //  outside» is always true, so it switched the capsule off 300 ms after
     //  opening it.
@@ -5197,7 +5560,7 @@ scene Etta {
     //  And she does not sink with something of hers open: the tray, the finder or
     //  her menu need her just like the card. She sank with the swell open —2.6 s
     //  after letting go of her— and the tray was left hanging from half a ball.
-    on still wanted for 2.6s while not wanted and not note and not open and not tray_open and not searching and not menu_open { needed = false }
+    on still wanted for 2.6s while not wanted and not note and not open and not tray_open and not searching and not menu_open and not colors_open { needed = false }
     //  And she falls asleep by herself after 45 s with nobody there: nothing
     //  needs her and the mouse has not moved anywhere. Only by nothing needing
     //  her she dozed off while you worked, and now that the mouse wakes her she
@@ -5246,13 +5609,15 @@ scene Etta {
     //  Never on the lock screen (its keys come through here too): the finder
     //  would take the cursor from the password box.
     on key Super+space while searching { searching = false }
-    on key Super+space while not searching and not locked and not lock.preview { emit search }
+    on key Super+space while not searching and not shooting and not picking and not locked and not lock.preview { emit search }
     on key Super+Shift+L while not locked and not lock.preview { emit lock }
     on key Super+Shift+l while not locked and not lock.preview { emit lock }
-    on key Super+Shift+S while not shooting and not locked and not lock.preview { emit shot_region }
-    on key Super+Shift+s while not shooting and not locked and not lock.preview { emit shot_region }
-    on key Super+Shift+V while not locked and not lock.preview { emit record_toggle }
-    on key Super+Shift+v while not locked and not lock.preview { emit record_toggle }
+    on key Super+Shift+S while not shooting and not picking and not locked and not lock.preview { emit shot_region }
+    on key Super+Shift+s while not shooting and not picking and not locked and not lock.preview { emit shot_region }
+    on key Super+Shift+V while not picking and not locked and not lock.preview { emit record_toggle }
+    on key Super+Shift+P while not shooting and not picking and not locked and not lock.preview { emit pick_color }
+    on key Super+Shift+p while not shooting and not picking and not locked and not lock.preview { emit pick_color }
+    on key Super+Shift+v while not picking and not locked and not lock.preview { emit record_toggle }
     on key XF86AudioRaiseVolume { emit volume_up }
     on key XF86AudioLowerVolume { emit volume_down }
     on key XF86AudioMute { emit mute_output }
@@ -5276,20 +5641,21 @@ scene Etta {
     //  With the keyboard: the arrows move the pointed row (the mouse moves the
     //  same mark) and Enter does what that row does. Enter without having
     //  pointed at anything takes the first one, Search.
-    on key Down while menu_open { menu_selected = min(menu_selected + 1, 11) }
+    on key Down while menu_open { menu_selected = min(menu_selected + 1, 12) }
     on key Up while menu_open { menu_selected = max(menu_selected - 1, 0) }
     on key Return while menu_open and menu_selected < 1 { emit search }
     on key Return while menu_open and menu_selected == 1 { emit shot_region }
     on key Return while menu_open and menu_selected == 2 { emit menu_record }
-    on key Return while menu_open and menu_selected == 3 { emit tap_dnd }
-    on key Return while menu_open and menu_selected == 4 { emit tap_awake }
-    on key Return while menu_open and menu_selected == 5 { emit show_drift }
-    on key Return while menu_open and menu_selected == 6 { emit flip_clip }
-    on key Return while menu_open and menu_selected == 7 { emit show_history }
-    on key Return while menu_open and menu_selected == 8 { emit menu_wardrobe }
-    on key Return while menu_open and menu_selected == 9 { emit show_walls }
-    on key Return while menu_open and menu_selected == 10 { emit settings }
-    on key Return while menu_open and menu_selected == 11 { emit menu_sleep }
+    on key Return while menu_open and menu_selected == 3 { emit pick_color }
+    on key Return while menu_open and menu_selected == 4 { emit tap_dnd }
+    on key Return while menu_open and menu_selected == 5 { emit tap_awake }
+    on key Return while menu_open and menu_selected == 6 { emit show_drift }
+    on key Return while menu_open and menu_selected == 7 { emit flip_clip }
+    on key Return while menu_open and menu_selected == 8 { emit show_history }
+    on key Return while menu_open and menu_selected == 9 { emit menu_wardrobe }
+    on key Return while menu_open and menu_selected == 10 { emit show_walls }
+    on key Return while menu_open and menu_selected == 11 { emit settings }
+    on key Return while menu_open and menu_selected == 12 { emit menu_sleep }
     //  «Settings», from her menu or from outside, opens its page in the control
     //  center (opening the card closes the menu).
     on settings { open = true; page = settings }
@@ -5585,11 +5951,11 @@ scene Etta {
         //  Not while something is being carried: a drop over it was read with
         //  her own surface's coordinates, and landed on a row of hers that is
         //  somewhere else.
-        open: (open or tray_open or menu_open or reel_open or searching or ts_open) and drag.over < 0.5
+        open: (open or tray_open or menu_open or reel_open or searching or ts_open or colors_open) and drag.over < 0.5
         //  And the zone says it again: a full-screen zone that stays on by
         //  mistake is the whole desktop taken. It happened.
-        zone box outside { from: 0, 0; size: catcher.width, catcher.height; active: open or tray_open or menu_open or reel_open or ts_open }
-        on press outside { open = false; tray_open = false; menu_open = false; reel_open = false; ts_open = false }
+        zone box outside { from: 0, 0; size: catcher.width, catcher.height; active: open or tray_open or menu_open or reel_open or ts_open or colors_open }
+        on press outside { open = false; tray_open = false; menu_open = false; reel_open = false; ts_open = false; colors_open = false }
         //  The finder stays in her own layer —moving it up as it opens left
         //  it without the keyboard—, so here the catcher would be over it:
         //  around it instead, three strips —left, right and below— and the
