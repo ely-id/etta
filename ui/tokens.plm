@@ -50,4 +50,18 @@ library Tokens {
     let tk.r.card = 16
     let tk.r.ctl = 12
     let tk.r.chip = 8
+
+    //  A text field (the prototypes' `.field`): 44 tall, 12 in from its
+    //  edges, and with an icon the text starts at 40 (12, the icon's 18 and a
+    //  gap of 10). An `input` takes no anchor: its `at` is its TOP left
+    //  corner, and its line is 1.3 times its size. Written at the middle of
+    //  its box, as every field once was, the text sat half a line low. So a
+    //  field's input goes half a line above the middle: these, by size.
+    let tk.field.h = 44
+    let tk.field.pad = 12
+    let tk.field.text = 40
+    let tk.mid.s13 = 8.45
+    let tk.mid.s14 = 9.1
+    let tk.mid.s16 = 10.4
+    let tk.mid.s24 = 15.6
 }

@@ -191,6 +191,19 @@ library Kit {
         on press touch { emit press }
     }
 
+    //  The plate a text field sits on: its corner, a line that turns mint
+    //  while it is being written in, and its icon, if it has one, centred
+    //  21 in. The `input` itself stays the page's: it names a text of the
+    //  scene, and a component cannot be handed one. It goes at
+    //  `tk.field.text` (`tk.field.pad` with no icon) and half a line above
+    //  the middle (`tk.mid.s14` for size 14).
+    component FieldBox(w: number, focus: number = 0, h: number = 44, fill: color = tk.s1) {
+        size: w, h
+        box { from: 0, 0; size: w, h; corner: tk.r.ctl; color: fill }
+        box { from: 0, 0; size: w, h; corner: tk.r.ctl; stroke: 1 + 0.5 * focus; color: mix(tk.line, tk.mint, focus); opacity: 7% + 63% * focus }
+        children { move: 21, h / 2 }
+    }
+
     //  The round badge an icon sits in. tone: 0 off · 1 on (mint) · 2 warn · 3 bad.
     component Bubble(tone: number = 0, d: number = 36) {
         size: d, d

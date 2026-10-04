@@ -33,7 +33,7 @@ scene Etta {
         //  The network and the headphones are pleamar's own services now
         //  (NetworkManager and BlueZ, spoken to directly): listing, joining
         //  with a password, pairing. And `fd` finds the files and the folders.
-        run: "curl", "timedatectl", "node", "notify-send", "fd", "deriva-worker", "kill", "xdg-open", "grim", "slurp", "hyprctl", "magick", "wl-copy", "mkdir", "wf-recorder", "xdg-user-dir", "test", "pgrep", "swaybg", "pactl", "pleamar-wm", "etta-halley", "cat", "ls", "rfkill", "systemd-inhibit", "powerprofilesctl", "wlsunset", "etta-shader-thumb", "ffmpeg", "rm", "wl-paste"
+        run: "curl", "timedatectl", "node", "notify-send", "fd", "deriva-worker", "kill", "xdg-open", "grim", "slurp", "hyprctl", "magick", "wl-copy", "mkdir", "wf-recorder", "xdg-user-dir", "test", "pgrep", "swaybg", "pactl", "pleamar-wm", "etta-halley", "cat", "ls", "rfkill", "systemd-inhibit", "powerprofilesctl", "wlsunset", "etta-shader-thumb", "ffmpeg", "rm", "wl-paste", "grep"
     }
     service clock as now { time: text = "--:--"; date: text; hour: number; minute: number; day: number; month: number; weekday: number }
     service audio as sound { volume: number; muted: bool; input: number; input_muted: bool }
@@ -3937,7 +3937,7 @@ scene Etta {
         opacity: finder_content
         move: 0, (1 - finder_content) * 10
         //  The field, starting clear of her, and Esc at the other end.
-        input query { family: "Geist"; at: bx0 + 64, by0 + 38; width: 600; size: 24; color: tk.ink
+        input query { family: "Geist"; at: bx0 + 64, by0 + 38 - tk.mid.s24; width: 600; size: 24; color: tk.ink
                       placeholder: "Search apps, windows, files and actions"; selection: #2f5f52 }
         group { move: bx0 + 760 - 18 - 40, by0 + 27; Kbd("Esc", w: 40) }
         box { from: bx0, by0 + 76; size: 760, 1; color: #ffffff; opacity: 7% }
@@ -4266,8 +4266,12 @@ scene Etta {
     let look.k = if(skin == classic, 0, if(skin == liquid, 1, 2))
     let home.k = if(following, 2, home)
     let wear.n = if(wear.head != none, 1, 0) + if(wear.face != none, 1, 0) + if(wear.ears != none, 1, 0) + if(wear.neck != none, 1, 0) + if(wear.side != none, 1, 0)
-    //  The calendar's field, lit while it is being written in.
+    //  The calendar's field, lit while it is being written in; and the
+    //  search fields of the history and Deriva, which take the typing as
+    //  their page opens.
     prop cal.focus = 0 ~140ms
+    prop find.focus = 0 ~140ms
+    follow find.focus = if((page == history or page == drift) and open, 1, 0)
 
     group {
         clip inset 0 box { at: card.x, card.y; size: card.w, card.h; corner: card.corner }
@@ -4393,8 +4397,12 @@ scene Etta {
     event preview_lock
     on preview_lock { open = false; lock.preview = true }
     on edit_city { page = calendar; sky.editing = true; focus city_q }
-    on submit city_q { sky.editing = false }
-    on key Escape while sky.editing { sky.editing = false }
+    //  The city written (or let go), the typing goes back to the new
+    //  event's field, which is the one that lights up again: without this,
+    //  the caret stayed in the hidden city field and «10:30 Dentist» went
+    //  looking for a town.
+    on submit city_q { sky.editing = false; focus cal_new }
+    on key Escape while sky.editing { sky.editing = false; focus cal_new }
 
     // ── the wardrobe ─────────────────────────────────────────────
     //  The wardrobe's tab (head, face, ears, neck, beside) and its pieces, by
@@ -5014,6 +5022,10 @@ scene Etta {
     //  The pages with a search field put the cursor in it, so you just type.
     on change page while page == history { focus hist_q }
     on change page while page == drift { focus drift_q }
+    //  Opened again on the same page —the menu blurs as it opens, and the
+    //  page is still chosen until the card has folded—: the caret too.
+    on change open while open and page == history { focus hist_q }
+    on change open while open and page == drift { focus drift_q }
     on key Escape while tray_open { tray_open = false }
     on key Escape while reel_open { reel_open = false }
     //  «Escape goes back to the menu without executing; a second Escape closes.»
@@ -5057,6 +5069,11 @@ scene Etta {
     on lock { locked = true }
     on change locked while locked { hint = lock; focus password; lock.glow: 1 }
     on change locked while not locked { hint = none; lock.glow: 0 }
+    //  And back from the lock, the caret goes back to the field that is lit:
+    //  the lock had put it in its own box, hidden now, which ate the typing.
+    on change locked while not locked and open and page == history { focus hist_q }
+    on change locked while not locked and open and page == drift { focus drift_q }
+    on change locked while not locked and open and page == calendar and not sky.editing { focus cal_new }
     //  Closing the panel takes her padlock face away; while it lasts, it is put
     //  back on.
     on change hint while locked and hint != lock { hint = lock }
@@ -5245,7 +5262,7 @@ scene Etta {
               color: if(lock.st == l_wrong, tk.red, if(lock.st == l_typing or lock.st == l_checking, tk.mint, #ffffff))
               opacity: if(lock.st == l_wrong, 0.9, if(lock.st == l_typing or lock.st == l_checking, 0.7, 0.1)) }
         figure Kit.i_lock { at: ex - 146, ey + 172; size: 18, 18; color: tk.ink3 }
-        input password { family: "Geist"; at: ex - 126, ey + 172; width: 236; size: 16; color: tk.ink; placeholder: "Password"; secret: true; selection: #2f5f52 }
+        input password { family: "Geist"; at: ex - 126, ey + 172 - tk.mid.s16; width: 236; size: 16; color: tk.ink; placeholder: "Password"; secret: true; selection: #2f5f52 }
         box { at: ex + 144, ey + 172; size: 36, 36; corner: 10; color: tk.s2 }
         figure Kit.i_chev_r { at: ex + 144, ey + 172; size: 18, 18; color: tk.ink2 }
         //  What it says: Caps Lock first, then the state.

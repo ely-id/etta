@@ -258,9 +258,8 @@ library Panels {
                 opacity: clamp(ask.in * 1.4, 0, 1)
                 let ay = wy + 52 + 52 * max(networks.count, 1)
                 text "Password for «{ask.name}»" { family: "Geist"; at: 24, ay; anchor: left center; size: 13; weight: 500; width: 560; lines: 1; color: tk.ink2 }
-                box { from: 20, ay + 14; size: 360, 44; corner: 12; color: tk.s1 }
-                box { from: 20, ay + 14; size: 360, 44; corner: 12; stroke: 1.5; color: tk.mint; opacity: 70% }
-                input wifi_pw { family: "Geist"; at: 34, ay + 36; width: 330; size: 14; color: tk.ink; placeholder: "Password"; secret: true; selection: #2f5f52 }
+                group { move: 20, ay + 14; FieldBox(360, focus: 1) }
+                input wifi_pw { family: "Geist"; at: 20 + tk.field.pad, ay + 36 - tk.mid.s14; width: 360 - 2 * tk.field.pad; size: 14; color: tk.ink; placeholder: "Password"; secret: true; selection: #2f5f52 }
                 group { move: 392, ay + 16; Btn("Join", join, w: 92, kind: 1) }
                 group { move: 492, ay + 16; Btn("Cancel", forget_ask, w: 92, kind: 3) }
             }
@@ -803,9 +802,8 @@ library Panels {
         group { move: 410, 82; show: not sky.editing; Chip(pick(if(wx.ok, 0, 1), wx.place, "Choose a city"), edit_city, w: 176) }
         group {
             show: sky.editing
-            box { from: 380, 80; size: 206, 34; corner: 10; color: tk.body }
-            box { from: 380, 80; size: 206, 34; corner: 10; stroke: 1.5; color: tk.mint; opacity: 70% }
-            input city_q { family: "Geist"; at: 392, 97; width: 184; size: 13; color: tk.ink; placeholder: "A city · Enter"; selection: #2f5f52 }
+            group { move: 380, 80; FieldBox(206, focus: 1, h: 34, fill: tk.body) }
+            input city_q { family: "Geist"; at: 380 + tk.field.pad, 97 - tk.mid.s13; width: 206 - 2 * tk.field.pad; size: 13; color: tk.ink; placeholder: "A city · Enter"; selection: #2f5f52 }
         }
 
         //  The month: Monday first, six weeks.
@@ -847,10 +845,8 @@ library Panels {
         text "Nothing scheduled" { family: "Geist"; at: 350, 296; anchor: left center; size: 14; weight: 500; color: tk.ink3; show: cal_events.count < 1 }
 
         //  Writing one.
-        box { from: 20, 600; size: 580, 44; corner: 12; color: tk.body }
-        box { from: 20, 600; size: 580, 44; corner: 12; stroke: 1; color: mix(tk.line, tk.mint, cal.focus); opacity: 9% + 50% * cal.focus }
-        figure Kit.i_plus { at: 42, 622; size: 18, 18; color: tk.ink3 }
-        input cal_new { family: "Geist"; at: 62, 622; width: 520; size: 14; color: tk.ink; placeholder: "New event — e.g. 10:30 Dentist"; selection: #2f5f52 }
+        group { move: 20, 600; FieldBox(580, focus: cal.focus) { figure Kit.i_plus { at: 0, 0; size: 18, 18; color: tk.ink3 } } }
+        input cal_new { family: "Geist"; at: 20 + tk.field.text, 622 - tk.mid.s14; width: 580 - tk.field.text - tk.field.pad; size: 14; color: tk.ink; placeholder: "New event — e.g. 10:30 Dentist"; selection: #2f5f52 }
         text "Start with a time, or leave it out for the whole day. Enter saves it." { family: "Geist"; at: 24, 662; anchor: left center; size: 12; weight: 500; color: tk.ink3 }
     }
 
@@ -880,10 +876,8 @@ library Panels {
         PageHead("History") {
             group { move: 436, 16; show: past.count > 0; Btn("Clear all", ask_clear, w: 96, kind: 3, h: 32) }
         }
-        box { from: 20, 68; size: 580, 44; corner: 12; color: tk.body }
-        box { from: 20, 68; size: 580, 44; corner: 12; stroke: 1; color: tk.line; opacity: 9% }
-        figure Kit.i_search { at: 42, 90; size: 18, 18; color: tk.ink3 }
-        input hist_q { family: "Geist"; at: 62, 90; width: 520; size: 14; color: tk.ink; placeholder: "Search notifications"; selection: #2f5f52 }
+        group { move: 20, 68; FieldBox(580, focus: find.focus) { figure Kit.i_search { at: 0, 0; size: 18, 18; color: tk.ink3 } } }
+        input hist_q { family: "Geist"; at: 20 + tk.field.text, 90 - tk.mid.s14; width: 580 - tk.field.text - tk.field.pad; size: 14; color: tk.ink; placeholder: "Search notifications"; selection: #2f5f52 }
         row {
             at: 20, 124
             gap: 6

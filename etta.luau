@@ -637,14 +637,21 @@ local function search()
         list[#list + 1] = { name = "= " .. fx.pretty(v), sub = tr("Enter copies it"), kind_label = "", icon = "", glyph = 9, big = true, value = fx.plain(v) }
     end
     --  Then by section, a few of each so one kind does not crowd out the rest.
+    --  How well each one answers (`fx.app_rank`): what starts with it first,
+    --  then the usual order.
     local matches = {}
     for _, a in ipairs(apps) do
-        if a.name:lower():find(q, 1, true) then matches[#matches + 1] = a end
+        local rank = fx.app_rank(a, q)
+        if rank then a.rank = rank; matches[#matches + 1] = a end
     end
-    table.sort(matches, prefer)
+    table.sort(matches, function(x, y)
+        if x.rank ~= y.rank then return x.rank < y.rank end
+        return prefer(x, y)
+    end)
     for k = 1, math.min(#matches, 4) do
         local a = matches[k]
-        list[#list + 1] = { name = a.name, sub = a.comment or a.generic or tr("Application"), kind_label = tr("App"), icon = a.icon, glyph = 0, exec = a.exec, section = "Applications" }
+        local sub = (a.comment ~= nil and a.comment ~= "" and a.comment) or (a.generic ~= nil and a.generic ~= "" and a.generic) or tr("Application")
+        list[#list + 1] = { name = a.name, sub = sub, kind_label = tr("App"), icon = a.icon, glyph = 0, exec = a.exec, section = "Applications" }
     end
     --  The windows already open whose program or title it names: going to one
     --  is quicker than opening another.
@@ -695,11 +702,179 @@ local function search()
     end)
 end
 
-if not sys.watch("apps", function(list) apps = list; search() end) then
+--  pleamar's own list arrives first; hers replaces it from the first reading.
+if not sys.watch("apps", function(list) if not fx.apps_read then apps = list; search() end end) then
     log("this system does not know which applications it has")
 end
+
+--  The applications, read here as well. pleamar's `apps` service reads the
+--  `.desktop` files once, as the logic starts, and never again: T3 Code,
+--  installed one night while she was running, was in Halley's launcher —a
+--  new process each time— and not in hers until she restarted. So she reads
+--  them herself each time the finder opens: `ls` for the files of each
+--  folder, in the folder's own order, and one `grep` for their lines, each
+--  with its file in front. About fifty files, a few milliseconds.
+--
+--  What she lists must be what `apps.launch` accepts, and it accepts only
+--  the commands pleamar's own reading keeps (it reads the folders again on
+--  each launch): the same folders, no deeper, the user's first; a file
+--  that is not text, hidden, or not an application, left out; the first
+--  Name and the last Exec, without its `%` fields; and ONE entry per name,
+--  the first met. So she works out that winner for every name and lists an
+--  entry only if its command is the winner's. On top of that, freedesktop's
+--  rule of the file: an entry is known by its file's name, and one in your
+--  folder (even hidden) hides the system's of the same name. She keeps what
+--  the service leaves out —the comment, the generic name, the keywords—,
+--  for the search and the line under each. Terminal programs stay out:
+--  launched loose, nothing would be seen.
+function fx.app_dirs()
+    local dirs = { home_dir .. "/.local/share/applications" }
+    local data_dirs = sys.ask("env", "XDG_DATA_DIRS")
+    if data_dirs == nil then data_dirs = "/usr/local/share:/usr/share" end
+    --  Set but empty, pleamar searches one folder that is not there, and so does she.
+    if data_dirs == "" then data_dirs = ":" end
+    for d in (data_dirs .. ":"):gmatch("([^:]*):") do dirs[#dirs + 1] = d .. "/applications" end
+    return dirs
+end
+
+function fx.parse_apps(out)
+    local entries, order = {}, {}
+    for l in tostring(out or ""):gmatch("[^\n]+") do
+        local path, line = l:match("^(.-%.desktop):(.*)$")
+        if path then
+            line = line:gsub("\r$", "")
+            local e = entries[path]
+            if e == nil then
+                e = { path = path, inside = false, id = path:match("([^/]+)%.desktop$") or path }
+                entries[path] = e
+                order[#order + 1] = e
+            end
+            --  Not valid text: pleamar cannot read the file at all.
+            if line:find("\xEF\xBF\xBD", 1, true) then e.broken = true end
+            if line:sub(1, 1) == "[" then
+                e.inside = line == "[Desktop Entry]"
+            elseif e.inside then
+                local key, v = line:match("^(%w+)=(.*)$")
+                if key == "Name" then e.name = e.name or v
+                elseif key == "Exec" then
+                    local parts = {}
+                    for part in v:gmatch("%S+") do
+                        if part:sub(1, 1) ~= "%" then parts[#parts + 1] = part end
+                    end
+                    e.exec = table.concat(parts, " ")
+                elseif key == "Icon" then e.icon = v
+                elseif key == "StartupWMClass" then e.wmclass = v
+                elseif key == "Comment" then e.comment = e.comment or v
+                elseif key == "GenericName" then e.generic = e.generic or v
+                elseif key == "Keywords" then e.keywords = e.keywords or v
+                elseif (key == "NoDisplay" or key == "Hidden") and v == "true" then e.hidden = true
+                elseif key == "Type" and v ~= "Application" then e.hidden = true
+                elseif key == "Terminal" and v == "true" then e.terminal = true
+                end
+            end
+        end
+    end
+    --  pleamar's winner for each name: the first readable, shown entry.
+    local winner = {}
+    for _, e in ipairs(order) do
+        if not e.broken and not e.hidden and e.name and e.exec and winner[e.name] == nil then winner[e.name] = e.exec end
+    end
+    local list, taken, named = {}, {}, {}
+    for _, e in ipairs(order) do
+        if not taken[e.id] then
+            taken[e.id] = true
+            if not e.broken and not e.hidden and not e.terminal and e.name and e.exec and e.exec ~= ""
+               and winner[e.name] == e.exec and not named[e.name] then
+                named[e.name] = true
+                local program = ((e.exec:match("^%S+") or ""):gsub('"', "")):match("([^/]+)$") or ""
+                list[#list + 1] = {
+                    name = e.name, exec = e.exec, icon = e.icon or "", id = e.id, wmclass = e.wmclass or "",
+                    comment = e.comment, generic = e.generic, keywords = e.keywords,
+                    --  What else it answers to: its file, its program, its
+                    --  class, what it is and its keywords, and its name
+                    --  written together («t3code» is «T3 Code»).
+                    hay = table.concat({ e.id, program, e.wmclass or "", e.generic or "", ((e.keywords or ""):gsub(";", " ")), e.comment or "", (e.name:gsub("%s+", "")) }, " "):lower(),
+                }
+            end
+        end
+    end
+    table.sort(list, function(x, y) return x.name < y.name end)
+    return list
+end
+
+function fx.read_apps()
+    local dirs = fx.app_dirs()
+    --  `-U`: the folder's own order, which is the order pleamar reads in;
+    --  `-A`: the files whose name starts with a dot too, as it does. A
+    --  folder that is a link is followed. With more than one folder `ls`
+    --  says each one's name before its files.
+    local args = { "-AU1", "--" }
+    for _, d in ipairs(dirs) do args[#args + 1] = d end
+    run("ls", args, function(listed)
+        local files, here = { "-a", "-H", "" }, dirs[1]
+        local known = {}
+        for _, d in ipairs(dirs) do known[d .. ":"] = d end
+        for line in tostring(listed or ""):gmatch("[^\n]+") do
+            if known[line] then here = known[line]
+            elseif line:sub(-8) == ".desktop" then files[#files + 1] = here .. "/" .. line end
+        end
+        if #files == 3 then return end
+        run("grep", files, function(out)
+            local list = fx.parse_apps(out)
+            if #list == 0 then return end
+            local had = fx.apps_read and #apps or nil
+            apps = list
+            fx.apps_read = true
+            if had and had ~= #list then log("finder · the applications changed:", had, "→", #list) end
+            if fact.searching == true then search() end
+        end)
+    end)
+end
+
+--  How well an application answers what is written, or nil: its name
+--  starting with it, a word of its name starting with it, its name holding
+--  it, anything else it answers to holding it, and its letters in order
+--  («vsc» is Visual Studio Code). The last only from three letters: with
+--  two, half the list has them in order.
+function fx.app_rank(a, q)
+    local n = a.name:lower()
+    if n:sub(1, #q) == q then return 1 end
+    if (" " .. n):find(" " .. q, 1, true) then return 2 end
+    if n:find(q, 1, true) then return 3 end
+    if a.hay and a.hay:find(q, 1, true) then return 4 end
+    if #q >= 3 then
+        local at = 1
+        for ch in q:gmatch(".") do
+            at = n:find(ch, at, true)
+            if not at then return nil end
+            at = at + 1
+        end
+        return 5
+    end
+    return nil
+end
+
+after(1200, fx.read_apps)
 on("text:query", search)
-on("fact:searching", function(opened) if opened then search() end end)
+on("fact:searching", function(opened)
+    if opened then
+        search()
+        fx.read_apps()
+    end
+end)
+--  Launching what she lists. Should pleamar still turn it down —a file
+--  changed between her reading and the launch—, it is said, and she reads
+--  the folders again.
+function fx.launch(name, exec)
+    local ok, err = pcall(sys.call, "apps.launch", exec)
+    if ok then return true end
+    log("finder · could not open", name, err)
+    fact["drift.result"] = 2
+    text["drift.toast"] = tr("Could not open") .. " " .. name
+    emit("say_toast")
+    fx.read_apps()
+    return false
+end
 
 --  Opening: an app is launched; a file or a folder, to whoever knows how to
 --  open it (with Ctrl held, the folder it is in); the sum, to the clipboard.
@@ -727,8 +902,7 @@ on("open_result", function(i)
         window_call("activate", h.window_id)
     elseif h.exec then
         log("opening", h.name)
-        sys.call("apps.launch", h.exec)
-        if fx.used then fx.used(h.name) end
+        if fx.launch(h.name, h.exec) and fx.used then fx.used(h.name) end
     elseif h.filepath then
         local target = h.filepath
         if fact["finder.ctrl"] == true then target = target:match("^(.*)/[^/]*$") or target end
@@ -754,8 +928,7 @@ on("open_suggested", function(i)
     if t == nil then return end
     fact.searching = false
     if t.exec then
-        sys.call("apps.launch", t.exec)
-        if fx.used then fx.used(t.name) end
+        if fx.launch(t.name, t.exec) and fx.used then fx.used(t.name) end
     elseif t.own_page then after(180, function() fact.open = true; fact.page = t.own_page end) end
 end)
 on("open_recent", function(i)
