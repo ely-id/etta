@@ -33,7 +33,7 @@ scene Etta {
         //  The network and the headphones are pleamar's own services now
         //  (NetworkManager and BlueZ, spoken to directly): listing, joining
         //  with a password, pairing. And `fd` finds the files and the folders.
-        run: "curl", "timedatectl", "node", "notify-send", "fd", "deriva-worker", "kill", "xdg-open", "grim", "slurp", "hyprctl", "magick", "wl-copy", "mkdir", "wf-recorder", "xdg-user-dir", "test", "pgrep", "swaybg", "pactl", "pleamar-wm", "etta-halley", "cat", "ls", "rfkill", "systemd-inhibit", "powerprofilesctl", "wlsunset", "etta-shader-thumb", "ffmpeg", "rm", "wl-paste", "grep"
+        run: "curl", "timedatectl", "node", "notify-send", "fd", "deriva-worker", "kill", "xdg-open", "grim", "slurp", "hyprctl", "magick", "wl-copy", "mkdir", "wf-recorder", "xdg-user-dir", "test", "pgrep", "swaybg", "pactl", "pleamar-wm", "etta-halley", "cat", "ls", "rfkill", "systemd-inhibit", "powerprofilesctl", "wlsunset", "etta-shader-thumb", "ffmpeg", "rm", "wl-paste", "grep", "tailscale", "zenity"
     }
     service clock as now { time: text = "--:--"; date: text; hour: number; minute: number; day: number; month: number; weekday: number }
     service audio as sound { volume: number; muted: bool; input: number; input_muted: bool }
@@ -201,7 +201,7 @@ scene Etta {
         //  The urgent tray that opens by itself and the saved card do not take
         //  it on arriving —you may be typing somewhere—, only once you go to
         //  them.
-        keyboard: exclusive while searching or menu_open or open or shooting or lock.preview or (tray_open and not tray_by_itself) or (reel_open and reel_hovered)
+        keyboard: exclusive while searching or menu_open or open or shooting or lock.preview or ts_open or (tray_open and not tray_by_itself) or (reel_open and reel_hovered)
         //  Above everything while something of hers is open —so the catcher
         //  below can take the click outside—, and in its layer the rest of the
         //  time, so a video in full screen still covers her.
@@ -211,7 +211,7 @@ scene Etta {
         //  Halley hides the top layer under fullscreen too. Its finder needs
         //  the overlay layer while searching; the Hyprland focus workaround
         //  above still applies on the other backends.
-        level: top, overlay while open or tray_open or menu_open or reel_open or (compositor_halley and searching)
+        level: top, overlay while open or tray_open or menu_open or reel_open or ts_open or (compositor_halley and searching)
     }
 
     // ── where she lives ──────────────────────────────────────────
@@ -467,7 +467,7 @@ scene Etta {
     event drift_scroll ->
     event drift_saved                  // the logic: it is kept (or it already was)
     prop catch = 0 ~260ms
-    follow catch = if(drag.over, 1, 0)
+    follow catch = if(drag.over and not ts_open, 1, 0)
     prop pool.t = 0
     spin pool.t by if(drag.over, 0.9, 0)
     prop later.hl = 0 ~140ms
@@ -1006,8 +1006,8 @@ scene Etta {
     //  What hovering her —or the clock beside her— asks for: the time card.
     //  With notices waiting, hovering HER shows their fan instead; the clock
     //  still tells the time. And not while something else is being said there.
-    let notecard.wants = note and not open and not haven and not menu_open and face == eye and out > 0.9 and phase == 0 and (pending < 1 or in.clock) and osd.kind == none
-    follow fan = if(note and not open and not tray_open and not haven and not menu_open and face == eye and out > 0.9 and phase == 0 and pending > 0, 1, 0)
+    let notecard.wants = note and not open and not ts_open and not haven and not menu_open and face == eye and out > 0.9 and phase == 0 and (pending < 1 or in.clock) and osd.kind == none
+    follow fan = if(note and not open and not tray_open and not ts_open and not haven and not menu_open and face == eye and out > 0.9 and phase == 0 and pending > 0, 1, 0)
     // ── her menu, the right-button one ───────────────────────────
     //  The right button opens it, beside her and out of her, like the time:
     //  twelve rows in four groups (the sheet's Menu): what she does for you
@@ -1605,7 +1605,7 @@ scene Etta {
     //  pressed— it says so, and she drops back into her island.
     event ride_out
     event ride_back ->
-    on ride_out { purpose = ride; asleep = false; open = false; page = none; tray_open = false; searching = false; menu_open = false; play retire }
+    on ride_out { purpose = ride; asleep = false; open = false; page = none; tray_open = false; searching = false; menu_open = false; ts_open = false; play retire }
     on gone while purpose == ride { away: 1 ~16ms }
     on ride_back { away: 0 ~lively; face = eye; purpose = shot }
     //  And if the logic did not answer, she does not stay up there forever.
@@ -1650,7 +1650,7 @@ scene Etta {
     on change misplaced while misplaced {
         purpose = travel
         travelling = true
-        open = false; page = none; tray_open = false; searching = false; menu_open = false
+        open = false; page = none; tray_open = false; searching = false; menu_open = false; ts_open = false
         splashing: 1 ~16ms
         play leap
     }
@@ -1661,7 +1661,7 @@ scene Etta {
     on still misplaced for 1500ms while misplaced {
         purpose = travel
         travelling = true
-        open = false; page = none; tray_open = false; searching = false; menu_open = false
+        open = false; page = none; tray_open = false; searching = false; menu_open = false; ts_open = false
         splashing: 1 ~16ms
         play leap
     }
@@ -2882,7 +2882,7 @@ scene Etta {
     //  It steps aside for whatever else she says on that side —a notice, the
     //  Haven's capsule, a recording just saved— and for her panels.
     prop clk.vis = 1 ~200ms
-    follow clk.vis = if(not open and not tray_open and not searching and not menu_open and phase == 0 and capsule < 0.05 and reel < 0.05 and summary < 0.05 and not corner and not adventuring and not travelling and away < 0.5 and catch < 0.05, 1, 0)
+    follow clk.vis = if(not open and not tray_open and not searching and not menu_open and not ts_open and phase == 0 and capsule < 0.05 and reel < 0.05 and summary < 0.05 and not corner and not adventuring and not travelling and away < 0.5 and catch < 0.05, 1, 0)
     //  The card grows out of the pill: geometry first, then what is read; on
     //  closing what is read goes first. The same beats as her panels.
     //  Every target says the truth, not a number: a delayed step is not
@@ -3111,6 +3111,203 @@ scene Etta {
     on hover clock_zone for 150ms while not open and not menu_open { note = true }
     on press clock_zone { note = false; open = true; page = calendar; emit calendar }
     on leave clock_zone while not note and not open { wanted = false }
+
+    // ── Tailscale: her devices ───────────────────────────────────
+    //  Beside the clock, a small pill with Tailscale's nine dots: the T lit
+    //  while the tailnet is up, dim when it is off, rippling while a file
+    //  travels, and a mint dot when one has arrived. Pressing it —or
+    //  carrying a file over it for a moment— the pill grows into the card
+    //  with the clock's beats (geometry first, then what is read; on closing
+    //  what is read goes first), and the card settles where the clock was,
+    //  which steps aside as it does for her panels: to the right of the
+    //  pill the surface ends. In it: this device, the others with their
+    //  state, and for each its address to copy and a way to send it files
+    //  —its button, or dropping them on its row—; and what has arrived, in
+    //  Downloads/Taildrop. The logic is the one that asks `tailscale`.
+    fact ts.state = 0                  // 0 not here · 1 off · 2 not signed in · 3 on · 4 connecting · 5 not answering
+    fact ts.recv_off = false           // taking in files was refused: this user is not its operator
+    fact ts_open = false
+    fact ts.busy = false               // a file on its way, out or in
+    fact ts.unseen = 0                 // files arrived since the card was last opened
+    fact ts.copied = -2                // whose address was just copied: −1 this device, −2 none
+    text ts.tailnet = ""
+    text ts.self = ""
+    text ts.self_sub = ""
+    //  The others, online first. `state`: 0 still · 1 sending · 2 sent · 3 failed.
+    model tsdev max 6 { name: text; sub: text; phone: bool; online: bool; drop: bool; state: number }
+    model tsrecv max 3 { name: text; when: text }
+    event ts_poll ->
+    event ts_toggle ->
+    event ts_copy ->
+    event ts_copy_self ->
+    event ts_send ->
+    event ts_open_recv ->
+    event ts_open_folder ->
+    event ts_close
+    on ts_close { ts_open = false }
+    //  One thing of hers out, and only one: the card closes the rest, and
+    //  anything else that comes out closes it.
+    on change ts_open while ts_open { open = false; tray_open = false; searching = false; menu_open = false; note = false; emit ts_poll }
+    on change open while open { ts_open = false }
+    on change tray_open while tray_open { ts_open = false }
+    on change searching while searching { ts_open = false }
+    on change menu_open while menu_open { ts_open = false }
+    on key Escape while ts_open { ts_open = false }
+    on ts_copy_self { ts.copied = -1 }
+    on still ts.copied for 1.6s while ts.copied > -1.5 { ts.copied = -2 }
+
+    let ts.on = ts.state == 3
+    let ts.px = clk.x + clk.w + 8
+    prop ts.vis = 0 ~200ms
+    //  It goes with the clock —beside it at rest, sliding along as the
+    //  clock grows into its card or its OSD—, and stays while a file is
+    //  carried over her desk with nothing else of hers out: Deriva's pool
+    //  opening under her hides the clock, not the place to drop it.
+    follow ts.vis = if(ts.state > 0 and (clk.vis > 0.5 or (drag.over > 0.5 and not open and not tray_open and not searching and not menu_open and phase == 0 and capsule < 0.05 and reel < 0.05 and summary < 0.05)), 1, 0)
+    prop ts.card = 0 ~290ms
+    prop ts.inner = 0 ~200ms
+    on change ts_open while ts_open { ts.card: if(ts_open, 1, 0) ~290ms; ts.inner: if(ts_open, 1, 0) ~200ms after 90ms }
+    on change ts_open while not ts_open { ts.inner: if(ts_open, 1, 0) ~50ms; ts.card: if(ts_open, 1, 0) ~210ms after 30ms }
+    //  Its height follows what it holds: the head, this device, a row for
+    //  each of the others, what has arrived and the hint at the foot.
+    let ts.n = max(tsdev.count, 1)
+    prop ts.H = 280 ~240ms
+    follow ts.H = if(ts.on, 64 + 98 + 26 + ts.n * 64 + if(tsrecv.count > 0, 34 + tsrecv.count * 46, 0) + 40, 240)
+    let ts.L = ts.px + (clk.x - ts.px) * ts.card
+    let ts.W = 36 + 344 * ts.card
+    let ts.Hn = 36 + (ts.H - 36) * ts.card
+    prop ts.spin = 0
+    spin ts.spin by if(ts.busy, 1.1, 0)
+    prop ts.hot = 0 ~140ms
+
+    //  Tailscale's nine: the middle row and the one under its centre are the
+    //  T, the rest a fifth of it. `lit` takes the T from dim to full; `wave`
+    //  ripples them all, one after another, while something travels.
+    component TsDots(x: number, y: number, gap: number, rad: number, lit: number, wave: number) {
+        repeat k in 0..9 {
+            let tc = mod(k, 3)
+            let tr = floor(k / 3)
+            let tt = if(tr == 1 or (tc == 1 and tr == 2), 1, 0)
+            ellipse { at: x + (tc - 1) * gap, y + (tr - 1) * gap; radius: rad; color: tk.ink
+                      opacity: clamp(0.2 + tt * (0.25 + 0.75 * lit) + wave * 0.7 * max(0, sin(ts.spin * 360 - k * 40)), 0, 1) }
+        }
+    }
+
+    //  The card's ground takes the clicks that miss its controls: it goes
+    //  BELOW them, as every grace zone does, and keeps a press on it from
+    //  reaching the catcher underneath, which would close it.
+    zone box ts_area { from: clk.x, 12; size: 380, ts.H; corner: 24; active: ts_open }
+    group {
+        opacity: max(ts.vis, clamp(ts.card * 6, 0, 1))
+        body {
+            color: coal
+            rim: 14%
+            shadow: 0, 3 + 12 * ts.card, 10 + 26 * ts.card, 30% + 15% * ts.card, #05070a
+            box { from: ts.L, 12; size: ts.W, ts.Hn; corner: 18 + 6 * ts.card }
+        }
+        //  The pill: the nine dots, and the mint one of something arrived.
+        group {
+            opacity: 1 - clamp(ts.card * 4, 0, 1)
+            TsDots(ts.px + 18, 30, 5.4, 1.85, if(ts.on, 1, 0) * (0.85 + 0.15 * ts.hot), if(ts.busy, 1, 0))
+            ellipse { at: ts.px + 31, 16; radius: 4; color: tk.mint; show: ts.unseen > 0 }
+        }
+        //  The card, clipped to itself.
+        group {
+            clip box { from: ts.L, 12; size: ts.W, ts.Hn; corner: 18 + 6 * ts.card }
+            group {
+                opacity: ts.inner
+                move: 0, (1 - ts.inner) * -4
+                let L = clk.x
+                TsDots(L + 30, 44, 5, 1.7, if(ts.on, 1, 0), if(ts.busy, 1, 0))
+                text "Tailscale" { family: "Geist"; at: L + 52, 36; anchor: left center; size: 16; weight: 600; color: tk.ink }
+                text ts.tailnet { family: "Geist"; at: L + 52, 54; anchor: left center; size: 12; weight: 500; width: 200; lines: 1; color: tk.ink3 }
+                group { move: L + 278, 32; show: ts.state == 1 or ts.state == 3 or ts.state == 4; Toggle(ts.on or ts.state == 4, ts_toggle, live: ts.inner > 0.8) }
+                group { move: L + 330, 26; Ib(ts_close, live: ts.inner > 0.8) { figure Kit.i_close { at: 0, 0; size: 18, 18; color: tk.ink2 } } }
+
+                group {
+                    show: ts.on
+                    //  This device.
+                    group { move: L + 12, 78; Over("THIS DEVICE") }
+                    box { from: L + 12, 104; size: 356, 60; corner: 14; color: tk.s1 }
+                    group { move: L + 24, 116; Bubble(1) { figure Kit.i_laptop { at: 0, 0; size: 18, 18; color: tk.mint_ink } } }
+                    text ts.self { family: "Geist"; at: L + 72, 125; anchor: left center; size: 15; weight: 600; width: 200; lines: 1; color: tk.ink }
+                    text ts.self_sub { family: "Geist"; at: L + 72, 144; anchor: left center; size: 12; weight: 500; width: 200; lines: 1; color: tk.ink3; show: ts.copied != -1 }
+                    text "Address copied" { family: "Geist"; at: L + 72, 144; anchor: left center; size: 12; weight: 500; color: tk.mint; show: ts.copied == -1 }
+                    group { move: L + 320, 116; Ib(ts_copy_self, live: ts.inner > 0.8) { figure Kit.i_copy { at: 0, 0; size: 18, 18; color: tk.ink2 } } }
+
+                    //  The others: each its state, its address and a way to
+                    //  send it something. Its row takes a file dropped on it.
+                    group { move: L + 12, 174; Over("DEVICES") }
+                    text "No other devices in this tailnet yet" { family: "Geist"; at: L + 190, 230; anchor: center; size: 13; weight: 500; color: tk.ink3; show: tsdev.count < 1 }
+                    repeat k in 0..6 {
+                        let ry = 200 + k * 64
+                        group {
+                            show: k < tsdev.count
+                            box { from: L + 12, ry; size: 356, 60; corner: 14; color: mix(tk.s1, tk.mint_soft, ts_row.$k.hover * clamp(drag.over, 0, 1) * if(tsdev.$k.drop, 1, 0)) }
+                            group { move: L + 24, ry + 12; Bubble(if(tsdev.$k.online, 1, 0)) {
+                                figure Kit.i_phone { at: 0, 0; size: 18, 18; color: if(tsdev.$k.online, tk.mint_ink, tk.ink2); show: tsdev.$k.phone }
+                                figure Kit.i_monitor { at: 0, 0; size: 18, 18; color: if(tsdev.$k.online, tk.mint_ink, tk.ink2); show: not tsdev.$k.phone }
+                            } }
+                            text tsdev.$k.name { family: "Geist"; at: L + 72, ry + 21; anchor: left center; size: 15; weight: 600; width: 196; lines: 1; color: tk.ink }
+                            text tsdev.$k.sub { family: "Geist"; at: L + 72, ry + 40; anchor: left center; size: 12; weight: 500; width: 196; lines: 1
+                                                color: if(tsdev.$k.state == 3, tk.red, if(tsdev.$k.state == 2 or tsdev.$k.online, tk.mint, tk.ink3)); show: ts.copied != k }
+                            text "Address copied" { family: "Geist"; at: L + 72, ry + 40; anchor: left center; size: 12; weight: 500; color: tk.mint; show: ts.copied == k }
+                            box { from: L + 72, ry + 50; size: 196 * fract(ts.spin * 0.6), 2; corner: 1; color: tk.mint; opacity: 60%; show: tsdev.$k.state == 1 }
+                            //  Its two buttons: copy its address, send it files.
+                            box { from: L + 280, ry + 12; size: 36, 36; corner: 10; color: tk.s2; opacity: ts_cp.$k.hover }
+                            figure Kit.i_copy { at: L + 298, ry + 30; size: 18, 18; color: tk.ink2 }
+                            box { from: L + 320, ry + 12; size: 36, 36; corner: 10; color: tk.s2; opacity: ts_snd.$k.hover }
+                            figure Kit.i_send { at: L + 338, ry + 30; size: 18, 18; color: if(tsdev.$k.drop, tk.ink2, tk.ink3); opacity: if(tsdev.$k.drop, 1, 0.45) }
+                            zone box ts_row.$k { from: L + 12, ry; size: 356, 60; corner: 14; active: ts_open and ts.inner > 0.8 and k < tsdev.count }
+                            //  (Off while a file is carried: the whole row takes it.)
+                            zone box ts_cp.$k { from: L + 280, ry + 12; size: 36, 36; corner: 10; cursor: pointer; active: ts_open and ts.inner > 0.8 and k < tsdev.count and drag.over < 0.5 }
+                            zone box ts_snd.$k { from: L + 320, ry + 12; size: 36, 36; corner: 10; cursor: pointer; active: ts_open and ts.inner > 0.8 and k < tsdev.count and tsdev.$k.drop and drag.over < 0.5 }
+                            on press ts_cp.$k { ts.copied = k; emit ts_copy(k) }
+                            on press ts_snd.$k { emit ts_send(k) }
+                        }
+                    }
+
+                    //  What has arrived, newest first.
+                    let rv = 200 + ts.n * 64 + 6
+                    group {
+                        show: tsrecv.count > 0
+                        group { move: L + 12, rv; Over("RECEIVED") }
+                        text "Open folder" { family: "Geist"; at: L + 364, rv + 12; anchor: right center; size: 12; weight: 600; color: mix(tk.ink3, tk.mint, ts_folder.hover) }
+                        zone box ts_folder { from: L + 280, rv; size: 88, 24; corner: 8; cursor: pointer; active: ts_open and ts.inner > 0.8 }
+                        on press ts_folder { emit ts_open_folder }
+                        repeat k in 0..3 {
+                            let fy = rv + 30 + k * 46
+                            group {
+                                show: k < tsrecv.count
+                                box { from: L + 12, fy; size: 356, 42; corner: 12; color: tk.s1; opacity: 0.6 + 0.4 * ts_rf.$k.hover }
+                                figure Kit.i_download { at: L + 32, fy + 21; size: 16, 16; color: tk.mint }
+                                text tsrecv.$k.name { family: "Geist"; at: L + 52, fy + 21; anchor: left center; size: 13; weight: 500; width: 230; lines: 1; color: tk.ink }
+                                text tsrecv.$k.when { family: "Geist"; at: L + 356, fy + 21; anchor: right center; size: 12; weight: 500; color: tk.ink3 }
+                                zone box ts_rf.$k { from: L + 12, fy; size: 356, 42; corner: 12; cursor: pointer; active: ts_open and ts.inner > 0.8 and k < tsrecv.count }
+                                on press ts_rf.$k { emit ts_open_recv(k) }
+                            }
+                        }
+                    }
+                    text pick(if(ts.recv_off, 1, 0), "Drop a file on a device to send it", "To take in files: sudo tailscale set --operator=$USER") { family: "Geist"; at: L + 190, ts.H - 10; anchor: center; size: 12; weight: 500; color: if(ts.recv_off, tk.sand, tk.ink3); show: tsdev.count > 0 or ts.recv_off }
+                }
+
+                //  Anything but on: what it is, and how to change it.
+                group {
+                    show: not ts.on
+                    group { move: L + 172, 92; Bubble(0) { TsDots(0, 0, 4.4, 1.5, 0, if(ts.state == 4, 1, 0)) } }
+                    text pick(ts.state, "Tailscale is not here", "Tailscale is off", "Not signed in", "", "Connecting…", "Tailscale is not answering") { family: "Geist"; at: L + 190, 152; anchor: center; size: 15; weight: 600; color: tk.ink }
+                    text pick(ts.state, "Install it to reach your devices", "Turn it on to reach your devices", "Run «tailscale up» in a terminal to sign in", "", "Reaching your tailnet", "Is its service running? «systemctl status tailscaled»") { family: "Geist"; at: L + 190, 174; anchor: center; size: 12; weight: 500; width: 340; lines: 1; align: center; color: tk.ink3 }
+                    group { move: L + 130, 196; show: ts.state == 1; Btn("Turn on", ts_toggle, w: 120, kind: 1, h: 34, live: ts.inner > 0.8) }
+                }
+            }
+        }
+    }
+    //  Pressing the pill opens it; carrying a file over it, too, after a moment.
+    zone box ts_pill { from: ts.px, 12; size: 36, 36; corner: 18; cursor: pointer; active: ts.vis > 0.5 and not ts_open }
+    on enter ts_pill { ts.hot: 1 }
+    on leave ts_pill { ts.hot: 0 }
+    on press ts_pill { ts_open = true }
+    on hover ts_pill for 450ms while drag.over > 0.5 and not ts_open { ts_open = true }
 
     // ── the notice that arrives ──────────────────────────────────
     //  From the centre of the card to the shoulder along two different curves:
@@ -4946,10 +5143,9 @@ scene Etta {
     //  its grace zone: declared after, it kept the click on «End», which lands
     //  right on top of it. The capsule already has its own.
     zone box body_zone { at: cx, cy_actual; size: 2 * r, 2 * r + 30; corner: r; cursor: pointer }
-
-    zone ellipse drift_drop { at: pool.x, cy_actual + 44; radius: 84; active: drag.over }
-    zone ellipse drift_later { at: pool.x - 120, pool.y; radius: 34; active: drag.over }
-    zone ellipse drift_insp { at: pool.x + 120, pool.y; radius: 34; active: drag.over }
+    zone ellipse drift_drop { at: pool.x, cy_actual + 44; radius: 84; active: drag.over and not ts_open }
+    zone ellipse drift_later { at: pool.x - 120, pool.y; radius: 34; active: drag.over and not ts_open }
+    zone ellipse drift_insp { at: pool.x + 120, pool.y; radius: 34; active: drag.over and not ts_open }
     on enter drift_later { later.hl: 1 }
     on leave drift_later { later.hl: 0 }
     on enter drift_insp { insp.hl: 1 }
@@ -4964,7 +5160,7 @@ scene Etta {
     //  time. And 300 of grace on leaving, because the gap between her and the note
     //  is real and must not be lost while crossing it. It goes away if the panel
     //  opens.
-    on hover body_zone for 180ms while not open and not menu_open and drag.over < 0.5 { note = true }
+    on hover body_zone for 180ms while not open and not menu_open and not ts_open and drag.over < 0.5 { note = true }
     //  And this does not rule in the Haven: with the zone switched off, «being
     //  outside» is always true, so it switched the capsule off 300 ms after
     //  opening it.
@@ -5386,11 +5582,14 @@ scene Etta {
         anchor: top_left
         level: top
         screens: each max 2
-        open: open or tray_open or menu_open or reel_open or searching
+        //  Not while something is being carried: a drop over it was read with
+        //  her own surface's coordinates, and landed on a row of hers that is
+        //  somewhere else.
+        open: (open or tray_open or menu_open or reel_open or searching or ts_open) and drag.over < 0.5
         //  And the zone says it again: a full-screen zone that stays on by
         //  mistake is the whole desktop taken. It happened.
-        zone box outside { from: 0, 0; size: catcher.width, catcher.height; active: open or tray_open or menu_open or reel_open }
-        on press outside { open = false; tray_open = false; menu_open = false; reel_open = false }
+        zone box outside { from: 0, 0; size: catcher.width, catcher.height; active: open or tray_open or menu_open or reel_open or ts_open }
+        on press outside { open = false; tray_open = false; menu_open = false; reel_open = false; ts_open = false }
         //  The finder stays in her own layer —moving it up as it opens left
         //  it without the keyboard—, so here the catcher would be over it:
         //  around it instead, three strips —left, right and below— and the

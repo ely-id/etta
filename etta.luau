@@ -447,6 +447,7 @@ local OWN = {
       function() if hooks.wm_ride then hooks.wm_ride() end end, "wm" },
     { "Wallpapers", "wallpaper wallpapers fondo fondos pantalla escritorio desktop background imagen tema theme", 1, function() emit("show_walls") end },
     { "Deriva", "deriva drift biblioteca library guardado saved kept enlaces links recortes bookmarks marcadores", 1, function() emit("show_drift") end },
+    { "Tailscale", "tailscale devices dispositivos tailnet iphone phone telefone celular taildrop send enviar files arquivos archivos vpn", 1, function() if hooks.ts_open then hooks.ts_open() end end },
     { "Do not disturb", "do not disturb no molestar dnd silencio silence quiet callar avisos notices notificaciones notifications", 1,
       function() if hooks.dnd then hooks.dnd() end end },
     { "Notices", "notices avisos notificaciones notifications silenciar mute muted apps posponer snooze later luego grabar recording", 1, open_page("settings", "notices") },
@@ -1221,8 +1222,11 @@ local function save_history()
 end
 local DAY_NAMES = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" }
 local function day_label(t)
+    --  Local midnight. Luau's `os.time(table)` reads the table as UTC, so the
+    --  table way gave 21:00 of the day before here, and what came yesterday
+    --  evening said «Today».
     local now = os.date("*t")
-    local midnight = os.time({ year = now.year, month = now.month, day = now.day, hour = 0 })
+    local midnight = os.time() - (now.hour * 3600 + now.min * 60 + now.sec)
     if t >= midnight then return tr("Today") end
     if t >= midnight - 86400 then return tr("Yesterday") end
     local d = os.date("*t", t)
@@ -3979,3 +3983,287 @@ run("cat", { (sys.ask("env", "HOME") or ".") .. "/.config/halley/halley.rune" },
     local layout = tostring(out or ""):match('\n%s*layout%s+"([%w%-]+)"')
     if layout and layout ~= "" then text["lock.layout"] = string.upper(layout:sub(1, 3)) end
 end)
+
+-- ── Tailscale: her devices ─────────────────────────────────────────
+--  `tailscale status --json` every twelve seconds while the card is closed
+--  —enough for the pill to say on or off— and every three while it is
+--  open. The devices as rows, named by their MagicDNS name (an iPhone calls
+--  itself «localhost»); copying an address; sending files with
+--  `tailscale file cp`, chosen with zenity or dropped on a row; and
+--  receiving: `tailscale file get --loop` moves what arrives into
+--  Downloads/Taildrop, and the folder is looked at on every reading, so
+--  what is new is said with a notice. Sending and receiving need this user
+--  to be Tailscale's operator (`tailscale set --operator=$USER`); without
+--  it the status still reads, and sending says it could not.
+;(function()
+    local T = { peers = {}, state = 0, ticks = 0, busy = 0, xfer = {}, self_ip = "" }
+    local OS_NAMES = { iOS = "iOS", android = "Android", linux = "Linux", windows = "Windows", macOS = "macOS" }
+
+    local function short(dns, host)
+        local n = tostring(dns or ""):match("^([^%.]+)")
+        if n == nil or n == "" then n = tostring(host or "") end
+        return n
+    end
+    --  An ISO time in UTC, as seconds.
+    --  (Luau's `os.time(table)` reads it as UTC already, and gives nil
+    --  before 1970: Go's zero time, «never seen», is year 1.)
+    local function utc_seconds(iso)
+        local y, mo, d, h, mi, sec = tostring(iso or ""):match("^(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
+        if not y or tonumber(y) < 1971 then return nil end
+        return os.time({ year = tonumber(y), month = tonumber(mo), day = tonumber(d), hour = tonumber(h), min = tonumber(mi), sec = tonumber(sec) })
+    end
+    local function ago(iso)
+        local t = utc_seconds(iso)
+        if t == nil or t < 946684800 then return tr("Offline") end
+        local s = math.max(0, os.time() - t)
+        if s < 90 then return tr("Last seen just now") end
+        if s < 3600 then return string.format(tr("Last seen %d min ago"), math.floor(s / 60)) end
+        if s < 86400 then return string.format(tr("Last seen %d h ago"), math.floor(s / 3600)) end
+        return string.format(tr("Last seen %d days ago"), math.floor(s / 86400))
+    end
+
+    --  The rows, with what is travelling to each one.
+    local function rows()
+        local out = {}
+        for i, p in ipairs(T.peers) do
+            local x = T.xfer[p.ip] or {}
+            out[i] = { name = p.name, sub = x.note or p.sub, phone = p.phone, online = p.online, drop = p.drop, state = x.state or 0 }
+        end
+        model.tsdev = out
+        fact["ts.busy"] = T.busy > 0
+    end
+
+    local function read(st)
+        if T.toggling then return end
+        local backend = tostring(st.BackendState or "")
+        local STATES = { Running = 3, NeedsLogin = 2, NeedsMachineAuth = 2, Starting = 4, Stopped = 1 }
+        T.state = STATES[backend] or 5
+        fact["ts.state"] = T.state
+        text["ts.tailnet"] = (type(st.CurrentTailnet) == "table" and st.CurrentTailnet.Name) or ""
+        local me = type(st.Self) == "table" and st.Self or {}
+        T.self_ip = (type(me.TailscaleIPs) == "table" and me.TailscaleIPs[1]) or ""
+        text["ts.self"] = short(me.DNSName, me.HostName)
+        local my_os = tostring(me.OS or "")
+        text["ts.self_sub"] = T.self_ip .. (my_os ~= "" and (" · " .. (OS_NAMES[my_os] or my_os)) or "")
+        local peers = {}
+        for _, p in pairs(type(st.Peer) == "table" and st.Peer or {}) do
+            local ip = (type(p.TailscaleIPs) == "table" and p.TailscaleIPs[1]) or ""
+            local os_name = tostring(p.OS or "")
+            local online = p.Online == true
+            --  How it is reached, only while it is: an idle device has no
+            --  path, and its home relay is not one in use.
+            local how
+            if not online then how = ago(p.LastSeen)
+            elseif p.Active ~= true then how = tr("Online")
+            elseif type(p.CurAddr) == "string" and p.CurAddr ~= "" then how = tr("Online · direct")
+            elseif type(p.Relay) == "string" and p.Relay ~= "" then how = string.format(tr("Online · relay %s"), p.Relay)
+            else how = tr("Online") end
+            if ip ~= "" then
+                peers[#peers + 1] = {
+                    ip = ip, name = short(p.DNSName, p.HostName), online = online,
+                    phone = os_name == "iOS" or os_name == "android",
+                    --  Taildrop says, for each, whether it takes a file now (1).
+                    drop = (p.TaildropTarget == nil and online) or tonumber(p.TaildropTarget) == 1,
+                    sub = (os_name ~= "" and ((OS_NAMES[os_name] or os_name) .. " · ") or "") .. how,
+                }
+            end
+        end
+        table.sort(peers, function(a, b)
+            if a.online ~= b.online then return a.online end
+            return a.name < b.name
+        end)
+        while #peers > 6 do table.remove(peers) end
+        T.peers = peers
+        rows()
+    end
+
+    --  What has arrived: the folder, newest first. What was not there the
+    --  last time is new, and she says so; the first look only learns.
+    local function received()
+        if T.dir == nil then return end
+        run("ls", { "-ltA", "--time-style=+%s", T.dir }, function(out)
+            local files = {}
+            for line in tostring(out or ""):gmatch("[^\n]+") do
+                local stamp, name = line:match("^%-%S*%s+%d+%s+%S+%s+%S+%s+%d+%s+(%d+)%s(.+)$")
+                if name then files[#files + 1] = { name = name, t = tonumber(stamp) or 0 } end
+            end
+            local fresh = {}
+            if T.seen then
+                for _, f in ipairs(files) do if not T.seen[f.name] then fresh[#fresh + 1] = f end end
+            end
+            T.seen = {}
+            for _, f in ipairs(files) do T.seen[f.name] = true end
+            T.files = files
+            local today = os.date("%Y-%m-%d")
+            local list = {}
+            for k = 1, math.min(3, #files) do
+                local t = files[k].t
+                list[k] = { name = files[k].name, when = os.date("%Y-%m-%d", t) == today and os.date("%H:%M", t) or day_label(t) }
+            end
+            model.tsrecv = list
+            --  With the card open, its list already says it.
+            if #fresh > 0 and fact.ts_open ~= true then
+                fact["ts.unseen"] = (tonumber(fact["ts.unseen"]) or 0) + #fresh
+                local what = #fresh == 1 and fresh[1].name or string.format(tr("%d files"), #fresh)
+                run("notify-send", { "--app-name=Tailscale", tr("Received through Tailscale"), what }, function() end)
+            end
+        end)
+    end
+
+    --  The one that takes in what arrives. If it ends at once (no permission,
+    --  the service gone), it is tried again five minutes later, not on every
+    --  reading.
+    local function getter()
+        if T.getter or T.dir == nil or T.state ~= 3 or os.time() < (T.retry_at or 0) then return end
+        local born = os.time()
+        local ok, id = pcall(spawn, "tailscale", { "file", "get", "--loop", "--verbose", "--conflict=rename", T.dir }, function(line)
+            line = tostring(line)
+            if line:match("^moved [1-9]") then received() end
+            --  With --loop it does not end on a refusal: it says so and tries
+            --  again every few seconds. The card says what to do.
+            if line:lower():find("access denied", 1, true) or line:lower():find("permission denied", 1, true) then
+                if fact["ts.recv_off"] ~= true then log("tailscale · taking in files was refused: is this user its operator?") end
+                fact["ts.recv_off"] = true
+            elseif line:match("^moved") then
+                fact["ts.recv_off"] = false
+            end
+        end, function()
+            T.getter = nil
+            if os.time() - born < 5 then
+                T.retry_at = os.time() + 300
+                log("tailscale · taking in files did not start: is this user its operator?")
+            end
+        end)
+        if ok then T.getter = id else log("tailscale · cannot run it:", id) end
+    end
+
+    local function poll()
+        run("tailscale", { "status", "--json" }, function(out, code)
+            local ok, st = pcall(json.decode, tostring(out or ""))
+            if ok and type(st) == "table" and st.BackendState then
+                --  One odd device must not stop the rest: the getter and the
+                --  folder come after it.
+                local fine, err = pcall(read, st)
+                if not fine then log("tailscale · could not read the status:", err) end
+                if T.state == 3 then getter() end
+                received()
+            else
+                --  Not there at all (it could not be run), or there but not answering.
+                T.state = code == -1 and 0 or 5
+                fact["ts.state"] = T.state
+            end
+        end)
+    end
+    --  The card opening (from the pill, a drop or the finder): what had
+    --  arrived is seen now.
+    on("ts_poll", function() fact["ts.unseen"] = 0; poll() end)
+    --  (From the finder: a fact the logic writes does not come back to it.)
+    hooks.ts_open = function() fact["ts.unseen"] = 0; fact.ts_open = true; poll() end
+    every(3000, function()
+        T.ticks = T.ticks + 1
+        if fact.ts_open == true or T.ticks % 4 == 0 then poll() end
+    end)
+
+    --  Where what arrives goes: Downloads/Taildrop.
+    run("xdg-user-dir", { "DOWNLOAD" }, function(out)
+        local d = tostring(out or ""):match("^%s*(.-)%s*$")
+        if d == "" then d = home_dir .. "/Downloads" end
+        T.dir = d .. "/Taildrop"
+        run("mkdir", { "-p", T.dir }, function() poll() end)
+    end)
+
+    --  Sending: what is travelling shows on its row, and how it ended too,
+    --  for a few seconds; and she says it in passing, the card closed or not.
+    local function send(p, files)
+        if p == nil or #files == 0 then return end
+        local ip, name = p.ip, p.name
+        T.busy = T.busy + 1
+        T.xfer[ip] = { state = 1, note = tr("Sending…") }
+        rows()
+        local args = { "file", "cp" }
+        for _, f in ipairs(files) do args[#args + 1] = f end
+        args[#args + 1] = ip .. ":"
+        run("tailscale", args, function(_, code)
+            T.busy = math.max(0, T.busy - 1)
+            local what = #files == 1 and (files[1]:match("([^/]+)$") or files[1]) or string.format(tr("%d files"), #files)
+            if code == 0 then
+                T.xfer[ip] = { state = 2, note = string.format(tr("Sent · %s"), what) }
+                say(string.format(tr("Sent %s to %s"), what, name))
+            else
+                T.xfer[ip] = { state = 3, note = tr("Could not send") }
+                fact["drift.result"] = 2
+                text["drift.toast"] = string.format(tr("Could not send to %s"), name)
+                emit("say_toast")
+            end
+            rows()
+            local mine = T.xfer[ip]
+            after(4000, function()
+                if T.xfer[ip] == mine then T.xfer[ip] = nil; rows() end
+            end)
+        end)
+    end
+    on("ts_send", function(k)
+        local p = T.peers[(tonumber(k) or 0) + 1]
+        if p == nil then return end
+        --  The dialog needs the keyboard, which she holds while the card is open.
+        fact.ts_open = false
+        run("zenity", { "--file-selection", "--multiple", "--separator=\n", "--title=" .. string.format(tr("Send to %s"), p.name) }, function(out, code)
+            if code ~= 0 then return end
+            local files = {}
+            for f in tostring(out or ""):gmatch("[^\n]+") do files[#files + 1] = f end
+            send(p, files)
+        end)
+    end)
+    for k = 0, 5 do
+        on("drop:ts_row." .. k, function(data)
+            local p = T.peers[k + 1]
+            if p == nil or not p.drop then return end
+            local files = {}
+            for line in tostring(data or ""):gmatch("[^\r\n]+") do
+                local l = line:match("^%s*(.-)%s*$")
+                if l:match("^file://") then files[#files + 1] = url_decode((l:gsub("^file://[^/]*", ""))) end
+            end
+            send(p, files)
+        end)
+    end
+
+    --  Copying an address: hers too, so «Keep what I copy» does not keep it.
+    local function copy(ip)
+        if ip == nil or ip == "" then return end
+        if fx.copied_by_her then fx.copied_by_her(ip) end
+        sys.call("clipboard.set", ip)
+    end
+    on("ts_copy", function(k) local p = T.peers[(tonumber(k) or 0) + 1]; if p then copy(p.ip) end end)
+    on("ts_copy_self", function() copy(T.self_ip) end)
+
+    --  On and off, by what the switch shows; one at a time, and `up` gives
+    --  up after fifteen seconds instead of waiting for ever.
+    on("ts_toggle", function()
+        if T.toggling then return end
+        local shown = tonumber(fact["ts.state"]) or 0
+        local up = shown ~= 3 and shown ~= 4
+        T.toggling = true
+        fact["ts.state"] = up and 4 or 1
+        run("tailscale", up and { "up", "--timeout=15s" } or { "down" }, function(_, code)
+            T.toggling = false
+            if code ~= 0 then
+                fact["drift.result"] = 2
+                text["drift.toast"] = up and tr("Tailscale could not start") or tr("Tailscale could not stop")
+                emit("say_toast")
+            end
+            poll()
+        end)
+    end)
+
+    on("ts_open_folder", function()
+        if T.dir == nil then return end
+        fact.ts_open = false
+        run("xdg-open", { T.dir }, function() end)
+    end)
+    on("ts_open_recv", function(k)
+        local f = (T.files or {})[(tonumber(k) or 0) + 1]
+        if f == nil or T.dir == nil then return end
+        fact.ts_open = false
+        run("xdg-open", { T.dir .. "/" .. f.name }, function() end)
+    end)
+end)()
