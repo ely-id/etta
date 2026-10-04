@@ -1328,35 +1328,92 @@ local function link_of(it)
     return blob_path(it)
 end
 
+--  Its colour, which is its kind: 1 a link (blue), 2 a file of any sort
+--  (violet), 3 an image (mint), 4 a note or some text (sand). The page's
+--  chips filter by it.
+function fx.drift_k(it)
+    local kind = string.upper(tostring(it.type or ""))
+    return (kind == "LINK" or kind == "URL") and 1 or (kind == "IMAGE" and 3 or ((kind == "TEXT" or kind == "NOTE") and 4 or 2))
+end
+
 local function show_drift()
     local cards = {}
-    for k = drift_offset + 1, math.min(drift_offset + 4, #drift_items) do
-        local it = drift_items[k]
+    local view = fx.drift_view or {}
+    for k = drift_offset + 1, math.min(drift_offset + 4, #view) do
+        local it = view[k]
         local title = (it.title ~= nil and it.title ~= "") and it.title or it.blob_name or it.excerpt or "…"
         local source = (it.source ~= nil and it.source ~= "" and it.source ~= "web") and it.source or host_of(it.source_url)
         local preview = type(it.preview_path) == "string" and it.preview_path or ""
-        local kind = string.upper(tostring(it.type or ""))
-        local k = (kind == "LINK" or kind == "URL") and 1 or (kind == "IMAGE" and 3 or ((kind == "TEXT" or kind == "NOTE") and 4 or 2))
-        cards[#cards + 1] = { title = tostring(title):gsub("%s+", " "), source = source, kind = kind, k = k,
+        cards[#cards + 1] = { title = tostring(title):gsub("%s+", " "), source = source, kind = string.upper(tostring(it.type or "")), k = fx.drift_k(it),
                               date = day_label(math.floor((it.captured_at or 0) / 1000)), preview = preview,
                               has_preview = preview ~= "", link = link_of(it) }
     end
     model.drift = cards
 end
 
+--  What the page shows: what was found, of the chosen colour. Clearing
+--  clears exactly this, so the count it asks about is the count you see.
+function fx.drift_filter()
+    local cat, view = tonumber(fact["drift.cat"]) or 0, {}
+    for _, it in ipairs(drift_items) do
+        if cat == 0 or fx.drift_k(it) == cat then view[#view + 1] = it end
+    end
+    fx.drift_view = view
+    fact["drift.n"] = #view
+    drift_offset = 0
+    show_drift()
+end
+
+--  The whole library: the worker gives 500 at a time, so it is read page
+--  after page (`--before`, the last one's time; the one at the edge comes
+--  twice and is counted once). The chips and «Clear» speak of all of it. A
+--  search gives what it finds, which is for finding and not for clearing:
+--  with one written, the page offers no «Clear» (`drift.query`). The count
+--  in the head is the worker's own (`stats`), whatever is shown. Only the
+--  newest answer counts: a slow search arriving after the field was emptied
+--  must not become what «Clear» acts on.
 local function drift_load()
     local q = text.drift_q or ""
-    local args = q == "" and { "list", "--limit", "60" } or { "search", "--query", q, "--limit", "60" }
-    drift_run(args, function(r)
-        drift_items = (r and r.items) or {}
-        drift_offset = 0
-        if q == "" then fact["drift.kept"] = #drift_items end
-        show_drift()
+    fx.drift_gen = (fx.drift_gen or 0) + 1
+    local mine = fx.drift_gen
+    fact["drift.query"] = q ~= ""
+    local function done(items)
+        if mine ~= fx.drift_gen then return end
+        drift_items = items
+        fx.drift_filter()
+    end
+    drift_run({ "stats" }, function(r)
+        if r and tonumber(r.captures) then fact["drift.kept"] = tonumber(r.captures) end
     end)
+    if q ~= "" then
+        drift_run({ "search", "--query", q, "--limit", "200" }, function(r) done((r and r.items) or {}) end)
+        return
+    end
+    local all, seen = {}, {}
+    local function page(before)
+        local args = { "list", "--limit", "500" }
+        if before then args[#args + 1] = "--before"; args[#args + 1] = tostring(before + 1) end
+        drift_run(args, function(r)
+            if mine ~= fx.drift_gen then return end
+            local items = (r and r.items) or {}
+            local fresh = 0
+            for _, it in ipairs(items) do
+                if it.id and not seen[it.id] then seen[it.id] = true; all[#all + 1] = it; fresh = fresh + 1 end
+            end
+            local last = items[#items]
+            if #items >= 500 and fresh > 0 and last and tonumber(last.captured_at) then
+                page(tonumber(last.captured_at))
+            else
+                done(all)
+            end
+        end)
+    end
+    page(nil)
 end
 on("drift_open", function()
     if fact["drift.missing"] then drift_where(drift_load) else drift_load() end
 end)
+on("fact:drift.cat", function() fx.drift_filter() end)
 --  Typing searches, a moment after the last key.
 local drift_typed = 0
 on("text:drift_q", function()
@@ -1366,15 +1423,82 @@ on("text:drift_q", function()
 end)
 on("drift_scroll", function(w)
     local step = (w or 0) > 0 and -2 or 2
-    drift_offset = math.max(0, math.min(drift_offset + step, math.max(#drift_items - 2, 0)))
+    drift_offset = math.max(0, math.min(drift_offset + step, math.max(#(fx.drift_view or {}) - 2, 0)))
     drift_offset = drift_offset - drift_offset % 2
     show_drift()
 end)
 on("drift_pick", function(i)
-    local it = drift_items[drift_offset + i + 1]
+    local it = (fx.drift_view or {})[drift_offset + i + 1]
     if it == nil then return end
     local link = link_of(it)
     if link ~= "" then run("xdg-open", { link }, function() end) end
+end)
+
+--  Clearing the page: what it shows goes to the trash —which the worker
+--  keeps, and «Undo» takes back for five seconds— or is deleted for good,
+--  files and all. In batches of a thousand: a list of ids is one argument,
+--  and an argument has a size limit. `drift.done` tells the page which, for
+--  its line at the bottom (1 thrown away, with its Undo · 2 deleted · 3 it
+--  could not), and `drift.seq` starts its five seconds again each time,
+--  even when it says the same as before.
+function fx.drift_said(done, words)
+    text["drift.done_txt"] = words
+    fact["drift.done"] = done
+    fact["drift.seq"] = (tonumber(fact["drift.seq"]) or 0) + 1
+end
+function fx.drift_batches(how, ids, finished)
+    local count, k = 0, 1
+    local function next_batch()
+        if k > #ids then finished(count, true) return end
+        local batch = {}
+        for i = k, math.min(k + 999, #ids) do batch[#batch + 1] = ids[i] end
+        k = k + #batch
+        drift_run({ how, "--ids", json.encode(batch) }, function(r)
+            if r == nil then finished(count, false) return end
+            count = count + (tonumber(r.count) or 0)
+            next_batch()
+        end)
+    end
+    next_batch()
+end
+function fx.drift_clear(how)
+    if fact["drift.query"] == true then return end
+    local ids = {}
+    for _, it in ipairs(fx.drift_view or {}) do
+        if type(it.id) == "string" and it.id ~= "" then ids[#ids + 1] = it.id end
+    end
+    if #ids == 0 then return end
+    fx.drift_batches(how, ids, function(n, ok)
+        if n == 0 then
+            fx.drift_said(3, tr("Could not clear them"))
+        elseif how == "trash" then
+            fx.drift_undo = ids
+            fx.drift_said(1, n == 1 and tr("1 moved to the trash") or string.format(tr("%d moved to the trash"), n))
+        else
+            fx.drift_undo = nil
+            fx.drift_said(2, n == 1 and tr("1 deleted for good") or string.format(tr("%d deleted for good"), n))
+        end
+        if not ok then log("deriva ·", how, "stopped after", n) end
+        log("deriva ·", how, n)
+        drift_load()
+    end)
+end
+on("drift_trash", function() fx.drift_clear("trash") end)
+on("drift_purge", function() fx.drift_clear("purge") end)
+--  Undo: the ids are kept until the worker has taken them back; if it could
+--  not, it is said, and Undo can be pressed again.
+on("drift_undo", function()
+    local ids = fx.drift_undo
+    if ids == nil or #ids == 0 then return end
+    fx.drift_batches("untrash", ids, function(n, ok)
+        if ok then
+            fx.drift_undo = nil
+            fact["drift.done"] = 0
+        else
+            fx.drift_said(1, tr("Could not undo · try again"))
+        end
+        drift_load()
+    end)
 end)
 
 --  What a file is, by its extension: it decides its icon and its filters.

@@ -25,7 +25,7 @@ Se compila solo la primera vez que se le llama. A mano:
 cd deriva && cargo build --release
 ```
 
-`MAREA_DERIVA_DIR` mueve la biblioteca entera y `MAREA_DERIVA_SOCKET` el socket.
+`ETTA_DERIVA_DIR` mueve la biblioteca entera y `ETTA_DERIVA_SOCKET` el socket.
 Las pruebas los usan para no acercarse a la del usuario.
 
 ## Cómo habla

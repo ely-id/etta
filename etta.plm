@@ -416,6 +416,51 @@ scene Etta {
     fact drift.kept = 0
     //  Her library is not installed: the page says so instead of staying empty.
     fact drift.missing = false
+    //  Its page filters by colour (0 all · 1 links · 2 files · 3 images ·
+    //  4 notes), and clears what it shows: to the trash, or for good, asked
+    //  first in the page itself. `drift.n` is how many it shows; `drift.done`
+    //  the line that says what happened (1 trashed, with Undo · 2 deleted ·
+    //  3 could not), whose fuse burns for five seconds at a constant pace —a
+    //  `spin`, not a gesture: a gesture would hold her only gesture slot for
+    //  those five seconds, and her reactions would be turned down meanwhile—.
+    fact drift.cat = 0
+    fact drift.n = 0
+    fact drift.asking = false
+    fact drift.done = 0
+    fact drift.seq = 0                 // every result, to start the five seconds again
+    fact drift.query = false           // a search is written: no «Clear»
+    text drift.done_txt = ""
+    prop drift.ask = 0 ~180ms
+    follow drift.ask = if(drift.asking and page == drift, 1, 0)
+    //  The bar burns at a constant pace; the end is told by the clock, so it
+    //  still comes with reduced motion, where a `spin` stands still.
+    prop drift.fuse = 0
+    spin drift.fuse by if(drift.done > 0, 0.2, 0)
+    on change drift.seq { drift.fuse: 0 ~0ms }
+    on still drift.seq for 5s while drift.done > 0 { drift.done = 0 }
+    event pick_dcat0
+    event pick_dcat1
+    event pick_dcat2
+    event pick_dcat3
+    event pick_dcat4
+    on pick_dcat0 { drift.cat = 0 }
+    on pick_dcat1 { drift.cat = 1 }
+    on pick_dcat2 { drift.cat = 2 }
+    on pick_dcat3 { drift.cat = 3 }
+    on pick_dcat4 { drift.cat = 4 }
+    event ask_drift_clear
+    event cancel_drift_clear
+    event drift_trash ->
+    event drift_purge ->
+    event drift_undo ->
+    on ask_drift_clear { drift.asking = true }
+    on cancel_drift_clear { drift.asking = false }
+    on drift_trash { drift.asking = false }
+    on drift_purge { drift.asking = false }
+    on change open while not open { drift.asking = false }
+    on change page while page != drift { drift.asking = false }
+    on change drift.cat { drift.asking = false }
+    on change drift.query while drift.query { drift.asking = false }
     event show_drift
     event drift_open ->
     event drift_pick ->
@@ -4985,10 +5030,12 @@ scene Etta {
     on key Escape while menu_open { menu_open = false }
     //  Esc closes whatever is open, from any page. What is half-answered goes
     //  back a step first: the session's confirmation —the one that cannot be
-    //  undone—, the Wi-Fi password being asked and the city being written. All
+    //  undone—, the Wi-Fi password being asked, the city being written and
+    //  Deriva asking how to clear its page. All
     //  the guards are read before anything changes, so one Esc is one of these
     //  and never two.
-    on key Escape while open and asking < 0 and not sky.editing and not (page == session and confirming != none) { open = false }
+    on key Escape while open and asking < 0 and not sky.editing and not (drift.asking and page == drift) and not (page == session and confirming != none) { open = false }
+    on key Escape while drift.asking and open and page == drift { drift.asking = false }
     //  On gaining the keyboard pleamar puts the cursor in some field: the one
     //  that had it, else the first drawn, else the first in the scene even if
     //  hidden —the finder's—, and a field eats letters and Enter before any

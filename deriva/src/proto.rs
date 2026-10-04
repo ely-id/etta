@@ -10,7 +10,7 @@
 //  distintos hacia la misma base es como se acaba teniendo dos comportamientos
 //  para lo mismo y una prueba que solo cubre uno.
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 
 //  Lo que puede pesar una miniatura que llega de fuera. Medio mega es el mismo
@@ -790,24 +790,134 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
         //  tiene su propio método: el plan separa exportar de borrar, y por el
         //  mismo motivo separa tirar de destruir.
         "trash" | "untrash" => {
-            let id = p.params.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let cuando = if p.method == "trash" {
-                Some(crate::util::ahora_ms())
-            } else {
-                None
-            };
-            let r = db.execute(
-                "UPDATE captures SET trashed_at = ?2 WHERE id = ?1",
-                rusqlite::params![id, cuando],
-            );
-            match r {
-                Ok(0) => Respuesta::mal(&p.id, "no_existe", "no hay ninguna con ese id"),
+            //  One by its `id`, as ever, or several at once in `ids`: clearing
+            //  her page throws away everything it shows, in one transaction,
+            //  so it is all or nothing. Immediate: the write lock first, so a
+            //  busy library makes it wait instead of failing.
+            let ids = ids_de(&p.params);
+            if ids.is_empty() {
+                return Respuesta::mal(&p.id, "params", "an id, or a list of them in ids");
+            }
+            let tirar = p.method == "trash";
+            let cuando = if tirar { Some(crate::util::ahora_ms()) } else { None };
+            let r = (|| -> rusqlite::Result<Vec<String>> {
+                let tx = rusqlite::Transaction::new_unchecked(db, TransactionBehavior::Immediate)?;
+                let mut hechas = Vec::new();
+                for id in &ids {
+                    let n = tx.execute(
+                        "UPDATE captures SET trashed_at = ?2 WHERE id = ?1",
+                        rusqlite::params![id, cuando],
+                    )?;
+                    if n > 0 {
+                        hechas.push(id.clone());
+                    }
+                }
                 //  Y el índice detrás: lo tirado deja de encontrarse, lo
                 //  recuperado vuelve a encontrarse.
-                Ok(_) => match crate::db::reindexar(db, id) {
-                    Ok(()) => Respuesta::bien(&p.id, serde_json::json!({ "id": id })),
-                    Err(e) => Respuesta::mal(&p.id, "db", e.to_string()),
+                crate::db::desindexar_varias(&tx, &hechas)?;
+                if !tirar {
+                    for id in &hechas {
+                        crate::db::indexar(&tx, id)?;
+                    }
+                }
+                tx.commit()?;
+                Ok(hechas)
+            })();
+            match r {
+                Ok(hechas) if p.params.get("ids").is_none() => match hechas.first() {
+                    Some(id) => Respuesta::bien(&p.id, serde_json::json!({ "id": id })),
+                    None => Respuesta::mal(&p.id, "no_existe", "no hay ninguna con ese id"),
                 },
+                Ok(hechas) => Respuesta::bien(
+                    &p.id,
+                    serde_json::json!({ "count": hechas.len(), "ids": hechas }),
+                ),
+                Err(e) => Respuesta::mal(&p.id, "db", e.to_string()),
+            }
+        }
+
+        //  Deleting for real, which is not throwing away: the rows, what the
+        //  index says of them and, once no other capture points at them, their
+        //  files and pictures. Only what is named by its id. The rows go
+        //  first, in one immediate transaction that also works out which files
+        //  nobody uses any more; the files after: a cut between the two leaves
+        //  a file nobody owns —seen, counted and swept, like any other— and
+        //  never a row pointing at a file that is gone. The files are the live
+        //  library's: on another database (`--db`, a backup) only its rows go.
+        "purge" => {
+            let ids = ids_de(&p.params);
+            if ids.is_empty() {
+                return Respuesta::mal(&p.id, "params", "an id, or a list of them in ids");
+            }
+            let viva = es_la_viva(db);
+            let r = (|| -> rusqlite::Result<(Vec<String>, u64, u64)> {
+                let tx = rusqlite::Transaction::new_unchecked(db, TransactionBehavior::Immediate)?;
+                let (mut hechas, mut hashes) = (Vec::new(), Vec::new());
+                for id in &ids {
+                    let fila: Option<(Option<String>, Option<String>)> = tx
+                        .query_row(
+                            "SELECT blob_hash, preview_hash FROM captures WHERE id = ?1",
+                            [id],
+                            |r| Ok((r.get(0)?, r.get(1)?)),
+                        )
+                        .optional()?;
+                    let Some((blob, miniatura)) = fila else { continue };
+                    hashes.extend(blob);
+                    hashes.extend(miniatura);
+                    hechas.push(id.clone());
+                }
+                crate::db::desindexar_varias(&tx, &hechas)?;
+                //  Its spaces, tags, vectors and the rest go with it: their
+                //  foreign keys cascade.
+                for id in &hechas {
+                    tx.execute("DELETE FROM captures WHERE id = ?1", [id])?;
+                }
+                hashes.sort();
+                hashes.dedup();
+                let mut sueltos = Vec::new();
+                for h in hashes {
+                    //  A hash is hex, and long: anything else is not one of
+                    //  ours, and is not turned into a path.
+                    if h.len() < 16 || !h.chars().all(|c| c.is_ascii_hexdigit()) {
+                        continue;
+                    }
+                    let usado: i64 = tx.query_row(
+                        "SELECT COUNT(*) FROM captures WHERE blob_hash = ?1 OR preview_hash = ?1",
+                        [&h],
+                        |r| r.get(0),
+                    )?;
+                    if usado == 0 {
+                        sueltos.push(h);
+                    }
+                }
+                //  The files go while the write lock is still held: an ingest
+                //  of the same bytes waits for it, and finds the file gone
+                //  when it checks after writing its row (see `ingest`).
+                let (mut ficheros, mut bytes) = (0u64, 0u64);
+                if viva {
+                    for h in &sueltos {
+                        let sitio = crate::paths::blob_de(h);
+                        let peso = std::fs::metadata(&sitio).map(|m| m.len()).unwrap_or(0);
+                        if std::fs::remove_file(&sitio).is_ok() {
+                            ficheros += 1;
+                            bytes += peso;
+                        }
+                    }
+                }
+                tx.commit()?;
+                Ok((hechas, ficheros, bytes))
+            })();
+            match r {
+                Ok((hechas, _, _)) if hechas.is_empty() && p.params.get("ids").is_none() => {
+                    Respuesta::mal(&p.id, "no_existe", "no hay ninguna con ese id")
+                }
+                Ok((hechas, ficheros, bytes)) => Respuesta::bien(
+                    &p.id,
+                    serde_json::json!({
+                        "count": hechas.len(), "ids": hechas, "files": ficheros, "bytes": bytes,
+                        "files_kept": !viva,
+                    }),
+                ),
                 Err(e) => Respuesta::mal(&p.id, "db", e.to_string()),
             }
         }
@@ -936,5 +1046,35 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
         "shutdown" => Respuesta::bien(&p.id, serde_json::json!({ "bye": true })),
 
         otro => Respuesta::mal(&p.id, "metodo", format!("no sé hacer «{}»", otro)),
+    }
+}
+
+//  The captures a request names: one in `id`, or a list in `ids`.
+fn ids_de(params: &serde_json::Value) -> Vec<String> {
+    if let Some(lista) = params.get("ids").and_then(|v| v.as_array()) {
+        return lista
+            .iter()
+            .filter_map(|x| x.as_str())
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+            .collect();
+    }
+    params
+        .get("id")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| vec![s.to_string()])
+        .unwrap_or_default()
+}
+
+//  Whether this connection is the live library, whose files are in the blob
+//  store: a backup opened with `--db` shares the store but not its rows, so
+//  counting who uses a file there says nothing about the live ones.
+fn es_la_viva(db: &Connection) -> bool {
+    let Some(p) = db.path() else { return false };
+    let viva = crate::paths::db_path();
+    match (std::fs::canonicalize(p), std::fs::canonicalize(&viva)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => std::path::Path::new(p) == viva.as_path(),
     }
 }

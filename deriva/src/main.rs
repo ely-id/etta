@@ -55,8 +55,22 @@ fn main() {
         }
         "list" => {
             let n = opcion(&args, "--limit").unwrap_or_else(|| "50".into());
-            por_metodo("list", Some(format!(r#"{{"limit":{}}}"#, n)))
+            //  `--before <ms>`: the page after one that ended there.
+            match opcion(&args, "--before") {
+                Some(b) => por_metodo("list", Some(format!(r#"{{"limit":{},"before":{}}}"#, n, b))),
+                None => por_metodo("list", Some(format!(r#"{{"limit":{}}}"#, n))),
+            }
         }
+        //  Throwing away, taking back out of the trash, and deleting for
+        //  real: one by `--id`, or several with `--ids '["a","b"]'`.
+        //  Deleting for real takes the files of the live library with it, so
+        //  it is not done on another database: there it would delete files
+        //  the live one still uses.
+        "purge" if opcion(&args, "--db").is_some() => {
+            eprintln!("deriva-worker: purge no va con --db: los ficheros son de la biblioteca viva");
+            std::process::exit(2);
+        }
+        "trash" | "untrash" | "purge" => por_metodo(orden, Some(ids_params(&args))),
         "stats" => por_metodo("stats", None),
         "doctor" => por_metodo("doctor", None),
         "import" => {
@@ -194,6 +208,15 @@ fn opcion(args: &[String], nombre: &str) -> Option<String> {
         .cloned()
 }
 
+//  `--ids` is already a JSON list (it is checked as the request is read);
+//  `--id`, one.
+fn ids_params(args: &[String]) -> String {
+    match opcion(args, "--ids") {
+        Some(lista) => format!(r#"{{"ids":{}}}"#, lista),
+        None => format!(r#"{{"id":{}}}"#, json_texto(&opcion(args, "--id").unwrap_or_default())),
+    }
+}
+
 fn json_texto(s: &str) -> String {
     serde_json::to_string(s).unwrap_or_else(|_| "\"\"".into())
 }
@@ -206,7 +229,10 @@ fn ayuda() {
   ingest   --request <json>          guarda algo
   search   --query <texto> [--limit] busca
   get      --id <id>                 una captura entera
-  list     [--limit N]               lo último guardado
+  list     [--limit N] [--before ms] lo último guardado (hasta 500 por vez)
+  trash    --id <id> | --ids <json>  a la papelera (se puede deshacer)
+  untrash  --id <id> | --ids <json>  de vuelta de la papelera
+  purge    --id <id> | --ids <json>  borra de verdad, con sus ficheros
   stats                              cuántas cosas hay
   doctor                             versión, esquema, rutas e integridad
   import   --folder <ruta>           una carpeta de ficheros

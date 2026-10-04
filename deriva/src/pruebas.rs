@@ -15,12 +15,12 @@ fn banco<T>(f: impl FnOnce(&rusqlite::Connection) -> T) -> T {
     let mut b = [0u8; 8];
     util::azar(&mut b);
     let dir = std::env::temp_dir().join(format!("deriva-prueba-{}", util::hex(&b)));
-    std::env::set_var("MAREA_DERIVA_DIR", &dir);
+    std::env::set_var("ETTA_DERIVA_DIR", &dir);
     let db = db::abrir().expect("no abre");
     let r = f(&db);
     drop(db);
     let _ = std::fs::remove_dir_all(&dir);
-    std::env::remove_var("MAREA_DERIVA_DIR");
+    std::env::remove_var("ETTA_DERIVA_DIR");
     r
 }
 
@@ -679,7 +679,7 @@ fn una_biblioteca_de_la_version_anterior_se_migra() {
     let mut b = [0u8; 8];
     util::azar(&mut b);
     let dir = std::env::temp_dir().join(format!("deriva-vieja-{}", util::hex(&b)));
-    std::env::set_var("MAREA_DERIVA_DIR", &dir);
+    std::env::set_var("ETTA_DERIVA_DIR", &dir);
 
     //  Una v1 de verdad: el esquema de entonces, que es el de ahora sin la
     //  columna de la fuente y con la ruta de la miniatura en vez de su hash.
@@ -729,7 +729,7 @@ fn una_biblioteca_de_la_version_anterior_se_migra() {
 
     drop(db);
     let _ = std::fs::remove_dir_all(&dir);
-    std::env::remove_var("MAREA_DERIVA_DIR");
+    std::env::remove_var("ETTA_DERIVA_DIR");
 }
 
 // ── de qué sitio viene ───────────────────────────────────────────
@@ -1877,7 +1877,7 @@ fn guardar_reiniciar_y_recuperar() {
     let mut b = [0u8; 8];
     util::azar(&mut b);
     let dir = std::env::temp_dir().join(format!("deriva-reinicio-{}", util::hex(&b)));
-    std::env::set_var("MAREA_DERIVA_DIR", &dir);
+    std::env::set_var("ETTA_DERIVA_DIR", &dir);
 
     let f = std::env::temp_dir().join(format!("deriva-r-{}.bin", util::ahora_ms()));
     std::fs::write(&f, b"un adjunto que tiene que sobrevivir").unwrap();
@@ -1916,7 +1916,7 @@ fn guardar_reiniciar_y_recuperar() {
 
     let _ = std::fs::remove_file(&f);
     let _ = std::fs::remove_dir_all(&dir);
-    std::env::remove_var("MAREA_DERIVA_DIR");
+    std::env::remove_var("ETTA_DERIVA_DIR");
 }
 
 // ── buscar bien, no solo encontrar ──────────────────────────────
@@ -1988,7 +1988,7 @@ fn una_biblioteca_de_la_5_aprende_a_buscar_por_sitio() {
     let mut b = [0u8; 8];
     util::azar(&mut b);
     let dir = std::env::temp_dir().join(format!("deriva-v5-{}", util::hex(&b)));
-    std::env::set_var("MAREA_DERIVA_DIR", &dir);
+    std::env::set_var("ETTA_DERIVA_DIR", &dir);
     {
         let vieja = db::abrir().expect("no abre");
         let mut p = url("https://www.youtube.com/watch?v=abc123");
@@ -2015,5 +2015,121 @@ fn una_biblioteca_de_la_5_aprende_a_buscar_por_sitio() {
     assert_eq!(search::buscar(&db, "youtube", 10).unwrap().len(), 1, "y ahora también por su sitio");
     drop(db);
     let _ = std::fs::remove_dir_all(&dir);
-    std::env::remove_var("MAREA_DERIVA_DIR");
+    std::env::remove_var("ETTA_DERIVA_DIR");
+}
+
+// ── clearing her page: the trash in bulk, and deleting for real ─────
+
+fn pedir(db: &rusqlite::Connection, metodo: &str, params: serde_json::Value) -> proto::Respuesta {
+    proto::despachar(db, &proto::Peticion { v: 1, id: "t".into(), method: metodo.into(), params })
+}
+
+//  Several at once go to the trash, stop being listed and found, and come
+//  back out together.
+#[test]
+fn varias_a_la_papelera_y_de_vuelta() {
+    banco(|db| {
+        let a = ingest::ingerir(db, &texto("primera nota para borrar"))[0].id.clone().unwrap();
+        let b = ingest::ingerir(db, &texto("segunda nota para borrar"))[0].id.clone().unwrap();
+        let c = ingest::ingerir(db, &texto("tercera, que se queda"))[0].id.clone().unwrap();
+        let r = pedir(db, "trash", serde_json::json!({ "ids": [a, b, "no-existe"] }));
+        assert!(r.ok);
+        assert_eq!(r.result.as_ref().unwrap()["count"], 2, "solo las que existen");
+        let quedan = search::listar(db, 50, None, &Default::default()).unwrap();
+        assert_eq!(quedan.len(), 1);
+        assert_eq!(quedan[0].id, c);
+        assert!(search::buscar(db, "borrar", 10).unwrap().is_empty(), "lo tirado aún se encuentra");
+
+        let r = pedir(db, "untrash", serde_json::json!({ "ids": [a, b] }));
+        assert_eq!(r.result.as_ref().unwrap()["count"], 2);
+        assert_eq!(search::listar(db, 50, None, &Default::default()).unwrap().len(), 3);
+        assert_eq!(search::buscar(db, "borrar", 10).unwrap().len(), 2, "lo recuperado no se encuentra");
+
+        //  One by its id still answers as it always did.
+        let r = pedir(db, "trash", serde_json::json!({ "id": c }));
+        assert_eq!(r.result.as_ref().unwrap()["id"], c);
+        assert!(!pedir(db, "trash", serde_json::json!({ "id": "no-existe" })).ok);
+        assert!(!pedir(db, "trash", serde_json::json!({})).ok);
+    });
+}
+
+//  Deleting for real takes the row, its index and its file; a file another
+//  capture still points at stays until that one goes too.
+#[test]
+fn borrar_de_verdad_se_lleva_el_fichero_cuando_nadie_lo_usa() {
+    banco(|db| {
+        let f = std::env::temp_dir().join(format!("deriva-purga-{}.txt", util::ahora_ms()));
+        std::fs::write(&f, b"bytes que se van a ir").unwrap();
+        let p = ingest::Peticion { tipo: "document".into(), paths: vec![f.to_string_lossy().to_string()], ..Default::default() };
+        let a = ingest::ingerir(db, &p)[0].id.clone().unwrap();
+        let hash = util::sha256(b"bytes que se van a ir");
+        let sitio = paths::blob_de(&hash);
+        assert!(sitio.exists());
+
+        //  A second capture sharing that file (as two of the same picture do).
+        let b = ingest::ingerir(db, &texto("otra que comparte el fichero"))[0].id.clone().unwrap();
+        db.execute("UPDATE captures SET blob_hash = ?1 WHERE id = ?2", rusqlite::params![hash, b]).unwrap();
+        //  And something hanging from the first, which must go with it.
+        db.execute("INSERT OR IGNORE INTO capture_spaces (capture_id, space_id) VALUES (?1, 'leer-luego')", [&a]).unwrap();
+
+        let r = pedir(db, "purge", serde_json::json!({ "ids": [a] }));
+        assert!(r.ok);
+        assert_eq!(r.result.as_ref().unwrap()["count"], 1);
+        assert_eq!(r.result.as_ref().unwrap()["files"], 0, "borró un fichero que otra usa");
+        assert!(sitio.exists());
+        assert!(search::una(db, &a).unwrap().is_none(), "la fila sigue ahí");
+        let en_indice: i64 = db.query_row("SELECT COUNT(*) FROM captures_fts WHERE capture_id = ?1", [&a], |r| r.get(0)).unwrap();
+        assert_eq!(en_indice, 0, "sigue en el índice");
+        let colgando: i64 = db.query_row("SELECT COUNT(*) FROM capture_spaces WHERE capture_id = ?1", [&a], |r| r.get(0)).unwrap();
+        assert_eq!(colgando, 0, "su carpeta no se fue con ella");
+
+        //  The last one that used it: now the file goes.
+        let r = pedir(db, "purge", serde_json::json!({ "id": b }));
+        assert_eq!(r.result.as_ref().unwrap()["files"], 1);
+        assert!(!sitio.exists(), "el fichero se quedó");
+        assert_eq!(search::listar(db, 50, None, &Default::default()).unwrap().len(), 0);
+        let _ = std::fs::remove_file(&f);
+    });
+}
+
+//  On a backup opened with `--db`, deleting for real takes its rows and not
+//  the files: those are the live library's, which still uses them.
+#[test]
+fn borrar_en_una_copia_no_toca_los_ficheros_de_la_viva() {
+    banco(|db| {
+        let f = std::env::temp_dir().join(format!("deriva-copia-{}.txt", util::ahora_ms()));
+        std::fs::write(&f, b"bytes de la viva").unwrap();
+        let p = ingest::Peticion { tipo: "document".into(), paths: vec![f.to_string_lossy().to_string()], ..Default::default() };
+        let a = ingest::ingerir(db, &p)[0].id.clone().unwrap();
+        let sitio = paths::blob_de(&util::sha256(b"bytes de la viva"));
+        let copia = paths::base().join("copia.sqlite3");
+        db.execute("VACUUM INTO ?1", [copia.to_string_lossy().to_string()]).unwrap();
+        let otra = db::abrir_en(&copia).expect("abre la copia");
+        let r = pedir(&otra, "purge", serde_json::json!({ "ids": [a] }));
+        assert!(r.ok);
+        assert_eq!(r.result.as_ref().unwrap()["count"], 1);
+        assert_eq!(r.result.as_ref().unwrap()["files"], 0);
+        assert_eq!(r.result.as_ref().unwrap()["files_kept"], true);
+        assert!(sitio.exists(), "borró el fichero de la viva");
+        assert!(search::una(db, &a).unwrap().is_some(), "la viva perdió su fila");
+        //  And one id that is not there says so, as trash does.
+        assert!(!pedir(db, "purge", serde_json::json!({ "id": "no-existe" })).ok);
+        let _ = std::fs::remove_file(&f);
+    });
+}
+
+//  The list goes on with `before`, a page after another.
+#[test]
+fn la_lista_sigue_por_paginas() {
+    banco(|db| {
+        for i in 0..5 {
+            ingest::ingerir(db, &texto(&format!("nota número {}", i)));
+            std::thread::sleep(std::time::Duration::from_millis(3));
+        }
+        let primera = search::listar(db, 3, None, &Default::default()).unwrap();
+        assert_eq!(primera.len(), 3);
+        let r = pedir(db, "list", serde_json::json!({ "limit": 3, "before": primera[2].captured_at }));
+        let resto = r.result.as_ref().unwrap()["items"].as_array().unwrap().len();
+        assert_eq!(resto, 2);
+    });
 }

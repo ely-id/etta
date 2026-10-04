@@ -236,7 +236,7 @@ CREATE TABLE captures (
     --  La miniatura, por su hash y en el mismo almacén que todo lo demás.
     --
     --  Antes era una ruta —`preview_path`—, y una ruta guardada en la base es
-    --  un dato que caduca: la carpeta se mueve con `MAREA_DERIVA_DIR`, y la
+    --  un dato que caduca: la carpeta se mueve con `ETTA_DERIVA_DIR`, y la
     --  base se lleva a otro equipo en una copia. El hash no se mueve; la ruta
     --  se calcula al leer, igual que la del fichero original.
     preview_hash TEXT,
@@ -351,6 +351,21 @@ CREATE VIRTUAL TABLE captures_fts USING fts5(
 //  después de crearla, de editarla y de tocarle las etiquetas.
 pub fn reindexar(db: &Connection, id: &str) -> Result<()> {
     db.execute("DELETE FROM captures_fts WHERE capture_id = ?1", [id])?;
+    indexar(db, id)
+}
+
+//  The index rows of many captures, in one statement. `capture_id` is not an
+//  indexed column of the FTS table, so each delete by id reads the whole
+//  table: five hundred of them, one by one, held the write lock for seconds
+//  and a drop arriving meanwhile failed with «database is locked».
+pub fn desindexar_varias(db: &Connection, ids: &[String]) -> Result<()> {
+    let lista = serde_json::to_string(ids).unwrap_or_else(|_| "[]".into());
+    db.execute("DELETE FROM captures_fts WHERE capture_id IN (SELECT value FROM json_each(?1))", [lista])?;
+    Ok(())
+}
+
+//  Writes the index row of a capture whose old one is already gone.
+pub fn indexar(db: &Connection, id: &str) -> Result<()> {
     let fila = db.query_row(
         "SELECT title, author, excerpt, summary, note, content_text,
                 COALESCE(canonical_url, source_url, '') FROM captures

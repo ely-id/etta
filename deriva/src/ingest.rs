@@ -185,6 +185,11 @@ fn una_de_fichero(db: &Connection, p: &Peticion, ruta: &str) -> Result<Resultado
         },
     )
     .map_err(|e| e.to_string())?;
+    //  A `purge` of the same bytes may have taken the file between the
+    //  moment it was found already there and this row: put it back.
+    if !crate::paths::blob_de(&g.hash).exists() {
+        crate::blobs::guardar_fichero(&real).map_err(|e| e.to_string())?;
+    }
     let mut r = Resultado::guardado(id);
     //  Dónde ha quedado, para poder mirar dentro sin esperar al siguiente
     //  repaso: un PDF recién soltado tiene que buscarse por dentro hoy.
@@ -372,6 +377,15 @@ fn una_suelta(db: &Connection, p: &Peticion) -> Result<Resultado, String> {
         },
     )
     .map_err(|e| e.to_string())?;
+    //  A `purge` of the same bytes may have taken the file between the
+    //  moment it was found already there and this row: put it back.
+    if let (Some(g), Some(en_linea)) = (blob.as_ref(), &p.inline) {
+        if !crate::paths::blob_de(&g.hash).exists() {
+            if let Some(d) = crate::util::base64(&en_linea.base64) {
+                crate::blobs::guardar_bytes(&d).map_err(|e| e.to_string())?;
+            }
+        }
+    }
     let mut r = Resultado::guardado(id);
     //  La canónica antes que la de origen: es la que hay que visitar, y la de
     //  origen puede traer media línea de parámetros de campaña.
