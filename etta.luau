@@ -1895,6 +1895,9 @@ local function read_agents()
 end
 
 on("agents_refresh", read_agents)
+--  With the page open, a fresh reading every minute (the tool asks the
+--  servers at most once a minute anyway).
+every(60000, function() if fact.open == true and fact.page == "agents" then read_agents() end end)
 --  Every five minutes in the background, for the little tube by the gear;
 --  the countdowns, every half minute, without asking anybody.
 after(4000, read_agents)
@@ -4242,22 +4245,38 @@ end)
     on("ts_copy", function(k) local p = T.peers[(tonumber(k) or 0) + 1]; if p then copy(p.ip) end end)
     on("ts_copy_self", function() copy(T.self_ip) end)
 
-    --  On and off, by what the switch shows; one at a time, and `up` gives
-    --  up after fifteen seconds instead of waiting for ever.
+    --  On and off, by what the switch shows, one at a time. On is a plain
+    --  `tailscale up`: with any flag at all (`--timeout`, as it was) it
+    --  insists on being told every setting that is not the default —here
+    --  `--ssh`— and refuses. So it goes with none, and she gives up on it
+    --  herself after twenty seconds instead of waiting for ever.
+    local function toggled(up, code)
+        T.toggling = false
+        if code ~= 0 then
+            fact["drift.result"] = 2
+            text["drift.toast"] = up and tr("Tailscale could not start") or tr("Tailscale could not stop")
+            emit("say_toast")
+        end
+        poll()
+    end
     on("ts_toggle", function()
         if T.toggling then return end
         local shown = tonumber(fact["ts.state"]) or 0
         local up = shown ~= 3 and shown ~= 4
         T.toggling = true
         fact["ts.state"] = up and 4 or 1
-        run("tailscale", up and { "up", "--timeout=15s" } or { "down" }, function(_, code)
-            T.toggling = false
-            if code ~= 0 then
-                fact["drift.result"] = 2
-                text["drift.toast"] = up and tr("Tailscale could not start") or tr("Tailscale could not stop")
-                emit("say_toast")
-            end
-            poll()
+        if not up then
+            run("tailscale", { "down" }, function(_, code) toggled(false, code) end)
+            return
+        end
+        local ok, id = pcall(spawn, "tailscale", { "up" }, function() end, function(_, code)
+            if T.up_timer then cancel(T.up_timer); T.up_timer = nil end
+            toggled(true, code)
+        end)
+        if not ok then toggled(true, -1) return end
+        T.up_timer = after(20000, function()
+            T.up_timer = nil
+            pcall(kill, id, "term")
         end)
     end)
 

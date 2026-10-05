@@ -300,6 +300,20 @@ só na máquina do usuário.
   varredura própria (`fx.read_apps`).
 - Um argumento de processo tem limite de tamanho (128 KB): listas de ids vão
   em lotes (`fx.drift_batches`, mil por vez).
+
+**Tailscale e Agents:**
+
+- `tailscale up` com **qualquer** flag (até `--timeout`) exige repetir todas
+  as preferências fora do padrão (aqui `--ssh`) e recusa. O botão usa
+  `tailscale up` sem flags, com `spawn` e um limite de 20 s da própria Etta.
+- O token do Claude Code CLI (`~/.claude/.credentials.json`) vence em ~8 h e
+  só o CLI o renova; o app desktop guarda outro. `tools/reservas` roda
+  `claude -p /usage --no-session-persistence` (comando local: sem turno, sem
+  custo) quando ele venceu, no máximo a cada 10 min, e então lê o servidor.
+  O Codex é lido do servidor (`chatgpt.com/backend-api/wham/usage`, o mesmo
+  do `/status`) com o token de `~/.codex/auth.json`, sem renová-lo.
+- Na API do Claude, `is_active` marca o limite que mais pesa agora, não se a
+  janela começou.
 - `files.write` só escreve na pasta de dados da Etta.
 - `sys.watch(serviço)` pode ser registrado **uma vez**. Ganchos extras usam a
   tabela `also.network/bluetooth`.

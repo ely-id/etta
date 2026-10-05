@@ -10,8 +10,11 @@
 //      tiene en disco. Es una lectura de tu propia cuenta, la misma que hace su
 //      `/usage`, y no gasta cupo. Si no se puede —sin red, sin token, caducado—
 //      se cae a lo último que la herramienta dejó escrito en `~/.claude.json`.
-//    · Codex  → el último `rate_limits` de los rollouts de `~/.codex/sessions`,
-//      que se reescribe en cada turno. Eso es local, y se dice que lo es.
+//    · Codex  → se le pregunta al servidor, lo mismo que su `/status`, con el
+//      token que el propio Codex guarda en `~/.codex/auth.json` (sin
+//      refrescarlo). Si no se puede, el último `rate_limits` de los rollouts
+//      de `~/.codex/sessions`, que se reescribe en cada turno: local, y se
+//      dice que lo es.
 //
 //  Tres reglas que vienen de haber leído el lector de k4 y ver dónde se rompe:
 //
@@ -30,7 +33,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync, openSync, readSync, closeSync,
          statSync, readdirSync, existsSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { join, dirname } from "node:path";
 
@@ -40,6 +43,16 @@ const CLAUDE_ESPERA = 6000;
 //  por minuto como mucho.
 const CLAUDE_CACHE_S = 60;
 const CODEX_ROLLOUTS = 8;
+const CODEX_USO = "https://chatgpt.com/backend-api/wham/usage";
+const CODEX_AUTH = [
+    process.env.CODEX_HOME ? join(process.env.CODEX_HOME, "auth.json") : null,
+    join(homedir(), ".codex", "auth.json"),
+];
+//  Claude Code renews its own token when it is used; when it has not been
+//  (the desktop app keeps another), it is asked for its `/usage` —a local
+//  command: no model, no quota—, which renews it on the way. Not more often
+//  than this, so a signed-out machine does not run it every five minutes.
+const CLAUDE_RENUEVA_S = 600;
 const CODEX_COLA = 256 * 1024;
 
 const ahora = () => Date.now() / 1000;
@@ -121,11 +134,17 @@ function limitesClaude(uso) {
             id = String(titulo).toLowerCase().replace(/\s+/g, "-");
             nombre = String(titulo);
         }
+        //  `is_active` is the limit that weighs most right now (the weekly
+        //  one at 84 %), not whether a window has started: a session at 21 %
+        //  that renews tonight had come out «not started». A window is
+        //  running if something of it is used or it has a renewal ahead.
+        const usado = pct(lim.percent);
+        const renueva = epoca(lim.resets_at);
         fuera.push({
             id, nombre, duracionMin: minutos,
-            usadoPct: pct(lim.percent),
-            renuevaEn: epoca(lim.resets_at),
-            activo: lim.is_active === true,
+            usadoPct: usado,
+            renuevaEn: renueva,
+            activo: (usado !== null && usado > 0) || (Number.isFinite(renueva) && renueva > ahora()),
         });
     }
     return fuera;
@@ -134,13 +153,37 @@ function limitesClaude(uso) {
 function tokenClaude() {
     //  No se refresca aquí ni de lejos: refrescarlo ROTA el token, y el
     //  siguiente que lo intente —la propia herramienta, a mitad de una sesión
-    //  tuya— se encuentra con que el suyo ya no vale.
+    //  tuya— se encuentra con que el suyo ya no vale. Quien lo renueva es
+    //  Claude Code (`renuevaClaude`).
     const ruta = primero(CLAUDE_CREDENCIALES);
     if (!ruta) return null;
     const oauth = (leerJson(ruta) || {}).claudeAiOauth || {};
     const caduca = oauth.expiresAt;
-    if (typeof caduca === "number" && caduca / 1000 <= ahora()) return null;
+    if (typeof caduca === "number" && caduca / 1000 <= ahora() + 30) return null;
     return oauth.accessToken || null;
+}
+
+//  The token gone stale: Claude Code itself is asked for `/usage`, which is a
+//  local command (no turn, no cost) and renews its token as it reads. Without
+//  the variables of a session it may be running inside, so it uses its own
+//  sign-in; and once every ten minutes at most.
+function renuevaClaude() {
+    const marca = join(estado(), "reservas-claude-renueva.json");
+    const antes = leerJson(marca);
+    if (antes && ahora() - (antes.cuando || 0) < CLAUDE_RENUEVA_S) return false;
+    try {
+        mkdirSync(dirname(marca), { recursive: true });
+        writeFileSync(marca, JSON.stringify({ cuando: ahora() }));
+    } catch (e) { /* sin marca se intenta igual */ }
+    const env = {};
+    for (const [k, v] of Object.entries(process.env)) {
+        if (!/^(CLAUDECODE|CLAUDE_CODE_|CLAUDE_AGENT_SDK|ANTHROPIC_)/.test(k)) env[k] = v;
+    }
+    try {
+        execFileSync("claude", ["-p", "/usage", "--output-format", "json", "--no-session-persistence"],
+                     { timeout: 30000, cwd: tmpdir(), env, stdio: ["ignore", "pipe", "ignore"] });
+    } catch (e) { return false; }
+    return tokenClaude() !== null;
 }
 
 async function usoEnVivo() {
@@ -149,7 +192,8 @@ async function usoEnVivo() {
     if (guardado && ahora() - (guardado.cuando || 0) < CLAUDE_CACHE_S)
         return { uso: guardado.uso, cuando: guardado.cuando };
 
-    const tok = tokenClaude();
+    let tok = tokenClaude();
+    if (!tok && renuevaClaude()) tok = tokenClaude();
     if (!tok) return null;
 
     let uso = null;
@@ -292,7 +336,86 @@ function ventanaCodex(datos, id, observadoEn) {
     };
 }
 
-function leeCodex() {
+//  Codex's own account, asked like its `/status` does: the windows as the
+//  server counts them now. The token is the one Codex keeps, read and never
+//  refreshed (Codex does that); expired or absent, there is no asking.
+function tokenCodex() {
+    const ruta = primero(CODEX_AUTH);
+    if (!ruta) return null;
+    const tokens = (leerJson(ruta) || {}).tokens || {};
+    const tok = tokens.access_token;
+    if (typeof tok !== "string" || tok.split(".").length !== 3) return null;
+    try {
+        const carga = JSON.parse(Buffer.from(tok.split(".")[1], "base64url").toString("utf8"));
+        if (typeof carga.exp === "number" && carga.exp <= ahora() + 30) return null;
+    } catch (e) { return null; }
+    return { tok, cuenta: tokens.account_id || "" };
+}
+
+async function codexEnVivo() {
+    const cache = join(estado(), "reservas-codex.json");
+    const guardado = leerJson(cache);
+    if (guardado && ahora() - (guardado.cuando || 0) < CLAUDE_CACHE_S)
+        return { uso: guardado.uso, cuando: guardado.cuando };
+    const t = tokenCodex();
+    if (!t) return null;
+    let uso = null;
+    try {
+        const r = await fetch(CODEX_USO, {
+            headers: {
+                Authorization: "Bearer " + t.tok,
+                "ChatGPT-Account-Id": t.cuenta,
+                "User-Agent": "etta-reservas/1.0",
+            },
+            signal: AbortSignal.timeout(CLAUDE_ESPERA),
+        });
+        if (!r.ok) return null;
+        uso = await r.json();
+    } catch (e) { return null; }
+    if (!uso || typeof uso !== "object" || typeof uso.rate_limit !== "object") return null;
+    const cuando = ahora();
+    try {
+        mkdirSync(dirname(cache), { recursive: true });
+        //  La RESPUESTA, nunca el token.
+        writeFileSync(cache, JSON.stringify({ cuando, uso }));
+    } catch (e) { /* se pregunta más, nada más */ }
+    return { uso, cuando };
+}
+
+//  A window as the server gives it: the instant it renews, and whether it
+//  has started (a window that has not shows its whole length still ahead).
+function ventanaCodexServidor(v, id) {
+    if (!v || typeof v !== "object") return null;
+    const largo = Number(v.limit_window_seconds);
+    const faltan = Number(v.reset_after_seconds);
+    const minutos = Number.isFinite(largo) && largo > 0 ? Math.round(largo / 60) : null;
+    return {
+        id, nombre: nombraVentana(minutos) || id,
+        duracionMin: minutos,
+        usadoPct: pct(v.used_percent),
+        renuevaEn: Number.isFinite(Number(v.reset_at)) ? Number(v.reset_at) : null,
+        activo: !(Number.isFinite(faltan) && Number.isFinite(largo) && faltan >= largo && pct(v.used_percent) === 0),
+    };
+}
+
+async function leeCodex(conRed) {
+    if (conRed) {
+        const vivo = await codexEnVivo();
+        if (vivo) {
+            const rl = vivo.uso.rate_limit || {};
+            const creditos = vivo.uso.credits || {};
+            const agente = {
+                plan: vivo.uso.plan_type ? String(vivo.uso.plan_type).replace(/^./, (c) => c.toUpperCase()) : "",
+                origen: "servidor", observadoEn: vivo.cuando,
+                limites: [ventanaCodexServidor(rl.primary_window, "primaria"),
+                          ventanaCodexServidor(rl.secondary_window, "secundaria")].filter(Boolean),
+            };
+            if (creditos.unlimited === true) agente.creditos = "sin-limite";
+            else if (creditos.has_credits === true && creditos.balance !== undefined)
+                agente.creditos = String(creditos.balance);
+            return agente;
+        }
+    }
     const carpeta = primero(CODEX_SESIONES, (r) => {
         try { return statSync(r).isDirectory(); } catch (e) { return false; }
     });
@@ -362,7 +485,7 @@ function leeGrok() {
 
 const AGENTES = [
     { id: "claude", nombre: "Claude Code", binario: "claude", lee: leeClaude, red: true },
-    { id: "codex", nombre: "Codex", binario: "codex", lee: leeCodex, red: false },
+    { id: "codex", nombre: "Codex", binario: "codex", lee: leeCodex, red: true },
     { id: "copilot", nombre: "GitHub Copilot", binario: "gh", lee: leeCopilot, red: false },
     { id: "grok", nombre: "Grok", binario: null, lee: leeGrok, red: false },
 ];
