@@ -6003,15 +6003,15 @@ scene Etta {
             let fall = tide.fall * tide.fall
             let dx = tw / 2
             let dy = 30 + (t.oy - 30) * fall
-            let stretch = clamp(vel(tide.fall) * 0.25, 0, 1.2)
+            let fall_stretch = clamp(vel(tide.fall) * 0.25, 0, 1.2)
             body {
                 show: here and tide.fall > 0.01 and tide.p < 0.02
                 color: #151616
                 rim: 30%
                 shadow: 0, 6, 14, 40%
-                ellipse { at: dx, dy; radius: 11; scale: 1 - stretch * 0.25, 1 + stretch }
+                ellipse { at: dx, dy; radius: 11; scale: 1 - fall_stretch * 0.25, 1 + fall_stretch }
             }
-            ellipse { at: dx - 3, dy - 4 - stretch * 5; radius: 2.6; color: #fff; opacity: 70%; show: here and tide.fall > 0.01 and tide.p < 0.02 }
+            ellipse { at: dx - 3, dy - 4 - fall_stretch * 5; radius: 2.6; color: #fff; opacity: 70%; show: here and tide.fall > 0.01 and tide.p < 0.02 }
             //  And the splash: drops thrown up and out, falling back.
             particles {
                 at: tw / 2, t.oy; area: 20, 4; count: 140
