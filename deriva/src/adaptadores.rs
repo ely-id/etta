@@ -1,46 +1,51 @@
-//  De qué sitio viene lo que has guardado.
+//  Where the thing you saved came from.
 //
-//  Un enlace de YouTube y un enlace a un PDF no son lo mismo aunque los dos
-//  sean `text/uri-list`: uno es un vídeo con un identificador y una miniatura, y
-//  el otro es un documento. Enseñar los dos como «un enlace» es tratar la
-//  biblioteca como una lista de marcadores.
+//  A YouTube link and a PDF link are not the same, even though both are
+//  `text/uri-list`: one is a video with an identifier and thumbnail, the other
+//  is a document. Showing both as “a link” treats the library like a bookmark
+//  list.
 //
-//  Esto NO sale a la red. Es todo lo que se puede saber mirando la URL, y es
-//  bastante: de dónde viene, qué es, y cuál es su forma canónica. Lo que hace
-//  falta traer de fuera —el título de verdad, la miniatura— lo trae el lado de
-//  la casa, que es quien tiene la armadura anti-SSRF ya escrita y revisada. El
-//  worker no tiene red y no la va a tener.
+//  This does NOT access the network. It is everything that can be learned by
+//  looking at the URL, which is quite a lot: where it came from, what it is, and
+//  its canonical form. Anything that must be fetched externally —the actual
+//  title and thumbnail— is fetched by the host, which already has its
+//  anti-SSRF protections written and reviewed. The worker has no network access
+//  and will not get it.
 //
-//  La lista de fuentes es cerrada, como las demás: sale a la interfaz eligiendo
-//  un color y un nombre, y una lista abierta significa que cualquier URL puede
-//  inventarse una fuente que nadie dibuja.
+//  The source list is closed, like the others: it appears in the interface with
+//  a color and a name, and an open list would let any URL invent a source that
+//  the interface cannot render.
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Fuente {
-    //  El identificador, de la lista cerrada.
+    //  The identifier, from the closed list.
     pub id: &'static str,
-    //  Cómo se llama para una persona.
+    //  Its human-readable name.
     pub nombre: &'static str,
-    //  Qué clase de cosa es lo que hay ahí. Manda sobre la extensión: un enlace
-    //  de YouTube es un vídeo aunque la URL no acabe en `.mp4`.
+    //  What kind of thing it is. This takes precedence over the extension: a
+    //  YouTube link is a video even if the URL does not end in `.mp4`.
     pub tipo: &'static str,
 }
 
-pub const GENERICA: Fuente = Fuente { id: "web", nombre: "Web", tipo: "url" };
+pub const GENERICA: Fuente = Fuente {
+    id: "web",
+    nombre: "Web",
+    tipo: "url",
+};
 
-//  Lo que se saca de una URL sin pedirle nada a nadie.
+//  What can be derived from a URL without asking anyone for anything.
 #[derive(Debug)]
 pub struct Leido {
     pub fuente: Fuente,
-    //  La forma canónica de ESE sitio, que no es la genérica.
+    //  The canonical form for THAT site, not the generic one.
     //
-    //  `youtu.be/ID`, `youtube.com/watch?v=ID` y `youtube.com/watch?v=ID&t=90`
-    //  son el mismo vídeo. Sin esto, arrastrar el mismo vídeo desde el móvil y
-    //  desde el escritorio guarda dos capturas, y el duplicado —que es media
-    //  gracia de esto— no lo detecta.
+    //  `youtu.be/ID`, `youtube.com/watch?v=ID`, and
+    //  `youtube.com/watch?v=ID&t=90` are the same video. Without this,
+    //  dragging the same video from a phone and desktop saves two captures,
+    //  and duplicate detection —half the point of this— misses it.
     pub canonica: Option<String>,
-    //  Un título de emergencia, hasta que llegue el de verdad —el de la
-    //  portada de la página, que llega por otro camino y puede no llegar—.
+    //  A fallback title until the actual one arrives —from the page's
+    //  metadata, fetched separately and possibly unavailable.
     pub titulo: Option<String>,
 }
 
@@ -49,23 +54,27 @@ pub fn leer(url: &str) -> Leido {
     let h = host.trim_start_matches("www.");
 
     //  ── YouTube ──────────────────────────────────────────────────
-    if h == "youtube.com" || h == "m.youtube.com" || h == "music.youtube.com"
-        || h == "youtu.be"
-    {
+    if h == "youtube.com" || h == "m.youtube.com" || h == "music.youtube.com" || h == "youtu.be" {
         let id = if h == "youtu.be" {
             primer_segmento(&ruta)
-        } else if ruta.starts_with("/shorts/") || ruta.starts_with("/embed/")
+        } else if ruta.starts_with("/shorts/")
+            || ruta.starts_with("/embed/")
             || ruta.starts_with("/live/")
         {
             ruta.splitn(3, '/').nth(2).map(|s| s.to_string())
         } else {
             parametro(&consulta, "v")
         };
-        //  Once caracteres, que es lo que mide un identificador de vídeo. Sin
-        //  comprobarlo, una URL de canal daría una miniatura que no existe.
+        //  Eleven characters, the length of a video identifier. Without
+        //  checking this, a channel URL would produce a nonexistent
+        //  thumbnail.
         let id = id.filter(|s| s.len() == 11 && s.chars().all(seguro_en_id));
         return Leido {
-            fuente: Fuente { id: "youtube", nombre: "YouTube", tipo: "video" },
+            fuente: Fuente {
+                id: "youtube",
+                nombre: "YouTube",
+                tipo: "video",
+            },
             canonica: id
                 .as_ref()
                 .map(|v| format!("https://youtube.com/watch?v={}", v)),
@@ -75,8 +84,8 @@ pub fn leer(url: &str) -> Leido {
 
     //  ── Reddit ───────────────────────────────────────────────────
     if h == "reddit.com" || h == "old.reddit.com" || h == "np.reddit.com" {
-        //  `/r/loquesea/comments/<id>/<slug>` → el hilo, sin el slug, que
-        //  cambia y ensucia el duplicado.
+        //  `/r/whatever/comments/<id>/<slug>` → the thread without the slug,
+        //  which changes and gets in the way of duplicate detection.
         let trozos: Vec<&str> = ruta.split('/').filter(|s| !s.is_empty()).collect();
         let canonica = if trozos.len() >= 4 && trozos[0] == "r" && trozos[2] == "comments" {
             Some(format!(
@@ -86,21 +95,20 @@ pub fn leer(url: &str) -> Leido {
         } else {
             None
         };
-        let titulo = trozos
-            .get(4)
-            .map(|s| deslugar(s))
-            .filter(|s| !s.is_empty());
+        let titulo = trozos.get(4).map(|s| deslugar(s)).filter(|s| !s.is_empty());
         return Leido {
-            fuente: Fuente { id: "reddit", nombre: "Reddit", tipo: "url" },
+            fuente: Fuente {
+                id: "reddit",
+                nombre: "Reddit",
+                tipo: "url",
+            },
             canonica,
             titulo,
         };
     }
 
     //  ── X ────────────────────────────────────────────────────────
-    if h == "x.com" || h == "twitter.com" || h == "mobile.twitter.com"
-        || h == "nitter.net"
-    {
+    if h == "x.com" || h == "twitter.com" || h == "mobile.twitter.com" || h == "nitter.net" {
         let trozos: Vec<&str> = ruta.split('/').filter(|s| !s.is_empty()).collect();
         let canonica = if trozos.len() >= 3 && trozos[1] == "status" {
             Some(format!("https://x.com/{}/status/{}", trozos[0], trozos[2]))
@@ -108,7 +116,11 @@ pub fn leer(url: &str) -> Leido {
             None
         };
         return Leido {
-            fuente: Fuente { id: "x", nombre: "X", tipo: "url" },
+            fuente: Fuente {
+                id: "x",
+                nombre: "X",
+                tipo: "url",
+            },
             canonica,
             titulo: trozos.first().map(|u| format!("@{}", u)),
         };
@@ -119,34 +131,46 @@ pub fn leer(url: &str) -> Leido {
         let trozos: Vec<&str> = ruta.split('/').filter(|s| !s.is_empty()).collect();
         if trozos.len() >= 2 {
             return Leido {
-                fuente: Fuente { id: "github", nombre: "GitHub", tipo: "code" },
+                fuente: Fuente {
+                    id: "github",
+                    nombre: "GitHub",
+                    tipo: "code",
+                },
                 canonica: Some(format!("https://github.com/{}/{}", trozos[0], trozos[1])),
                 titulo: Some(format!("{}/{}", trozos[0], trozos[1])),
             };
         }
     }
 
-    //  ── Vimeo y Twitch, que también son vídeo ────────────────────
+    //  ── Vimeo and Twitch, which are also video ──────────────────
     if h == "vimeo.com" {
         let id = primer_segmento(&ruta).filter(|s| s.chars().all(|c| c.is_ascii_digit()));
         return Leido {
-            fuente: Fuente { id: "vimeo", nombre: "Vimeo", tipo: "video" },
+            fuente: Fuente {
+                id: "vimeo",
+                nombre: "Vimeo",
+                tipo: "video",
+            },
             canonica: id.as_ref().map(|v| format!("https://vimeo.com/{}", v)),
             titulo: None,
         };
     }
     if h == "twitch.tv" || h == "clips.twitch.tv" {
         return Leido {
-            fuente: Fuente { id: "twitch", nombre: "Twitch", tipo: "video" },
+            fuente: Fuente {
+                id: "twitch",
+                nombre: "Twitch",
+                tipo: "video",
+            },
             canonica: None,
             titulo: None,
         };
     }
 
-    //  ── Y lo que se sabe por la extensión ────────────────────────
+    //  ── And what can be inferred from the extension ─────────────
     //
-    //  Un enlace directo a un PDF o a una imagen es esa cosa, no «una web». Es
-    //  la misma pista que usa el enrutador de arrastres.
+    //  A direct link to a PDF or image is that type of thing, not “a
+    //  website.” This is the same clue used by the drag router.
     let ext = ruta
         .rsplit_once('.')
         .map(|(_, e)| e.to_lowercase())
@@ -170,12 +194,16 @@ pub fn leer(url: &str) -> Leido {
         };
     }
 
-    //  Lo demás es una página, y su dominio es el mejor título de emergencia
-    //  que hay: «ejemplo.com» dice más que «Sin título».
+    //  Everything else is a page, and its domain is the best fallback title
+    //  available: “example.com” says more than “Untitled.”
     Leido {
         fuente: GENERICA,
         canonica: None,
-        titulo: if h.is_empty() { None } else { Some(h.to_string()) },
+        titulo: if h.is_empty() {
+            None
+        } else {
+            Some(h.to_string())
+        },
     }
 }
 
@@ -198,7 +226,12 @@ fn partes(url: &str) -> (String, String, String) {
         None => (resto, ""),
     };
     (
-        autoridad.to_lowercase().split(':').next().unwrap_or("").to_string(),
+        autoridad
+            .to_lowercase()
+            .split(':')
+            .next()
+            .unwrap_or("")
+            .to_string(),
         ruta.to_string(),
         consulta.to_string(),
     )
@@ -221,8 +254,8 @@ fn primer_segmento(ruta: &str) -> Option<String> {
         .map(|s| s.to_string())
 }
 
-//  `un-titulo-con-guiones` → `Un titulo con guiones`. Es lo que trae la URL de
-//  Reddit y es mejor título que el identificador.
+//  `a-title-with-hyphens` → `A title with hyphens`. This is what Reddit URLs
+//  provide, and it makes a better title than the identifier.
 fn deslugar(s: &str) -> String {
     let limpio = s.replace(['-', '_'], " ");
     let mut c = limpio.chars();

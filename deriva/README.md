@@ -1,142 +1,151 @@
 # deriva-worker
 
-La biblioteca local de Deriva: guarda lo que le sueltas a Marea, lo busca y lo
-devuelve.
+Deriva's local library: it saves what you hand over to Marea, finds it, and
+returns it.
 
-Es un binario aparte y no código QML por una razón concreta: Quickshell recarga
-el shell entero cuando se guarda un fichero del repo, y una base de datos a
-medio escribir no sobrevive a eso. Aquí abajo, una recarga de la interfaz no
-toca nada.
+It is a separate binary, not QML code, for a specific reason: Quickshell reloads
+the entire shell when a file in the repo is saved, and a database that is
+mid-write does not survive that. Here, reloading the interface does not touch
+anything.
 
-## Usarlo
+## Using it
 
 ```sh
-./marea deriva where            # dónde está cada cosa
-./marea deriva stats            # cuántas cosas hay
+./marea deriva where            # where everything is
+./marea deriva stats            # how many items there are
 ./marea deriva search --query "pulpo"
 ./marea deriva integrity-check --deep
 ./marea deriva backup --keep 5
 ./marea deriva export --directory /ruta/absoluta
 ```
 
-Se compila solo la primera vez que se le llama. A mano:
+It is compiled the first time it is called. Manually:
 
 ```sh
 cd deriva && cargo build --release
 ```
 
-`ETTA_DERIVA_DIR` mueve la biblioteca entera y `ETTA_DERIVA_SOCKET` el socket.
-Las pruebas los usan para no acercarse a la del usuario.
+`ETTA_DERIVA_DIR` moves the entire library and `ETTA_DERIVA_SOCKET` moves the
+socket. Tests use them to avoid going near the user's library.
 
-## Cómo habla
+## How it communicates
 
-Marea le habla por un socket Unix privado en `$XDG_RUNTIME_DIR/proyecto-marea/`,
-con permisos `0600`. JSON Lines versionado, una línea por mensaje:
+Marea communicates with it over a private Unix socket in
+`$XDG_RUNTIME_DIR/proyecto-marea/`, with permissions `0600`. Versioned JSON
+Lines, one line per message:
 
 ```json
 {"v":1,"id":"req-42","method":"search","params":{"query":"liquid UI","limit":20}}
 {"v":1,"id":"req-42","ok":true,"result":{"items":[]}}
 ```
 
-Nada de puertos, ni siquiera en `localhost`: un puerto lo alcanza cualquier
-proceso de la máquina, incluida cualquier pestaña con un `fetch`.
+No ports, not even on `localhost`: any process on the machine can reach a port,
+including any tab with a `fetch`.
 
-Métodos: `ping`, `ingest`, `search`, `list`, `get`, `stats`, `integrity_check`,
-`repair_index`, `backup`, `export`, `trash`, `untrash`, `shutdown`. La línea de
-órdenes usa **el mismo despachador**: dos caminos hacia la misma base es como se
-acaba teniendo dos comportamientos y una prueba que cubre uno.
+Methods: `ping`, `ingest`, `search`, `list`, `get`, `stats`, `integrity_check`,
+`repair_index`, `backup`, `export`, `trash`, `untrash`, `shutdown`. The command
+line uses **the same dispatcher**: two paths to the same database are how you
+end up with two behaviors and a test that covers only one.
 
-## Lo que no hace
+## What it does not do
 
-- **No sale a la red.** Ni una conexión, y no la va a abrir. Sí hay
-  enriquecimiento de URLs —el título, el autor y la portada de un enlace—, pero
-  quien sale es la casa: `tools/web`, con sus reglas anti-SSRF, y lo que trae
-  entra por el método `enrich`. Aquí no hay nada que proteger porque no hay nada
-  que salga, y eso es fácil de comprobar y fácil de perder.
-- **No ejecuta nada.** No lanza procesos ni interpreta lo guardado.
-- **No borra lo que no le pidan por su nombre.** Tirar a la basura y destruir
-  son cosas distintas; `trash` marca, y la fila sigue ahí.
-- **No acepta rutas libres** salvo en `export`, donde la ruta la elige el
-  usuario y la valida el controlador antes de llegar aquí.
+- **It does not access the network.** Not a single connection, and it will not
+  open one. URL enrichment does exist—the title, author, and cover image of a
+  link—but the part that accesses the network is the host: `tools/web`, with
+  its anti-SSRF rules, and what it retrieves comes in through the `enrich`
+  method. There is nothing to protect here because nothing leaves, which is
+  easy to verify and easy to lose.
+- **It does not execute anything.** It does not launch processes or interpret
+  saved content.
+- **It does not delete anything unless asked for it by name.** Throwing
+  something away and destroying it are different things; `trash` marks it, and
+  the row remains.
+- **It does not accept arbitrary paths** except in `export`, where the user
+  chooses the path and the controller validates it before it gets here.
 
-## De qué sitio viene cada cosa
+## Where each item comes from
 
-De la URL sola, sin pedirle nada a nadie: `adaptadores.rs` reconoce YouTube,
-Reddit, X, GitHub, Vimeo, Twitch, y por extensión los PDF, las imágenes, los
-vídeos y el audio. De ahí salen tres cosas:
+From the URL alone, without asking anyone for anything:
+`adaptadores.rs` recognizes YouTube, Reddit, X, GitHub, Vimeo, Twitch, and, by
+extension, PDFs, images, videos, and audio. That gives us three things:
 
-- **El sitio** (`source`), que la interfaz enseña con su marca y su color.
-- **El tipo de verdad**: un enlace de YouTube es un `video` aunque no acabe en
+- **The site** (`source`), which the interface displays with its brand and
+  color.
+- **The actual type**: a YouTube link is a `video` even if it does not end in
   `.mp4`.
-- **Una canónica propia de ese sitio**, que es lo que hace que `youtu.be/ID`,
-  `watch?v=ID`, `watch?v=ID&t=90`, `&list=…` y `shorts/ID` sean **el mismo
-  vídeo**. Sin eso, arrastrar el mismo vídeo desde dos sitios guarda dos
-  capturas y «esto ya lo tenías» no se cumple nunca.
+- **A site-specific canonical URL**, which makes `youtu.be/ID`, `watch?v=ID`,
+  `watch?v=ID&t=90`, `&list=…`, and `shorts/ID` **the same video**. Otherwise,
+  dragging the same video from two sites saves two captures, and “you already
+  had this” is never true.
 
-Y lo que no se sabe no se inventa: un canal de YouTube no finge ser un vídeo
-—sin identificador con la forma correcta no hay canónica—, y una página
-cualquiera se queda con su dominio de título, que dice más que «Sin título».
+And unknown details are not invented: a YouTube channel does not pretend to be
+a video—without an identifier in the right format, there is no canonical URL.
+An arbitrary page keeps its domain as its title, which says more than “Untitled.”
 
-Lo que hace falta la red —el título de verdad, el canal, la miniatura— llega
-por `enrich`, y lo trae quien tiene red. Ver
+What requires the network—the actual title, channel, and thumbnail—comes
+through `enrich`, brought in by the component with network access. See
 [PRIVACIDAD.md](../design/deriva/PRIVACIDAD.md).
 
-## Carpetas y resúmenes
+## Folders and summaries
 
-Las tres carpetas de fábrica —Proyectos, Leer luego, Inspiración— son un
-ejemplo, no la lista. `space_put` y `space_delete` hacen las tuyas: se crean
-vacías, se renombran sin cambiar de id, y al quitarlas **lo de dentro se
-queda**. El id sale del nombre y es un id: `Investigación` → `investigacion`.
+The three default folders—Projects, Read later, Inspiration—are examples, not
+the whole list. `space_put` and `space_delete` let you make your own: they are
+created empty, can be renamed without changing their ID, and when removed,
+**their contents stay**. The ID comes from the name, and is an ID:
+`Investigación` → `investigacion`.
 
-Y `classify` guarda lo que la IA entienda de una captura: un resumen, unas
-etiquetas y, si encaja, una carpeta. Aquí no hay modelo ninguno —igual que no
-hay red—: eso lo pide la casa con el motor del usuario y entra ya escrito. Las
-reglas de qué se pisa son más estrictas que las de `enrich`, porque un título
-que trae una página es un hecho y esto es la opinión de un modelo:
+And `classify` saves what the AI understands from a capture: a summary, some
+tags, and, if appropriate, a folder. There is no model here—just as there is no
+network access: the host requests this from the user's engine and it arrives
+already written. The rules for what can be overwritten are stricter than those
+for `enrich`, because a title provided by a page is a fact, while this is a
+model's opinion:
 
-- La **nota** no se toca nunca: es tuya.
-- El **resumen**, solo si no había.
-- Las **etiquetas se suman**; las tuyas se quedan donde estaban.
-- Y la **carpeta**, solo si la captura no estaba en ninguna.
+- The **note** is never touched: it is yours.
+- The **summary** is set only if there was none.
+- **Tags are added**; yours stay where they were.
+- The **folder** is set only if the capture was not already in one.
 
-El resumen vive en su propia columna y **entra en el índice**, con casi el peso
-de una etiqueta: son cuarenta palabras elegidas para decir de qué va esto, así
-que una coincidencia ahí vale mucho más que una en medio del artículo. Un
-resumen que no se encuentra buscando no le sirve a nadie.
+The summary lives in its own column and **is included in the index**, with
+almost the weight of a tag: these are forty words chosen to say what this is
+about, so a match there is worth much more than one in the middle of an article.
+A summary that cannot be found by searching is no use to anyone.
 
-## Sabe de lo que hay dentro
+## It knows what's inside
 
-`enrich` guarda también el **cuerpo**: el texto de la página que enlazaste y el
-que se saque de un fichero. Va a `content_text`, que ya estaba en el índice y
-estaba vacío para todo lo que no fuera una selección de texto. Sin eso, buscar
-una frase de un artículo que guardaste no encontraba nada y la biblioteca solo
-sabía de títulos.
+`enrich` also saves the **body**: the text of the page you linked and the text
+extracted from a file. It goes into `content_text`, which was already in the
+index and was empty for everything other than a text selection. Without this,
+searching for a phrase from a saved article found nothing, and the library only
+knew about titles.
 
-Se escribe **una vez y se queda**. La captura es una copia de lo que viste; una
-que se relee sola dentro de un mes ya no lo es.
+It is written **once and stays**. A capture is a copy of what you saw; one that
+rereads itself a month later is no longer that.
 
-Y lo saca la casa, no este worker: leer una página es salir a la red y sacar
-texto de un PDF es lanzar un proceso sobre un fichero que te ha dado otro. Aquí
-entra ya leído.
+And the host extracts it, not this worker: reading a page means accessing the
+network, and extracting text from a PDF means launching a process on a file
+someone gave you. It arrives here already read.
 
-## Y busca por significado, si le pones el modelo
+## And it searches by meaning, if you give it the model
 
-`search` devuelve primero lo que CONTIENE tus palabras —FTS5 con BM25, todas y
-luego cualquiera— y rellena por detrás con lo que se PARECE. Lo segundo solo si
-hay modelo en `<base>/modelo`, y si no lo hay todo funciona como antes.
+`search` first returns what CONTAINS your words—FTS5 with BM25, all terms and
+then any term—and fills in the rest with what is SIMILAR. The latter happens
+only if there is a model in `<base>/modelo`; without one, everything works as
+before.
 
-El crate se compila con `local-only`: este worker no puede descargar un modelo
-igual que no puede abrir una conexión. Lo pone ahí la casa.
+The crate is compiled with `local-only`: this worker cannot download a model,
+just as it cannot open a connection. The host provides it.
 
-Los vectores viven en `capture_vectors`, crudos y con su medida al lado. Tabla
-aparte porque el día que haya un modelo mejor se vacía y se rehace sin tocar ni
-una captura, y la medida porque comparar vectores de modelos distintos no da un
-error: da un parecido inventado.
+The vectors live in `capture_vectors`, raw and with their distance metric
+alongside them. A separate table means that when there is a better model, it can
+be emptied and rebuilt without touching a single capture; the metric is there
+because comparing vectors from different models does not produce an error—it
+produces an invented similarity.
 
-Y `similar` enseña el parecido con su número, que es la única manera de calibrar
-el umbral sin adivinar.
+And `similar` displays the similarity with its score, the only way to tune the
+threshold without guessing.
 
-## Dónde vive lo guardado
+## Where saved data lives
 
 ```text
 ${XDG_DATA_HOME:-~/.local/share}/proyecto-marea/deriva/
@@ -147,48 +156,49 @@ ${XDG_DATA_HOME:-~/.local/share}/proyecto-marea/deriva/
 └── backups/
 ```
 
-El nombre de un blob es su hash. Eso trae tres cosas gratis: el mismo fichero
-guardado dos veces ocupa una, comprobar la integridad es volver a hashear, y no
-hay que escapar nombres que vienen del usuario —que es de donde salen la mitad
-de los agujeros de un almacén de ficheros—.
+A blob's name is its hash. That gives us three things for free: saving the same
+file twice takes up one copy, checking integrity means hashing it again, and
+there is no need to escape names provided by the user—which is where half the
+holes in file stores come from.
 
-## Dos reglas que sostienen el resto
+## Two rules that hold everything else together
 
-**El blob antes que la fila.** Un corte entre los dos deja, como mucho, bytes
-sin dueño en el disco: se ven, se cuentan y se barren. Al revés dejaría una
-captura visible apuntando a un fichero que no existe, y eso ya no se puede
-reparar leyendo la base.
+**The blob before the row.** A crash between the two leaves, at most, ownerless
+bytes on disk: they can be seen, counted, and swept away. The reverse would
+leave a visible capture pointing to a file that does not exist, which cannot be
+repaired by reading the database.
 
-**Nada se da por guardado hasta que SQLite confirma.** La animación de éxito de
-Marea espera a esta confirmación, no al revés.
+**Nothing is considered saved until SQLite confirms it.** Marea's success
+animation waits for this confirmation, not the other way around.
 
-## Probarlo
+## Testing it
 
 ```sh
 ./test-prototype --deriva
 ```
 
-Por dentro con `cargo test` —la base y los blobs a mano— y por fuera con Node,
-que es donde se comprueba que el binario y el socket hacen lo que dicen. La
-prueba que da nombre a la fase abre y cierra procesos distintos sobre el mismo
-disco: si algo viviera en memoria, se caería ahí.
+Internally, with `cargo test`—the database and blobs directly—and externally
+with Node, which verifies that the binary and socket do what they say. The test
+that gives this phase its name opens and closes different processes against the
+same disk: if anything lived in memory, it would fail there.
 
-## Instalarlo y retirarlo
+## Installing and removing it
 
 ```sh
-./marea deriva instalar      # worker, plugin y accesorios; NACE APAGADO
-./marea deriva desinstalar   # se lo lleva todo menos tu biblioteca
+./marea deriva instalar      # worker, plugin, and accessories; STARTS DISABLED
+./marea deriva desinstalar   # removes everything except your library
 ```
 
-Nace apagado a propósito: el plugin aparece en Ajustes → Plugins con lo que
-implica encenderlo a la vista, y hasta que no le des al interruptor no corre, no
-guarda y no recibe nada.
+It starts disabled on purpose: the plugin appears in Settings → Plugins with
+the implications of enabling it visible, and until you flip the switch it does
+not run, save, or receive anything.
 
-Y al retirarlo no queda nada salvo la biblioteca, que es tuya. El desinstalador
-dice dónde está y cómo llevártela o borrarla; exportar y borrar son operaciones
-explícitas y separadas, y ninguna pasa por accidente.
+When removed, nothing remains except the library, which is yours. The
+uninstaller tells you where it is and how to take it with you or delete it;
+exporting and deleting are explicit, separate operations, and neither happens
+by accident.
 
-## Traerte lo que ya tenías
+## Bringing in what you already had
 
 ```sh
 ./marea deriva import --folder ~/Documentos/recortes
@@ -196,21 +206,21 @@ explícitas y separadas, y ninguna pasa por accidente.
 ./marea deriva import --deriva /donde/exportaste
 ```
 
-La tercera es la vuelta de `export`, y existe porque una exportación que no se
-puede reimportar es un archivo muerto con formato bonito.
+The third is the reverse of `export`, and it exists because an export that
+cannot be reimported is a dead file in a pretty format.
 
-Ninguna se ejecuta sola, ninguna vigila una carpeta y ninguna sale a la red. La
-ruta la eliges tú.
+None of these runs on its own, watches a folder, or accesses the network. You
+choose the path.
 
-## Cuando algo no va
+## When something goes wrong
 
 ```sh
 ./marea deriva doctor
 ```
 
-Contesta la primera pregunta de cualquier diagnóstico: qué versión de qué está
-hablando con qué. Versión del binario, esquema esperado y real, dónde está todo,
-cuántas copias hay y si la biblioteca está entera.
+It answers the first question in any diagnosis: what version of what is talking
+to what. The binary version, expected and actual schema, where everything is,
+how many copies there are, and whether the library is intact.
 
-Los permisos, la privacidad y cómo llevarte tus cosas están en
+Permissions, privacy, and how to take your data with you are in
 [`design/deriva/PRIVACIDAD.md`](../design/deriva/PRIVACIDAD.md).

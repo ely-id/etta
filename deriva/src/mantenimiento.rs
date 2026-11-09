@@ -1,30 +1,31 @@
-//  Integridad, copia de seguridad y exportación.
+//  Integrity, backup, and export.
 //
-//  Las tres son la misma promesa dicha de tres maneras: lo que guardaste sigue
-//  ahí, se puede recuperar si algo se rompe, y se puede sacar de aquí sin
-//  pedirme permiso. El plan lo dice al revés y con más razón: «exportar y
-//  borrar son operaciones explícitas, separadas».
+//  All three express the same promise in different ways: what you saved is
+//  still here, can be recovered if something breaks, and can be taken elsewhere
+//  without asking permission. The plan puts it more firmly: “export and delete
+//  are explicit, separate operations.”
 
 use rusqlite::Connection;
 use serde::Serialize;
 use std::io::Write;
 
-// ── integridad ───────────────────────────────────────────────────
+// ── integrity ────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize)]
 pub struct Informe {
     pub sqlite: String,
-    //  Capturas cuyo blob no está en el disco. Es el fallo que de verdad
-    //  importa: la biblioteca enseña algo que ya no se puede abrir.
+    //  Captures whose blob is missing from disk. This is the failure that
+    //  really matters: the library shows something that can no longer be
+    //  opened.
     pub missing_blobs: Vec<String>,
-    //  Blobs sin dueño. Ocupan sitio y no rompen nada, pero hay que poder
-    //  contarlos antes de barrerlos.
+    //  Orphaned blobs. They take up space and break nothing, but we need to
+    //  count them before sweeping.
     pub orphan_blobs: usize,
     pub orphan_bytes: u64,
-    //  Capturas que no están en el índice de búsqueda: guardadas y no
-    //  encontrables, que para quien busca es lo mismo que perdidas.
+    //  Captures missing from the search index: saved but not findable,
+    //  which is the same as lost to someone searching.
     pub unindexed: Vec<String>,
-    //  Blobs cuyo contenido ya no da su hash. Solo con `--deep`.
+    //  Blobs whose contents no longer match their hash. Only with `--deep`.
     pub corrupt_blobs: Vec<String>,
     pub deep: bool,
     pub ok: bool,
@@ -33,7 +34,7 @@ pub struct Informe {
 pub fn integridad(db: &Connection, profundo: bool) -> rusqlite::Result<Informe> {
     let sqlite: String = db.query_row("PRAGMA integrity_check", [], |r| r.get(0))?;
 
-    //  Los que la base dice tener.
+    //  Those the database says it has.
     let mut s = db.prepare(
         "SELECT DISTINCT blob_hash FROM captures
           WHERE blob_hash IS NOT NULL AND trashed_at IS NULL",
@@ -53,9 +54,9 @@ pub fn integridad(db: &Connection, profundo: bool) -> rusqlite::Result<Informe> 
         }
         if profundo {
             match crate::util::sha256_de_fichero(&p) {
-                //  Un blob cuyo contenido ya no da su nombre. El nombre ES el
-                //  hash, así que esto solo puede ser corrupción del disco o
-                //  alguien escribiendo dentro a mano.
+                //  A blob whose contents no longer match its name. The name
+                //  IS the hash, so this can only be disk corruption or
+                //  someone editing it by hand.
                 Ok(real) if &real != h => rotos.push(h.clone()),
                 Err(_) => rotos.push(h.clone()),
                 _ => {}
@@ -95,8 +96,8 @@ pub fn integridad(db: &Connection, profundo: bool) -> rusqlite::Result<Informe> 
     })
 }
 
-//  Y arreglar lo que se puede arreglar solo: reindexar lo que falte. Los blobs
-//  que faltan no se inventan; eso se dice y se deja al usuario.
+//  Fix what can be fixed automatically: reindex anything missing. Missing
+//  blobs cannot be recreated; report them and leave it to the user.
 pub fn reparar_indice(db: &Connection) -> rusqlite::Result<usize> {
     let mut s = db.prepare(
         "SELECT id FROM captures
@@ -113,7 +114,7 @@ pub fn reparar_indice(db: &Connection) -> rusqlite::Result<usize> {
     Ok(ids.len())
 }
 
-// ── copia de seguridad ───────────────────────────────────────────
+// ── backup ────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize)]
 pub struct Copia {
@@ -122,13 +123,13 @@ pub struct Copia {
     pub kept: usize,
 }
 
-//  `VACUUM INTO` y no copiar el fichero.
+//  Use `VACUUM INTO`, not a file copy.
 //
-//  Con WAL, la base en disco no está completa: parte de lo último escrito vive
-//  en `library.sqlite3-wal`. Copiar los tres ficheros a mano mientras alguien
-//  escribe da una copia rota que además parece buena. `VACUUM INTO` le pide a
-//  SQLite una base entera y consistente en otro sitio, que es exactamente lo
-//  que hace falta.
+//  With WAL, the database on disk is incomplete: some of the latest writes live
+//  in `library.sqlite3-wal`. Manually copying the three files while something
+//  is writing produces a broken backup that looks valid. `VACUUM INTO` asks
+//  SQLite for a complete, consistent database elsewhere, which is exactly what
+//  we need.
 pub fn respaldar(db: &Connection, conservar: usize) -> rusqlite::Result<Copia> {
     crate::paths::preparar().ok();
     let nombre = format!("library-{}.sqlite3", crate::util::ahora_ms());
@@ -136,8 +137,9 @@ pub fn respaldar(db: &Connection, conservar: usize) -> rusqlite::Result<Copia> {
     db.execute("VACUUM INTO ?1", [destino.to_string_lossy().to_string()])?;
     let bytes = std::fs::metadata(&destino).map(|m| m.len()).unwrap_or(0);
 
-    //  Y se tiran las viejas. Una carpeta de copias que solo crece acaba
-    //  ocupando más que la biblioteca, y entonces alguien la borra entera.
+    //  Remove the old ones too. A backup directory that only grows will
+    //  eventually take more space than the library, and then someone will
+    //  delete the whole thing.
     let mut copias: Vec<std::path::PathBuf> = std::fs::read_dir(crate::paths::backups())
         .map(|d| {
             d.filter_map(|e| e.ok())
@@ -160,10 +162,14 @@ pub fn respaldar(db: &Connection, conservar: usize) -> rusqlite::Result<Copia> {
         }
     }
     let _ = tiradas;
-    Ok(Copia { path: destino.to_string_lossy().to_string(), bytes, kept: copias.len() })
+    Ok(Copia {
+        path: destino.to_string_lossy().to_string(),
+        bytes,
+        kept: copias.len(),
+    })
 }
 
-// ── exportación ──────────────────────────────────────────────────
+// ── export ────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize)]
 pub struct Exportado {
@@ -173,18 +179,18 @@ pub struct Exportado {
     pub bytes: u64,
 }
 
-//  Todo lo tuyo, en una carpeta que puedas abrir sin este programa: un JSON
-//  Lines con una captura por línea y los ficheros al lado con su nombre real.
+//  Everything you own, in a directory you can open without this program: JSON
+//  Lines with one capture per line and the files alongside it under their real
+//  names.
 //
-//  El nombre real y no el hash. Un archivo llamado `9f2a…` es tuyo igual, pero
-//  no lo puedes usar; el sentido de exportar es poder irte.
+//  The real name, not the hash. A file named `9f2a…` is still yours, but you
+//  cannot use it; the point of export is to let you leave.
 pub fn exportar(db: &Connection, dir: &std::path::Path) -> Result<Exportado, String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let ficheros = dir.join("files");
     std::fs::create_dir_all(&ficheros).map_err(|e| e.to_string())?;
 
-    let mut jsonl =
-        std::fs::File::create(dir.join("captures.jsonl")).map_err(|e| e.to_string())?;
+    let mut jsonl = std::fs::File::create(dir.join("captures.jsonl")).map_err(|e| e.to_string())?;
     let mut n = 0usize;
     let mut copiados = 0usize;
     let mut bytes = 0u64;
@@ -203,10 +209,15 @@ pub fn exportar(db: &Connection, dir: &std::path::Path) -> Result<Exportado, Str
         let Some(f) = crate::search::una(db, &id).map_err(|e| e.to_string())? else {
             continue;
         };
-        //  El texto completo va en la exportación aunque no vaya en la lista:
-        //  irse con los extractos no es irse con tus cosas.
+        //  Include the full text in the export even though it is not in the
+        //  listing: leaving with only excerpts is not leaving with your
+        //  things.
         let texto: String = db
-            .query_row("SELECT content_text FROM captures WHERE id = ?1", [&id], |r| r.get(0))
+            .query_row(
+                "SELECT content_text FROM captures WHERE id = ?1",
+                [&id],
+                |r| r.get(0),
+            )
             .unwrap_or_default();
 
         let mut fichero_exportado: Option<String> = None;
@@ -237,14 +248,14 @@ pub fn exportar(db: &Connection, dir: &std::path::Path) -> Result<Exportado, Str
         n += 1;
     }
 
-    //  Y un manifiesto, para que dentro de tres años se sepa qué es esto.
+    //  And a manifest, so someone can tell what this is three years from now.
     let manifiesto = serde_json::json!({
         "producer": "deriva-worker",
         "schema_version": crate::db::VERSION,
         "exported_at": crate::util::ahora_ms(),
         "captures": n,
         "files": copiados,
-        "layout": "captures.jsonl · una captura por línea; files/ · los adjuntos",
+        "layout": "captures.jsonl: one capture per line; files/: attachments",
     });
     std::fs::write(
         dir.join("manifest.json"),
@@ -260,8 +271,8 @@ pub fn exportar(db: &Connection, dir: &std::path::Path) -> Result<Exportado, Str
     })
 }
 
-//  Un nombre de fichero que se pueda escribir en cualquier sitio. Lo que trae
-//  el usuario puede tener barras, saltos de línea o cuatrocientos caracteres.
+//  A filename that can be used anywhere. A user-provided name may contain
+//  slashes, newlines, or four hundred characters.
 fn nombre_para(f: &crate::search::Fila, hash: &str) -> String {
     let bruto = f
         .blob_name
@@ -280,9 +291,9 @@ fn nombre_para(f: &crate::search::Fila, hash: &str) -> String {
         .take(80)
         .collect();
     let limpio = limpio.trim_matches('-').to_string();
-    //  Con los ocho primeros del hash delante: dos ficheros pueden llamarse
-    //  igual y ser distintos, y una exportación que pisa un fichero con otro
-    //  pierde datos en silencio.
+    //  Prefix it with the first eight characters of the hash: two distinct
+    //  files can have the same name, and silently overwriting one during
+    //  export would lose data.
     if limpio.is_empty() {
         hash[..16].to_string()
     } else {

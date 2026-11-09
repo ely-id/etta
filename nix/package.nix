@@ -4,6 +4,7 @@
   lib,
   stdenvNoCC,
   makeWrapper,
+  glibc,
   pleamar,
   fd,
   grim,
@@ -52,6 +53,7 @@ stdenvNoCC.mkDerivation {
       --prefix PATH : ${
         lib.makeBinPath [
           pleamar
+          glibc.bin
           fd
           grim
           slurp

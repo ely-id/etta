@@ -1,14 +1,14 @@
-//  Buscar, y leer lo encontrado.
+//  Search and read what was found.
 //
-//  FTS5 con BM25, que es lo que pide el plan: literal, frases, prefijos y
-//  fragmentos. La búsqueda semántica es un índice opcional posterior y no está
-//  aquí; poner un «casi» ahora sería peor que no tenerla, porque la gente
-//  aprende lo que la caja sabe hacer el primer día.
+//  FTS5 with BM25, as required by the plan: literal terms, phrases, prefixes,
+//  and snippets. Semantic search is a later, optional index and does not
+//  belong here; adding “sort of” search now would be worse than not having it,
+//  because people learn what the search box can do on day one.
 //
-//  Lo que este fichero se toma en serio es que **lo que escribe el usuario no
-//  es una consulta FTS5**. Un apóstrofo, un asterisco suelto o unas comillas
-//  sin cerrar son sintaxis en ese lenguaje, y pasarlas tal cual da un error de
-//  sintaxis en vez de resultados. Buscar `it's` no puede fallar.
+//  This file takes seriously that **user input is not an FTS5 query**. An
+//  apostrophe, a stray asterisk, or an unclosed quote is syntax in that
+//  language, and passing it through as-is produces a syntax error instead of
+//  results. Searching for `it's` must not fail.
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
@@ -28,47 +28,49 @@ pub struct Fila {
     pub blob_bytes: Option<i64>,
     pub blob_mime: Option<String>,
     pub blob_name: Option<String>,
-    //  Dónde está el fichero, ya montado. La regla —`blobs/ab/cd/<hash>`— vive
-    //  en un sitio, y quien dibuja una miniatura no tiene por qué conocerla:
-    //  duplicarla en QML es duplicarla mal el día que cambie.
+    //  The file's fully resolved path. The `blobs/ab/cd/<hash>` rule lives
+    //  in one place, and the thumbnail renderer does not need to know it:
+    //  duplicating it in QML means it will be duplicated incorrectly when
+    //  it changes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub blob_path: Option<String>,
-    //  Y la miniatura, si la tiene. Se calcula igual que la de arriba y por lo
-    //  mismo: en la base vive el hash, no una ruta que caduca.
+    //  The thumbnail, if it has one. Resolve it the same way as above and
+    //  for the same reason: the database stores the hash, not an expiring
+    //  path.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preview_path: Option<String>,
     pub status: String,
-    //  De qué sitio viene, del adaptador. La interfaz lo usa para enseñarlo
-    //  como lo que es —un vídeo de YouTube, un hilo de Reddit— en vez de como
-    //  «un enlace».
+    //  The source from the adapter. The interface uses it to show what it
+    //  is —a YouTube video, a Reddit thread—instead of “a link.”
     pub source: String,
-    //  Lo que la IA entendió, si se lo pediste. Aparte de la nota —esa es
-    //  tuya— y del extracto —eso es el original—.
+    //  What the AI understood, if you asked it. Separate from the note —
+    //  that is yours—and the excerpt —that is the original.
     pub summary: String,
     pub captured_at: i64,
     pub last_opened_at: Option<i64>,
     pub snoozed_until: Option<i64>,
     pub favorite: bool,
     pub tags: Vec<String>,
-    //  El trozo donde encaja lo buscado, con la parte que encaja marcada. Solo
-    //  en las búsquedas: en una lista no hay nada que resaltar.
+    //  The snippet where the search term matches, with the matching part
+    //  highlighted. Only for searches: there is nothing to highlight in a
+    //  listing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub snippet: Option<String>,
 }
 
-//  Lo escrito, convertido en una consulta que FTS5 entiende.
+//  Convert the input into a query FTS5 understands.
 //
-//  Cada palabra va entrecomillada —así deja de ser sintaxis y pasa a ser
-//  texto— y con `*` detrás, que es el prefijo: escribir «biblio» encuentra
-//  «biblioteca» sin esperar a que termines. Un trozo entre comillas en lo que
-//  escribió el usuario se respeta como frase exacta y no se le pone prefijo.
+//  Quote each word —so it becomes text, not syntax—and append `*` for prefix
+//  matching: typing “libr” finds “library” without waiting for you to
+//  finish. Text enclosed in quotes by the user is preserved as an exact phrase
+//  and does not get a prefix.
 pub fn consulta_fts(bruta: &str) -> Option<String> {
     let mut partes: Vec<String> = Vec::new();
     let mut resto = bruta.trim();
     while !resto.is_empty() {
         if let Some(sin) = resto.strip_prefix('"') {
-            //  Una frase. Hasta la siguiente comilla, o hasta el final si se
-            //  dejó abierta —que es lo normal mientras se escribe—.
+            //  A phrase. Read up to the next quote, or to the end if it was
+            //  left open —which is normal while typing.
             let (frase, cola) = match sin.find('"') {
                 Some(i) => (&sin[..i], &sin[i + 1..]),
                 None => (sin, ""),
@@ -84,9 +86,9 @@ pub fn consulta_fts(bruta: &str) -> Option<String> {
             Some(i) => (&resto[..i], &resto[i..]),
             None => (resto, ""),
         };
-        //  Nada de sintaxis: solo letras, números y lo que quede dentro de una
-        //  palabra. El resto se tira, no se escapa, porque escapar mal en un
-        //  lenguaje de consulta es cómo se cuelan las inyecciones.
+        //  No syntax: only letters, numbers, and characters inside a word.
+        //  Discard the rest rather than escaping it, because incorrectly
+        //  escaping a query language is how injections get through.
         let limpia: String = palabra
             .chars()
             .filter(|c| c.is_alphanumeric() || *c == '_' || *c == '-')
@@ -99,73 +101,142 @@ pub fn consulta_fts(bruta: &str) -> Option<String> {
     if partes.is_empty() {
         None
     } else {
-        //  Sin operador entre ellas: en FTS5 eso es un AND implícito, que es lo
-        //  que espera quien escribe dos palabras.
+        //  No operator between them: FTS5 treats that as an implicit AND, which
+        //  is what someone entering two words expects.
         Some(partes.join(" "))
     }
 }
 
-//  Las que no dicen nada por sí solas. Solo se usan en el repesque; ver
-//  `consulta_fts_floja` para el porqué.
+//  Words that do not say much on their own. Used only for fallback search; see
+//  `consulta_fts_floja` for why.
 //
-//  Sin acentos porque así llegan: el tokenizador del índice los quita, y estas
-//  se comparan contra lo que ya salió de él.
+//  Without accents because that is how they arrive: the index tokenizer
+//  removes them, and these are compared against its output.
 const DE_RELLENO: &[&str] = &[
-    //  Español: preguntar por algo guardado suena casi siempre igual.
-    "algo", "algun", "alguna", "alguno", "algunos", "algunas", "como", "cosa",
-    "cosas", "cual", "cuales", "cuando", "donde", "esta", "este", "esto",
-    "estos", "estas", "guarde", "guardado", "guardada", "hace", "hacer", "para",
-    "pero", "porque", "pues", "sobre", "tenia", "tengo", "tiene", "todo",
-    "todos", "todas", "unos", "unas", "acerca", "busca", "buscar", "encuentra",
-    "quiero", "puedes", "podrias", "dime", "sabes", "recuerda", "recuerdas",
-    //  Inglés: la mitad de lo guardado está en inglés y a veces se pregunta así.
-    "about", "anything", "does", "have", "something", "that", "the", "there",
-    "these", "this", "those", "what", "when", "where", "which", "with", "your",
-    "find", "search", "show", "tell", "remember", "some", "from", "into",
+    //  Spanish: questions about saved things almost always use these words.
+    "algo",
+    "algun",
+    "alguna",
+    "alguno",
+    "algunos",
+    "algunas",
+    "como",
+    "cosa",
+    "cosas",
+    "cual",
+    "cuales",
+    "cuando",
+    "donde",
+    "esta",
+    "este",
+    "esto",
+    "estos",
+    "estas",
+    "guarde",
+    "guardado",
+    "guardada",
+    "hace",
+    "hacer",
+    "para",
+    "pero",
+    "porque",
+    "pues",
+    "sobre",
+    "tenia",
+    "tengo",
+    "tiene",
+    "todo",
+    "todos",
+    "todas",
+    "unos",
+    "unas",
+    "acerca",
+    "busca",
+    "buscar",
+    "encuentra",
+    "quiero",
+    "puedes",
+    "podrias",
+    "dime",
+    "sabes",
+    "recuerda",
+    "recuerdas",
+    //  English: half of the saved content is in English, and queries are
+    //  sometimes phrased that way.
+    "about",
+    "anything",
+    "does",
+    "have",
+    "something",
+    "that",
+    "the",
+    "there",
+    "these",
+    "this",
+    "those",
+    "what",
+    "when",
+    "where",
+    "which",
+    "with",
+    "your",
+    "find",
+    "search",
+    "show",
+    "tell",
+    "remember",
+    "some",
+    "from",
+    "into",
 ];
 
-//  La misma consulta, pero valiendo con CUALQUIERA de las palabras.
+//  The same query, but matching ANY of the words.
 //
-//  El AND implícito es lo correcto mientras encuentre algo, y es lo peor que
-//  puede pasar cuando no: con cuatro palabras basta que una no esté para que la
-//  respuesta sea «no hay nada guardado que se parezca a eso», que es mentira.
-//  Y lo dice justo cuando más material hay, porque cuanto más grande es la
-//  biblioteca más larga es la pregunta que le haces.
+//  The implicit AND is correct as long as it finds something, and the worst
+//  possible behavior when it does not: with four words, just one missing word
+//  makes the answer “nothing saved looks like that,” which is false. This
+//  happens just when there is the most content, because the larger the library,
+//  the longer the query.
 pub fn consulta_fts_floja(bruta: &str) -> Option<String> {
     let q = consulta_fts(bruta)?;
-    //  Una sola palabra ya se buscó tal cual; repetirla no encuentra nada nuevo.
+    //  A single word was already searched as-is; repeating it finds nothing
+    //  new.
     if !q.contains(' ') {
         return None;
     }
-    //  Y fuera las palabras que no dicen nada.
+    //  Remove words that do not say much.
     //
-    //  En un OR son veneno: cada una arrastra por su cuenta, así que «de» —que
-    //  está en todo lo que has guardado— devolvía la biblioteca entera. Con AND
-    //  daban igual, porque tenían que estar todas.
+    //  They are poison in an OR: each one matches independently, so “of” —
+    //  which appears in everything you save—would return the entire
+    //  library. They did not matter with AND because every word had to match.
     //
-    //  Se van por dos motivos. Las CORTAS, de tres letras o menos, porque a esa
-    //  longitud casi nada arrastra significado; cuesta algo —«go» y «rs» son
-    //  etiquetas de verdad—, y se pierden solo en el repesque.
+    //  Remove them for two reasons. SHORT words of three letters or less
+    //  rarely carry meaning; there is some cost —“go” and “rs” are real
+    //  tags—but they are lost only in fallback search.
     //
-    //  Y las de RELLENO, que en español son largas: «tengo», «sobre», «algo»,
-    //  «cuando». Sin ellas fuera, preguntar «¿tengo algo sobre fondos de
-    //  pantalla?» devolvía media biblioteca por «tengo» y por «algo». La lista
-    //  es corta y de los dos idiomas que habla la casa, y vive AQUÍ y no en el
-    //  AND porque ahí no estorban: si alguien escribe «sobre» entre comillas,
-    //  la busca de verdad.
+    //  Also remove FILLER words, which are long in Spanish: “tengo,” “sobre,”
+    //  “algo,” “cuando.” Without them, asking “do I have anything about
+    //  wallpapers?” would return half the library because of “have” and
+    //  “anything.” The list is short, covers the two languages used here,
+    //  and lives HERE rather than in the AND query because they do not get
+    //  in the way there: if someone quotes “about,” they are searching for
+    //  it literally.
     let largas: Vec<&str> = q
         .split(' ')
         .filter(|t| {
-            //  Plegada —sin tildes y en minúsculas— antes de comparar: la
-            //  lista está escrita sin ellas porque así sale del índice, y sin
-            //  esto «tenía» no es «tenia» y se cuela igual.
+            //  Fold to lowercase and remove accents before comparing: the
+            //  list is written without them because that is how the index
+            //  returns words. Without this, “tenía” differs from “tenia”
+            //  and still slips through.
             let limpia = crate::util::plegar(
-                &t.chars().filter(|c| c.is_alphanumeric()).collect::<String>(),
+                &t.chars()
+                    .filter(|c| c.is_alphanumeric())
+                    .collect::<String>(),
             );
             limpia.chars().count() > 3 && !DE_RELLENO.contains(&limpia.as_str())
         })
         .collect();
-    //  Si no queda ninguna, se repescan todas: más vale de más que nada.
+    //  If none remain, search them all again: more is better than nothing.
     let piezas: Vec<&str> = if largas.len() >= 2 {
         largas
     } else {
@@ -177,7 +248,7 @@ pub fn consulta_fts_floja(bruta: &str) -> Option<String> {
     Some(piezas.join(" OR "))
 }
 
-//  La misma consulta con las palabras enteras: sin el `*` del prefijo.
+//  The same query with whole words: without the prefix `*`.
 pub fn consulta_fts_exacta(bruta: &str) -> Option<String> {
     Some(consulta_fts(bruta)?.replace("\"*", "\""))
 }
@@ -186,13 +257,14 @@ pub fn buscar(db: &Connection, texto: &str, limite: usize) -> rusqlite::Result<V
     let Some(q) = consulta_fts(texto) else {
         return Ok(Vec::new());
     };
-    //  Las palabras enteras primero, y detrás lo que solo empieza igual.
+    //  Whole-word matches first, followed by matches that only share a
+    //  prefix.
     //
-    //  El prefijo es para lo que todavía se está escribiendo, y con él «pan»
-    //  valía lo mismo en «pan casero» que en «captura-pantalla.png», que salía
-    //  antes por tener el título más corto. Mientras la última palabra está a
-    //  medias la exacta no encuentra nada y todo viene del prefijo, así que
-    //  escribir sigue encontrando letra a letra.
+    //  Prefix matching is for words still being typed. It used to make
+    //  “pan” match equally in “homemade bread” and “screenshot.png,” which
+    //  ranked first because its title was shorter. While the last word is
+    //  incomplete, exact search finds nothing and all results come from
+    //  the prefix, so typing still finds matches letter by letter.
     let mut filas = match consulta_fts_exacta(texto) {
         Some(e) if e != q => buscar_con(db, &e, limite)?,
         _ => Vec::new(),
@@ -208,24 +280,24 @@ pub fn buscar(db: &Connection, texto: &str, limite: usize) -> rusqlite::Result<V
             }
         }
     }
-    //  Con todas las palabras primero. Si no sale nada, con cualquiera de
-    //  ellas: más vale lo que se parece a la mitad de lo que preguntaste que la
-    //  pantalla vacía, y `bm25` ya pone arriba lo que encaja en más sitios.
+    //  Try all words first. If that finds nothing, try any of them: a
+    //  partial match is better than an empty screen, and `bm25` ranks
+    //  higher what matches in more places.
     if filas.is_empty() {
         if let Some(floja) = consulta_fts_floja(texto) {
             filas = buscar_con(db, &floja, limite)?;
         }
     }
 
-    //  Y por último, lo que se PARECE.
+    //  Finally, what is SIMILAR.
     //
-    //  Después y no mezclado: lo que contiene tus palabras es lo que pediste, y
-    //  va primero siempre. Lo que se parece se añade detrás para llenar, y solo
-    //  si hay modelo. Fundir los dos órdenes en una puntuación común suena
-    //  mejor y en la práctica es una manera de que lo exacto acabe el tercero.
+    //  Keep it separate, not mixed: results containing your words are what
+    //  you asked for and always come first. Similar results fill in behind
+    //  them, and only when a model is available. Combining both rankings
+    //  into one score sounds better, but in practice can push exact results
+    //  down to third place.
     if filas.len() < limite {
-        let ya: std::collections::HashSet<String> =
-            filas.iter().map(|f| f.id.clone()).collect();
+        let ya: std::collections::HashSet<String> = filas.iter().map(|f| f.id.clone()).collect();
         for (id, _) in parecidas(db, texto, limite)? {
             if filas.len() >= limite {
                 break;
@@ -251,20 +323,20 @@ fn buscar_con(db: &Connection, q: &str, limite: usize) -> rusqlite::Result<Vec<F
           ORDER BY bm25(captures_fts, 0.0, 8.0, 4.0, 2.0, 5.0, 4.0, 1.0, 6.0, 3.0)
           LIMIT ?2",
     )?;
-    //  Uno por columna, contando `capture_id`, que no se indexa pero es la
-    //  primera: sin su 0.0 todos iban corridos uno, el título pesaba 4 y el
-    //  cuerpo 6, y una palabra de pasada en un artículo le ganaba al título.
-    //  Y el sitio, detrás de todo, a 3.
+    //  One weight per column, including `capture_id`, which is not indexed
+    //  but is first. Without its 0.0, all weights shifted by one, making the
+    //  title weight 4 and body 6, so a passing mention in an article beat
+    //  the title.
+    //  And the source, last, with a weight of 3.
     //
-    //  Los pesos de `bm25` no son un adorno. Por defecto todas las columnas
-    //  valen igual, y entonces una palabra perdida en medio de un artículo de
-    //  diez mil palabras compite con la misma palabra en el título. El título
-    //  manda, las etiquetas casi tanto —las pusiste tú a mano—, y el cuerpo es
-    //  el que menos.
+    //  The `bm25` weights are not decoration. By default all columns are
+    //  equal, so a stray word in the middle of a ten-thousand-word article
+    //  competes with the same word in the title. The title leads, tags come
+    //  close —you added them by hand—and the body matters least.
     //
-    //  El resumen pesa casi como una etiqueta, y por lo mismo: son cuarenta
-    //  palabras elegidas para decir de qué va esto, así que una coincidencia
-    //  ahí vale mucho más que una en medio del artículo.
+    //  The summary weighs almost as much as a tag for the same reason: its
+    //  forty words were chosen to say what this is about, so a match there
+    //  is worth much more than one in the middle of an article.
     let ids: Vec<(String, String)> = s
         .query_map(params![q, limite as i64], |r| {
             Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
@@ -325,8 +397,8 @@ pub fn una(db: &Connection, id: &str) -> rusqlite::Result<Option<Fila>> {
         .blob_hash
         .as_ref()
         .map(|h| crate::paths::blob_de(h).to_string_lossy().to_string());
-    //  Aquí entra el hash de la miniatura y sale su ruta. El campo es el mismo
-    //  porque quien la dibuja no tiene nada que hacer con un hash.
+    //  The thumbnail hash goes in, and its path comes out. The field stays
+    //  the same because the renderer has no use for a hash.
     f.preview_path = f
         .preview_path
         .as_ref()
@@ -342,28 +414,27 @@ pub fn una(db: &Connection, id: &str) -> rusqlite::Result<Option<Fila>> {
     Ok(Some(f))
 }
 
-//  Lo que está a medias.
+//  What is incomplete.
 //
-//  Enriquecer se hace al guardar, y eso deja fuera dos cosas: lo que guardaste
-//  antes de que esto existiera, y aquello para lo que no había red en ese
-//  momento. Sin una lista de pendientes, una biblioteca de hace un mes se queda
-//  para siempre con direcciones crudas por título, que es justo el problema que
-//  el enriquecimiento venía a resolver.
+//  Enrichment happens when saving, which leaves out two things: items saved
+//  before this existed, and items for which there was no network at the time.
+//  Without a pending list, a month-old library would keep raw URLs as titles
+//  forever, which is exactly what enrichment is meant to fix.
 //
-//  Está a medias si le falta la miniatura, si su título sigue siendo el de
-//  apaño, si no se sabe de qué sitio viene, o si no tiene texto dentro. Las
-//  cuatro, porque son cuatro maneras distintas de estar a medias: una imagen
-//  puede tener miniatura y llamarse «ejemplo.com».
+//  An item is incomplete if it is missing a thumbnail, still has a fallback
+//  title, has no known source, or has no text. These are four separate
+//  conditions: an image can have a thumbnail and still be called
+//  “example.com.”
 //
-//  Devuelve la dirección a la que ir y/o el fichero que mirar, y nada más:
-//  quien sale a la calle no necesita la captura entera.
+//  Return only the URL to visit and/or file to inspect: whoever accesses the
+//  network does not need the entire capture.
 #[derive(Debug, Serialize)]
 pub struct PorEnriquecer {
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
-    //  El fichero, ya montado. Igual que `blob_path`: en la base vive el hash y
-    //  quien lo va a abrir no tiene nada que hacer con un hash.
+    //  The resolved file path. As with `blob_path`, the database stores the
+    //  hash, and the caller opening the file has no use for it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
 }
@@ -404,12 +475,10 @@ pub fn por_enriquecer(db: &Connection, limite: i64) -> rusqlite::Result<Vec<PorE
         if !falta {
             continue;
         }
-        //  La canónica primero: es la que hay que visitar.
-        let url = canonica
-            .or(origen)
-            .filter(|u| u.starts_with("http"));
-        //  Y el fichero solo si le falta el texto: volver a abrir un PDF que ya
-        //  se leyó es trabajo tirado, y son segundos por cada uno.
+        //  Canonical URL first: that is the one to visit.
+        let url = canonica.or(origen).filter(|u| u.starts_with("http"));
+        //  Return the file only if its text is missing: reopening a PDF
+        //  that was already read is wasted work, and takes seconds each time.
         let path = blob
             .filter(|_| cuerpo == 0)
             .map(|h| crate::paths::blob_de(&h).to_string_lossy().to_string());
@@ -421,17 +490,16 @@ pub fn por_enriquecer(db: &Connection, limite: i64) -> rusqlite::Result<Vec<PorE
     Ok(fuera)
 }
 
-// ── el parecido por significado ──────────────────────────────────
+// ── semantic similarity ───────────────────────────────────────────
 //
-//  FTS encuentra lo que contiene tus palabras. Esto encuentra lo que quiere
-//  decir lo mismo, que es otra cosa y hace falta cuando la biblioteca crece:
-//  con veinte capturas te acuerdas de cómo se llamaban; con dos mil, no.
+//  FTS finds what contains your words. This finds things that mean the same,
+//  which is different and becomes useful as the library grows: with twenty
+//  captures you remember their names; with two thousand, you do not.
 //
-//  Todo esto no existe si no hay modelo, y entonces la biblioteca busca
-//  exactamente como antes. Es opcional a propósito: son 506 MB en el disco de
-//  alguien.
+//  None of this exists without a model, and the library then searches exactly
+//  as before. Deliberately optional: it takes 506 MB on someone's disk.
 
-//  Con qué texto se representa una captura, leído de la base.
+//  Read from the database what text represents a capture.
 fn texto_para_vector(db: &Connection, id: &str) -> rusqlite::Result<String> {
     let (titulo, resumen, extracto, cuerpo) = db.query_row(
         "SELECT title, summary, excerpt, content_text FROM captures WHERE id = ?1",
@@ -462,19 +530,19 @@ fn texto_para_vector(db: &Connection, id: &str) -> rusqlite::Result<String> {
     ))
 }
 
-//  Rehacer el vector de una captura. Se llama después de guardarla y de cada
-//  vez que cambia lo que la describe: el título, el resumen, las etiquetas.
-//  Con cuánto material merece la pena hacer un vector.
+//  Rebuild a capture's vector. Called after saving it and whenever its
+//  description changes: title, summary, or tags.
+//  How much material is enough to make a vector worthwhile.
 //
-//  Es el número más importante de todo esto y salió de un fallo. Una captura de
-//  Reddit —que no da texto a quien no ejecuta JavaScript— se quedó con seis
-//  caracteres: su vector era el de la palabra «Reddit» y aterrizaba en una zona
-//  genérica, así que se parecía un 0,26 a «repostería» y un 0,24 a «editar
-//  vídeo». Salía en TODAS las búsquedas.
+//  This is the most important number here, and it came from a bug. A Reddit
+//  capture —which returns no text unless JavaScript runs—had only six
+//  characters: its vector represented the word “Reddit” and landed in a
+//  generic area, making it 0.26 similar to “baking” and 0.24 similar to
+//  “video editing.” It appeared in EVERY search.
 //
-//  Un vector hecho de una palabra no resume nada; es ruido con forma de
-//  resultado. Sin material no hay vector, y esa captura se sigue encontrando
-//  por su nombre, que es lo único que de verdad se sabe de ella.
+//  A vector made from one word summarizes nothing; it is noise shaped like a
+//  result. Without enough material, there is no vector, and the capture can
+//  still be found by its name, the only thing actually known about it.
 pub const MATERIAL_MINIMO: usize = 24;
 
 pub fn revectorizar(db: &Connection, id: &str) -> rusqlite::Result<bool> {
@@ -482,9 +550,7 @@ pub fn revectorizar(db: &Connection, id: &str) -> rusqlite::Result<bool> {
         return Ok(false);
     }
     let texto = texto_para_vector(db, id)?;
-    if texto.trim().chars().count() < MATERIAL_MINIMO
-        || texto.split_whitespace().count() < 4
-    {
+    if texto.trim().chars().count() < MATERIAL_MINIMO || texto.split_whitespace().count() < 4 {
         return Ok(false);
     }
     let Some(v) = crate::vectores::vector(&texto) else {
@@ -503,9 +569,9 @@ pub fn revectorizar(db: &Connection, id: &str) -> rusqlite::Result<bool> {
     Ok(true)
 }
 
-//  Las que aún no tienen vector, o lo tienen de otra medida —o sea de otro
-//  modelo—. Se rehacen de N en N para que instalar el modelo con dos mil
-//  capturas dentro no bloquee la biblioteca cinco minutos.
+//  Captures without a vector, or with one of a different dimension —that is,
+//  from another model. Rebuild them N at a time so installing a model with two
+//  thousand captures does not block the library for five minutes.
 pub fn vectorizar_pendientes(db: &Connection, cuantas: i64) -> rusqlite::Result<(usize, i64)> {
     if !crate::vectores::listo() {
         return Ok((0, 0));
@@ -524,9 +590,9 @@ pub fn vectorizar_pendientes(db: &Connection, cuantas: i64) -> rusqlite::Result<
         )
     };
     let mut s = db.prepare(
-        //  Y con material suficiente, aquí también: si no, las que no dan para
-        //  un vector se eligen en cada barrido, para siempre, sin que ninguna
-        //  llegue a tenerlo.
+        //  Also require enough material here: otherwise captures that cannot
+        //  produce a vector are selected in every pass forever, without ever
+        //  getting one.
         "SELECT c.id FROM captures c
           WHERE c.trashed_at IS NULL
             AND LENGTH(c.title) + LENGTH(c.summary) + LENGTH(c.excerpt)
@@ -552,22 +618,26 @@ pub fn vectorizar_pendientes(db: &Connection, cuantas: i64) -> rusqlite::Result<
     Ok((hechas, pendientes(db)?))
 }
 
-//  Lo que más se parece a lo que has escrito.
+//  What most resembles what you wrote.
 //
-//  Se comparan todos los vectores a mano y sin índice, y es a propósito: una
-//  biblioteca personal son miles de capturas, no millones, y multiplicar dos
-//  mil vectores de 256 números tarda menos que abrir un índice. El día que esto
-//  no baste, la tabla ya está separada para meterle uno.
-//  Por debajo de esto no se parece: se parece un poco a todo, que es como los
-//  vectores dicen «no sé». Sin umbral, buscar cualquier cosa devuelve la
-//  biblioteca entera ordenada por casualidad.
+//  Compare all vectors directly, without an index, by design: a personal
+//  library has thousands of captures, not millions, and multiplying two
+//  thousand vectors of 256 numbers takes less time than opening an index. If
+//  that stops being enough, the table is already separate so one can be added.
+//  Below this, it is not similar: it resembles a little bit of everything,
+//  which is how vectors say “I don't know.” Without a threshold, any search
+//  returns the entire library in a random order.
 //
-//  El número sale de mirar los de verdad, no de un artículo: con este modelo
-//  —embeddings estáticos, sin transformador— los cosenos son más bajos que con
-//  los grandes, y el 0,35 que traía copiado dejaba fuera aciertos claros.
+//  This number comes from real results, not an article: with this model —
+//  static embeddings, no transformer—cosines are lower than with larger
+//  models, and the copied 0.35 threshold excluded clear matches.
 pub const PARECIDO_MINIMO: f32 = 0.22;
 
-pub fn parecidas(db: &Connection, texto: &str, limite: usize) -> rusqlite::Result<Vec<(String, f32)>> {
+pub fn parecidas(
+    db: &Connection,
+    texto: &str,
+    limite: usize,
+) -> rusqlite::Result<Vec<(String, f32)>> {
     parecidas_desde(db, texto, limite, PARECIDO_MINIMO)
 }
 
@@ -601,13 +671,13 @@ pub fn parecidas_desde(
     Ok(todas)
 }
 
-//  Lo que todavía no ha resumido nadie.
+//  What has not been summarized yet.
 //
-//  Devuelve lo justo para que un modelo pueda decir de qué va: el título, de
-//  dónde viene y un trozo del principio. **No** el contenido entero, y esa es
-//  una decisión de privacidad, no de tamaño: lo que sale del equipo tiene que
-//  ser lo mínimo para hacer el trabajo, y para resumir un enlace bastan su
-//  título y su descripción.
+//  Return just enough for a model to say what something is about: its title,
+//  source, and a snippet from the beginning. **Not** the entire content; this
+//  is a privacy decision, not a size limit. Only the minimum needed for the
+//  task should leave the device, and a link can be summarized from its title
+//  and description.
 #[derive(Debug, Serialize)]
 pub struct PorClasificar {
     pub id: String,
@@ -616,21 +686,21 @@ pub struct PorClasificar {
     #[serde(rename = "type")]
     pub tipo: String,
     pub excerpt: String,
-    //  Y el fichero, si es una imagen y hay que MIRARLA.
+    //  Also include the file if it is an image that must be inspected.
     //
-    //  De una imagen no hay nada que resumir a partir de su ficha: el título es
-    //  el nombre del fichero y el extracto está vacío. O se mira o no se sabe
-    //  qué es, y por eso viaja la ruta.
+    //  There is nothing to summarize about an image from its metadata: its
+    //  title is the filename and its excerpt is empty. It must be inspected
+    //  to know what it is, which is why the path is included.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image_path: Option<String>,
 }
 
 pub fn por_clasificar(db: &Connection, limite: i64) -> rusqlite::Result<Vec<PorClasificar>> {
     let mut s = db.prepare(
-        //  Lo que no se ha mirado todavía, no lo que no tiene resumen: son
-        //  cosas distintas. De una página que no da texto no se puede decir
-        //  nada, y sin apuntar el intento se pregunta otra vez cada veinte
-        //  segundos, para siempre y pagando.
+        //  Items not yet processed, not items without a summary: those are
+        //  different. Nothing can be said about a page that returns no
+        //  text, and without recording the attempt it will be requested
+        //  again every twenty seconds forever, at a cost.
         "SELECT id, title, source, type, excerpt, blob_hash, blob_mime
            FROM captures
           WHERE trashed_at IS NULL AND summary = '' AND summary_at IS NULL
@@ -644,8 +714,9 @@ pub fn por_clasificar(db: &Connection, limite: i64) -> rusqlite::Result<Vec<PorC
                 title: r.get(1)?,
                 source: r.get(2)?,
                 tipo: r.get(3)?,
-                //  Recortado aquí y no en quien llama: el tope es de lo que
-                //  sale del equipo, y eso no lo decide el que hace la llamada.
+                //  Truncate here, not in the caller: the limit applies to
+                //  what leaves the device, and the caller does not decide
+                //  that.
                 excerpt: r.get::<_, String>(4)?.chars().take(400).collect(),
                 image_path: {
                     let hash: Option<String> = r.get(5)?;
@@ -664,12 +735,12 @@ pub fn por_clasificar(db: &Connection, limite: i64) -> rusqlite::Result<Vec<PorC
     Ok(v)
 }
 
-//  La lista de siempre: lo último guardado, sin lo tirado. Es lo que enseña la
-//  página cuando no has escrito nada en la caja.
+//  The usual list: most recently saved, excluding trashed items. This is what
+//  the page shows when the search box is empty.
 //
-//  El filtro es de la navegación: un espacio, una etiqueta o «hoy». Se pasa
-//  entero y se arma aquí en vez de dejar que quien llama componga SQL: es la
-//  diferencia entre un filtro y una inyección.
+//  The navigation filter: a folder, a tag, or “today.” Pass it as-is and build
+//  the query here instead of letting the caller compose SQL; that is the
+//  difference between a filter and an injection.
 #[derive(Debug, Default, serde::Deserialize)]
 pub struct Filtro {
     pub space: Option<String>,
@@ -699,9 +770,8 @@ pub fn listar(
         donde.push_str(" AND captured_at >= :hoy");
     }
     if f.space.is_some() {
-        donde.push_str(
-            " AND id IN (SELECT capture_id FROM capture_spaces WHERE space_id = :space)",
-        );
+        donde
+            .push_str(" AND id IN (SELECT capture_id FROM capture_spaces WHERE space_id = :space)");
     }
     if f.tag.is_some() {
         donde.push_str(" AND id IN (SELECT capture_id FROM capture_tags WHERE tag_id = :tag)");
@@ -738,8 +808,9 @@ pub fn listar(
     Ok(fuera)
 }
 
-//  Medianoche de hoy, en la zona del equipo. `date(...,'localtime')` la calcula
-//  SQLite; hacerlo en Rust exigiría una caja de fechas entera para esto.
+//  Today's midnight in the device's timezone. SQLite calculates it with
+//  `date(...,'localtime')`; doing this in Rust would require an entire date
+//  crate.
 fn comienzo_del_dia() -> i64 {
     (std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -750,12 +821,12 @@ fn comienzo_del_dia() -> i64 {
         * 1000
 }
 
-//  Lo que ha vuelto a la superficie: lo que estaba aplazado y ya toca.
+//  What has resurfaced: items that were snoozed and are now due.
 //
-//  Nada más, y es a propósito. Las otras razones para reaparecer —hace mucho
-//  que no lo abres, esta aplicación va con ese proyecto— son de D6, y
-//  rellenar esta banda con «lo último guardado» mientras tanto sería mentir con
-//  el título puesto: «han vuelto a la superficie» no significa «lo de ayer».
+//  Nothing else, by design. Other reasons to resurface —not opened for a long
+//  time, associated with the current project—belong to D6. Filling this area
+//  with “recently saved” in the meantime would be a lie under this heading:
+//  “resurfaced” does not mean “from yesterday.”
 pub fn reaparecidas(db: &Connection, limite: usize) -> rusqlite::Result<Vec<Fila>> {
     let limite = limite.clamp(1, 20);
     let mut s = db.prepare(
@@ -778,9 +849,9 @@ pub fn reaparecidas(db: &Connection, limite: usize) -> rusqlite::Result<Vec<Fila
     Ok(fuera)
 }
 
-//  La navegación de la izquierda, con sus números. Sale de la base y no de una
-//  lista escrita en QML: los espacios los crea el usuario, y una barra lateral
-//  fija dejaría de contar el día que cree el cuarto.
+//  The left-side navigation and its counts. Read it from the database, not a
+//  list in QML: users create folders, and a hard-coded sidebar would stop
+//  counting them once they created a fourth.
 #[derive(Debug, Serialize)]
 pub struct Seccion {
     pub id: String,
@@ -800,7 +871,10 @@ pub fn secciones(db: &Connection) -> rusqlite::Result<Vec<Seccion>> {
             id: "inbox".into(),
             name: "Entrada".into(),
             kind: "inbox".into(),
-            count: uno("SELECT COUNT(*) FROM captures WHERE trashed_at IS NULL", &[])?,
+            count: uno(
+                "SELECT COUNT(*) FROM captures WHERE trashed_at IS NULL",
+                &[],
+            )?,
             color: None,
         },
         Seccion {
@@ -829,7 +903,11 @@ pub fn secciones(db: &Connection) -> rusqlite::Result<Vec<Seccion>> {
                 kind: "space".into(),
                 color: {
                     let c: String = r.get(2)?;
-                    if c.is_empty() { None } else { Some(c) }
+                    if c.is_empty() {
+                        None
+                    } else {
+                        Some(c)
+                    }
                 },
                 count: r.get(3)?,
             })
@@ -851,11 +929,11 @@ pub fn secciones(db: &Connection) -> rusqlite::Result<Vec<Seccion>> {
 pub struct Cuentas {
     pub captures: i64,
     pub trashed: i64,
-    //  Cuántas siguen sin resumen. Es lo único de las cuentas que no describe
-    //  la biblioteca sino el TRABAJO que queda, y está aquí porque la página ya
-    //  pide las cuentas en cada refresco: un número más no cuesta una llamada
-    //  más, y sin él la única manera de saber si esto va era mirar la base de
-    //  datos a mano.
+    //  How many still lack a summary. This is the only count describing
+    //  remaining WORK rather than the library itself. The page already
+    //  requests counts on every refresh, so this number costs no extra
+    //  call; without it, the only way to know whether this works was to
+    //  inspect the database manually.
     pub pending_summary: i64,
     pub tags: i64,
     pub spaces: i64,
@@ -868,16 +946,12 @@ pub fn cuentas(db: &Connection) -> rusqlite::Result<Cuentas> {
     Ok(Cuentas {
         captures: uno("SELECT COUNT(*) FROM captures WHERE trashed_at IS NULL")?,
         trashed: uno("SELECT COUNT(*) FROM captures WHERE trashed_at IS NOT NULL")?,
-        pending_summary: uno(
-            "SELECT COUNT(*) FROM captures
-              WHERE trashed_at IS NULL AND summary = '' AND summary_at IS NULL",
-        )?,
+        pending_summary: uno("SELECT COUNT(*) FROM captures
+              WHERE trashed_at IS NULL AND summary = '' AND summary_at IS NULL")?,
         tags: uno("SELECT COUNT(*) FROM tags")?,
         spaces: uno("SELECT COUNT(*) FROM spaces")?,
         blobs: uno("SELECT COUNT(DISTINCT blob_hash) FROM captures WHERE blob_hash IS NOT NULL")?,
-        blob_bytes: uno(
-            "SELECT COALESCE(SUM(blob_bytes), 0) FROM
-               (SELECT DISTINCT blob_hash, blob_bytes FROM captures WHERE blob_hash IS NOT NULL)",
-        )?,
+        blob_bytes: uno("SELECT COALESCE(SUM(blob_bytes), 0) FROM
+               (SELECT DISTINCT blob_hash, blob_bytes FROM captures WHERE blob_hash IS NOT NULL)")?,
     })
 }

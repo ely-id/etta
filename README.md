@@ -1,10 +1,21 @@
-# Etta
+<h1 align="center">Etta</h1>
+
+<p align="center"><em>A small companion for the Halley desktop.</em></p>
 
 Etta is a desktop companion for the [Halley](https://github.com/saltnpepper97/halley)
 compositor: a little ball with a face that lives at the top of your screen and
 is your whole shell — clock and battery, notifications, control center, finder,
 captures and recordings, lock screen. She is written in
 [pleamar](https://github.com/k4ditano/pleamar).
+
+<p align="center">
+  <img src="docs/images/control-center.png" alt="Etta's control center" width="320" />
+  <img src="docs/images/wardrobe.png" alt="Etta's wardrobe and appearance settings" width="320" />
+</p>
+<p align="center">
+  <img src="docs/images/wallpapers.png" alt="Etta's wallpaper and shader settings" width="320" />
+  <img src="docs/images/lock-screen.png" alt="Etta's lock screen" width="320" />
+</p>
 
 Her name comes from Halley's comet: the trail of debris 1P/Halley leaves behind
 gives the Eta Aquariids meteor shower. From *Eta*, Etta — the small character
