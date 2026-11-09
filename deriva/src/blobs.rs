@@ -1,26 +1,25 @@
-//  El almacén de bytes, direccionado por contenido.
+//  The content-addressed byte store.
 //
-//  `blobs/ab/cd/<sha256>`. Que el nombre sea el hash trae tres cosas gratis: el
-//  mismo fichero guardado dos veces ocupa una, comprobar la integridad es
-//  volver a hashear, y no hay que decidir nombres —ni escapar los que trae el
-//  usuario, que es de donde salen la mitad de los agujeros de un almacén de
-//  ficheros.
+//  `blobs/ab/cd/<sha256>`. Using the hash as the name gives us three things for
+//  free: saving the same file twice uses one copy, checking integrity means
+//  hashing it again, and there are no names to choose —or user-provided names to
+//  escape, which cause half the vulnerabilities in a file store.
 //
-//  El orden importa y es el del plan: **primero el blob, después la fila**. Al
-//  revés, un corte entre las dos deja una captura visible en la biblioteca
-//  apuntando a un fichero que no existe, y eso no se puede arreglar leyendo la
-//  base: hay que adivinar qué era. En este orden lo peor que queda es un blob
-//  sin dueño, que se ve, se cuenta y se barre.
+//  Order matters, and the plan is explicit: **blob first, row second**. In the
+//  reverse order, an interruption between the two leaves a visible capture in
+//  the library pointing to a nonexistent file, which cannot be fixed by reading
+//  the database; we would have to guess what it was. With this order, the worst
+//  that can remain is an orphaned blob, which can be seen, counted, and swept.
 
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
-//  Lo que no se copia. No es una política de disco: es que copiar un fichero de
-//  este tamaño tarda lo bastante como para que la confirmación de Marea deje de
-//  ser una confirmación y pase a ser una promesa.
+//  What is not copied. This is not a disk-space policy: copying a file this
+//  large takes long enough that Marea's confirmation would stop being a
+//  confirmation and become a promise.
 pub const TOPE_FICHERO: u64 = 2 * 1024 * 1024 * 1024;
-//  Y lo que puede venir en línea por el protocolo, que es otra cosa: eso viaja
-//  en una línea de JSON y hay que tenerlo entero en memoria dos veces.
+//  And what can arrive inline through the protocol, which is different: it
+//  travels in a JSON line and must be held entirely in memory twice.
 pub const TOPE_EN_LINEA: usize = 64 * 1024 * 1024;
 
 pub struct Guardado {
@@ -28,33 +27,48 @@ pub struct Guardado {
     pub bytes: u64,
 }
 
-//  Escribe bytes que ya están en memoria.
+//  Write bytes that are already in memory.
 pub fn guardar_bytes(datos: &[u8]) -> io::Result<Guardado> {
     let hash = crate::util::sha256(datos);
     let destino = crate::paths::blob_de(&hash);
     if destino.exists() {
-        //  Ya estaba: dos capturas distintas pueden compartir el mismo
-        //  fichero, y el nombre es el hash, así que no hay nada que escribir.
-        return Ok(Guardado { hash, bytes: datos.len() as u64 });
+        //  Already present: two different captures can share the same file,
+        //  and since its name is the hash, there is nothing to write.
+        return Ok(Guardado {
+            hash,
+            bytes: datos.len() as u64,
+        });
     }
     escribir_atomico(&destino, |f| f.write_all(datos))?;
-    Ok(Guardado { hash, bytes: datos.len() as u64 })
+    Ok(Guardado {
+        hash,
+        bytes: datos.len() as u64,
+    })
 }
 
-//  Y copia un fichero del disco del usuario. Se hashea leyendo, no cargando: el
-//  fichero puede ser un vídeo.
+//  Copy a file from the user's disk. Hash it while reading, not by loading it
+//  all at once: the file could be a video.
 pub fn guardar_fichero(origen: &Path) -> io::Result<Guardado> {
     let meta = std::fs::metadata(origen)?;
     if !meta.is_file() {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, "no es un fichero"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "no es un fichero",
+        ));
     }
     if meta.len() > TOPE_FICHERO {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, "demasiado grande"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "demasiado grande",
+        ));
     }
     let hash = crate::util::sha256_de_fichero(origen)?;
     let destino = crate::paths::blob_de(&hash);
     if destino.exists() {
-        return Ok(Guardado { hash, bytes: meta.len() });
+        return Ok(Guardado {
+            hash,
+            bytes: meta.len(),
+        });
     }
     let mut entrada = std::fs::File::open(origen)?;
     escribir_atomico(&destino, |f| {
@@ -67,13 +81,16 @@ pub fn guardar_fichero(origen: &Path) -> io::Result<Guardado> {
             f.write_all(&buf[..n])?;
         }
     })?;
-    Ok(Guardado { hash, bytes: meta.len() })
+    Ok(Guardado {
+        hash,
+        bytes: meta.len(),
+    })
 }
 
-//  Entero en un temporal y renombrado encima. Un `rename` dentro del mismo
-//  sistema de ficheros es atómico: o está el blob completo o no está, nunca
-//  medio blob con el nombre de su hash —que es la única forma de que la
-//  comprobación de integridad mienta a favor—.
+//  Write it all to a temporary file, then rename it over the destination. A
+//  `rename` within the same filesystem is atomic: either the complete blob is
+//  there or it is not, never half a blob named with its hash —the only way an
+//  integrity check could give a false positive.
 fn escribir_atomico<F>(destino: &Path, escribir: F) -> io::Result<()>
 where
     F: FnOnce(&mut std::fs::File) -> io::Result<()>,
@@ -92,17 +109,17 @@ where
             let _ = std::fs::remove_file(&temporal);
             return r;
         }
-        //  Al disco antes de renombrar. Sin esto, un corte justo después deja el
-        //  nombre puesto sobre un fichero cuyo contenido todavía estaba en la
-        //  caché del sistema.
+        //  Flush to disk before renaming. Without this, an interruption right
+        //  afterward could leave the name pointing to a file whose contents
+        //  were still in the system cache.
         f.sync_all()?;
     }
     std::fs::rename(&temporal, destino)?;
     Ok(())
 }
 
-//  Lo que se quedó a medias de un arranque anterior. Se barre al empezar, que
-//  es cuando se sabe que nadie está escribiendo.
+//  What was left incomplete by a previous startup. Sweep it at startup, when
+//  we know nobody is writing.
 pub fn limpiar_temporales() -> io::Result<u64> {
     let d = crate::paths::tmp();
     if !d.exists() {
@@ -118,7 +135,7 @@ pub fn limpiar_temporales() -> io::Result<u64> {
     Ok(n)
 }
 
-//  Todos los blobs que hay en disco. Para contar los que ya no tiene dueño.
+//  Every blob on disk. Used to count those that no longer have an owner.
 pub fn todos() -> io::Result<Vec<(String, PathBuf, u64)>> {
     let mut fuera = Vec::new();
     let raiz = crate::paths::blobs();

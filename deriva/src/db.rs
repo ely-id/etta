@@ -1,20 +1,19 @@
-//  El esquema y sus migraciones.
+//  The schema and its migrations.
 //
-//  El esquema es el del plan, letra por letra. Lo que añade este fichero es
-//  cómo se llega a él y cómo se sigue llegando cuando cambie: `user_version`,
-//  que es el contador que SQLite ya trae y que no hay que inventarse una tabla
-//  para llevar.
+//  The schema follows the plan, word for word. This file adds how to get to it
+//  and how to keep getting there as it changes: `user_version`, the counter
+//  SQLite already provides, so there is no need to invent a table to track it.
 //
-//  Una migración es una función que solo sube. No hay bajada: deshacer un
-//  cambio de esquema sobre datos reales es una operación que se prueba una vez
-//  y se ejecuta nunca, y tenerla escrita da la falsa impresión de que hay red.
-//  Para volver atrás está la copia de seguridad, que sí se prueba.
+//  A migration is a function that only moves forward. There is no downgrade:
+//  reversing a schema change on real data is an operation that gets tested
+//  once and never run, and having one written down gives the false impression
+//  that it is safe. Backups are the tested way to go back.
 //
-//  El índice de búsqueda NO se mantiene con disparadores. Las etiquetas viven
-//  en otra tabla, así que un disparador sobre `captures` no las vería y harían
-//  falta tres disparadores más sobre `capture_tags` que reconstruyeran la misma
-//  fila. Se hace en `reindexar`, en un sitio, y se llama después de cualquier
-//  cambio. Hay una prueba de que cambiar una etiqueta se busca.
+//  The search index is NOT maintained with triggers. Tags live in another
+//  table, so a trigger on `captures` would not see them, and three more
+//  triggers on `capture_tags` would be needed to rebuild the same row. This is
+//  handled in one place, `reindexar`, which is called after every change. A
+//  test verifies that changing a tag affects search.
 
 use rusqlite::{Connection, Result};
 
@@ -36,17 +35,17 @@ pub fn abrir_en(path: &std::path::Path) -> Result<Connection> {
 }
 
 fn preparar_conexion(db: &Connection) -> Result<()> {
-    //  WAL para que leer no bloquee escribir: la página busca mientras el
-    //  arrastre de al lado guarda, y con el diario clásico una de las dos
-    //  espera. `synchronous=NORMAL` es lo que recomienda SQLite junto a WAL:
-    //  un corte de corriente puede perder la última transacción, pero no
-    //  corrompe la base, y aquí lo que se pierde es una captura que se puede
-    //  volver a arrastrar.
+    //  WAL lets reads avoid blocking writes: the page can search while a
+    //  nearby drag saves, whereas with the classic journal one has to wait.
+    //  SQLite recommends `synchronous=NORMAL` with WAL: a power outage may
+    //  lose the last transaction but will not corrupt the database, and
+    //  what could be lost here is a capture that can be dragged in again.
     db.pragma_update(None, "journal_mode", "WAL")?;
     db.pragma_update(None, "synchronous", "NORMAL")?;
     db.pragma_update(None, "foreign_keys", true)?;
-    //  Cinco segundos antes de rendirse con «database is locked». El worker es
-    //  uno, pero los comandos de diagnóstico abren la misma base desde fuera.
+    //  Wait five seconds before giving up with “database is locked.” There
+    //  is one worker, but diagnostic commands open the same database from
+    //  outside it.
     db.busy_timeout(std::time::Duration::from_secs(5))?;
     Ok(())
 }
@@ -57,20 +56,22 @@ fn migrar(db: &Connection) -> Result<()> {
         return Ok(());
     }
 
-    //  Copia ANTES de migrar, y solo si había algo que copiar.
+    //  Copy BEFORE migrating, and only if there is something to copy.
     //
-    //  Es la regla del plan —«escrituras atómicas y copias antes de migrar»— y
-    //  es la que convierte una migración en algo reversible. Una migración que
-    //  sale mal sin copia deja una biblioteca de años en un estado que nadie
-    //  sabe deshacer; con copia, deshacerla es mover un fichero.
+    //  This is the plan's rule —“atomic writes and backups before
+    //  migrations”— and what makes a migration reversible. A failed
+    //  migration without a backup leaves years of library data in a state
+    //  nobody knows how to undo; with a backup, undoing it means moving a
+    //  file.
     //
-    //  En una base recién creada no hay nada que salvar, y guardar una copia de
-    //  un fichero vacío solo confunde a quien mire la carpeta de copias
-    //  buscando su biblioteca.
+    //  A newly created database has nothing to save, and backing up an
+    //  empty file would only confuse someone looking in the backup directory
+    //  for their library.
     //
-    //  La pregunta es «¿hay algo dentro?», no «¿qué versión dice ser?»: una
-    //  base de antes de que existiera `user_version` diría 0 teniendo dentro
-    //  años de cosas, y esa es justo la que más falta hace copiar.
+    //  The question is “is there anything inside?”, not “what version does
+    //  it claim to be?” A database from before `user_version` existed would
+    //  report 0 despite containing years of data, and that is exactly the
+    //  one most in need of a backup.
     let hay_algo: i64 = db
         .query_row(
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'",
@@ -80,9 +81,12 @@ fn migrar(db: &Connection) -> Result<()> {
         .unwrap_or(0);
     if hay_algo > 0 {
         if let Err(e) = copia_antes_de_migrar(db, v) {
-            //  Si no se puede copiar, NO se migra. Preferir migrar sin red
-            //  sería exactamente al revés de para qué existe la copia.
-            eprintln!("deriva-worker: no se pudo copiar antes de migrar: {}", e);
+            //  If it cannot be copied, do NOT migrate. Migrating without a
+            //  backup would defeat the whole purpose of having one.
+            eprintln!(
+                "deriva-worker: could not create a pre-migration backup: {}",
+                e
+            );
             return Err(e);
         }
     }
@@ -90,40 +94,43 @@ fn migrar(db: &Connection) -> Result<()> {
     if v < 1 {
         db.execute_batch(ESQUEMA_1)?;
     }
-    //  A la 2: de qué sitio viene.
+    //  Migration 2: where the link came from.
     //
-    //  Va con `v >= 1` y no solo con `v < 2` porque `ESQUEMA_1` ya la trae: una
-    //  base recién creada pasa por el bloque de arriba y llega aquí con la
-    //  columna puesta, y `ADD COLUMN` sobre una que ya está es un error. Lo que
-    //  se migra es lo que se creó ANTES de que existiera.
+    //  Use `v >= 1`, not just `v < 2`, because `ESQUEMA_1` already includes
+    //  it: a newly created database passes through the block above and
+    //  arrives here with the column in place, and `ADD COLUMN` on an
+    //  existing column is an error. This migrates databases created before
+    //  the column existed.
     //
-    //  Sin esto, una biblioteca de ayer se abre sin la columna y todo lo que
-    //  lee una captura falla con «no such column: source». O sea: la biblioteca
-    //  entera vacía, y por una columna que se añadió a mano al esquema.
+    //  Without this, yesterday's library opens without the column and every
+    //  capture read fails with “no such column: source.” In other words, the
+    //  entire library appears empty because a column was added manually to
+    //  the schema.
     if v >= 1 && v < 2 {
         db.execute_batch(A_LA_2)?;
     }
-    //  A la 3: el resumen de la IA, que va en su propia columna Y en el
-    //  índice.
+    //  Migration 3: the AI summary, stored in its own column AND in the
+    //  index.
     //
-    //  No en `note` —esa es tuya y no la escribe nadie más— ni en `excerpt`,
-    //  que es el principio del texto tal cual y sirve para saber qué había de
-    //  verdad. Un resumen es otra cosa: lo ha escrito un modelo, puede
-    //  equivocarse, y hay que poder distinguirlo de lo que dice el original.
-    //  A la 4: cuándo se miró.
+    //  Not in `note` —that belongs to you and nobody else writes it—or
+    //  `excerpt`, which is the original beginning of the text and shows
+    //  what was really there. A summary is different: a model wrote it, it
+    //  can be wrong, and it must be distinguishable from the original.
+    //  Migration 4: when it was processed.
     //
-    //  Sin esto, lo que no se puede resumir se pide otra vez cada veinte
-    //  segundos, para siempre y pagando. Pasó de verdad: una página de Reddit
-    //  que no da texto a quien no ejecuta JavaScript se quedó de pendiente
-    //  eterna, y el modelo hacía bien en callarse cada vez.
+    //  Without this, anything that cannot be summarized is requested again
+    //  every twenty seconds, forever and at a cost. This actually happened:
+    //  a Reddit page that returns no text unless JavaScript runs stayed
+    //  pending forever, and the model was right to say nothing each time.
     //
-    //  Se apunta el intento, no el resultado. «No se pudo decir nada» es una
-    //  respuesta y hay que recordar que ya se preguntó.
-    //  A la 5: los vectores del parecido por significado.
+    //  Record the attempt, not the result. “Nothing could be said” is a
+    //  response, and we must remember that we already asked.
+    //  Migration 5: vectors for semantic similarity.
     //
-    //  En su propia tabla y no en una columna de `captures` porque son otra
-    //  cosa: se pueden borrar enteros y rehacerlos con otro modelo sin tocar ni
-    //  una captura, y eso va a pasar el día que haya un modelo mejor.
+    //  They have their own table, rather than a column in `captures`,
+    //  because they are a separate concern: all of them can be deleted and
+    //  rebuilt with another model without touching any capture, which will
+    //  happen when a better model becomes available.
     if v >= 1 && v < 5 {
         db.execute_batch(A_LA_5)?;
     }
@@ -131,24 +138,24 @@ fn migrar(db: &Connection) -> Result<()> {
         db.execute_batch(A_LA_4)?;
     }
     if v >= 1 && v < 3 {
-        //  El índice se rehace entero, y no hay otra manera: a una tabla FTS5
-        //  no se le añade una columna. Se tira y se vuelve a llenar, que en una
-        //  biblioteca de miles de filas son unas décimas y pasa una sola vez.
+        //  Rebuild the entire index; there is no other way to add a column
+        //  to an FTS5 table. Drop it and fill it again. For a library with
+        //  thousands of rows this takes a fraction of a second and happens
+        //  only once.
         //
-        //  Y hay que rehacerlo: un resumen que no está en el índice es un
-        //  resumen que no encuentra nadie, ni tú ni la IA, y entonces no sirve
-        //  para lo único para lo que se escribió.
-        //  Se rellena en la 6, que vuelve a cambiarle las columnas: llenarlo
-        //  aquí con el `reindexar` de hoy escribiría una columna que esta
-        //  tabla todavía no tiene.
+        //  It must be rebuilt: a summary that is not in the index cannot be
+        //  found by anyone, you or the AI, and then it is useless for the
+        //  only purpose it was written for.
+        //  Populate it in migration 6, which changes the columns again:
+        //  using today's `reindexar` here would write a column this table
+        //  does not have yet.
         db.execute_batch(A_LA_3)?;
     }
-    //  A la 6: de qué sitio es cada enlace, en el índice.
+    //  Migration 6: the source of each link in the index.
     //
-    //  «el vídeo de youtube» no encontraba ningún vídeo de YouTube: la
-    //  dirección estaba guardada pero no se buscaba en ella, y el título de un
-    //  vídeo casi nunca dice dónde está. Otra columna, así que otra vez tirar
-    //  la tabla y volver a llenarla.
+    //  “the youtube video” could not find any YouTube videos: the URL was
+    //  saved but not searched, and a video's title rarely says where it is.
+    //  Another column means dropping and refilling the table again.
     if v >= 1 && v < 6 {
         db.execute_batch(A_LA_6)?;
         crate::mantenimiento::reparar_indice(db)?;
@@ -164,9 +171,9 @@ fn copia_antes_de_migrar(db: &Connection, desde: i64) -> Result<()> {
         VERSION,
         crate::util::ahora_ms()
     ));
-    //  `VACUUM INTO` y no copiar el fichero: con WAL, parte de lo último
-    //  escrito vive en el `-wal` y copiar a mano da una copia rota que además
-    //  parece buena.
+    //  Use `VACUUM INTO`, not a file copy: with WAL, some of the latest
+    //  writes live in `-wal`, and copying by hand produces a broken backup
+    //  that looks valid.
     db.execute("VACUUM INTO ?1", [destino.to_string_lossy().to_string()])?;
     eprintln!(
         "deriva-worker: migrando de v{} a v{}; copia en {}",
@@ -177,8 +184,8 @@ fn copia_antes_de_migrar(db: &Connection, desde: i64) -> Result<()> {
     Ok(())
 }
 
-//  El esquema del plan, más lo que hace falta para que funcione: los índices
-//  por los que se pregunta de verdad y la tabla de búsqueda.
+//  The schema from the plan, plus what is needed to make it work: the indexes
+//  actually queried and the search table.
 const A_LA_2: &str = r#"
 ALTER TABLE captures ADD COLUMN source TEXT NOT NULL DEFAULT '';
 ALTER TABLE captures DROP COLUMN preview_path;
@@ -233,25 +240,26 @@ CREATE TABLE captures (
     blob_bytes INTEGER,
     blob_mime TEXT,
     blob_name TEXT,
-    --  La miniatura, por su hash y en el mismo almacén que todo lo demás.
+    --  The preview, identified by its hash and kept in the same store as
     --
-    --  Antes era una ruta —`preview_path`—, y una ruta guardada en la base es
-    --  un dato que caduca: la carpeta se mueve con `ETTA_DERIVA_DIR`, y la
-    --  base se lleva a otro equipo en una copia. El hash no se mueve; la ruta
-    --  se calcula al leer, igual que la del fichero original.
+    --  everything else. It used to be a path (`preview_path`), but a path
+    --  stored in the database becomes stale when the directory moves via
+    --  `ETTA_DERIVA_DIR` or the database is copied to another machine. The
+    --  hash remains valid; the path is calculated when reading, as it is
+    --  for the original file.
     preview_hash TEXT,
     status TEXT NOT NULL DEFAULT 'saved',
-    --  De qué sitio viene: youtube, reddit, github… Lo saca el adaptador de la
-    --  propia URL, sin pedirle nada a nadie, y la interfaz lo usa para
-    --  enseñarlo como lo que es en vez de como «un enlace».
+    --  The source site (YouTube, Reddit, GitHub, and others). The adapter
+    --  derives it from the URL without querying anyone, and the interface uses
+    --  it to show the capture as what it is rather than just "a link."
     source TEXT NOT NULL DEFAULT '',
-    --  Lo que la IA entendió de esto, si se lo has pedido. En su propia
-    --  columna: `note` es tuya y `excerpt` es el original recortado, y un
-    --  resumen escrito por un modelo no es ninguna de las dos cosas.
+    --  What the AI understood, if asked. Kept in its own column: `note` is
+    --  yours and `excerpt` is the original text, while a model-written
+    --  summary is neither of those.
     summary TEXT NOT NULL DEFAULT '',
-    --  Cuándo se le pidió a la IA que lo mirara, salga lo que salga. No es lo
-    --  mismo que tener resumen: hay cosas de las que no se puede decir nada, y
-    --  sin apuntar el intento se vuelven a preguntar para siempre.
+    --  When the AI was asked to process it, regardless of the result. This
+    --  differs from having a summary: some items cannot be summarized, and
+    --  without recording the attempt they would be requested forever.
     summary_at INTEGER,
     captured_at INTEGER NOT NULL,
     last_opened_at INTEGER,
@@ -277,12 +285,13 @@ CREATE TABLE tags (
     name TEXT NOT NULL UNIQUE
 );
 
---  El parecido por significado.
+--  Semantic similarity.
 --
---  Tabla aparte y no una columna de `captures`: son de un modelo concreto, y el
---  día que haya uno mejor esto se vacía y se rehace sin tocar ni una captura.
---  `dim` va con cada uno porque otro modelo da otra medida, y comparar vectores
---  de medidas distintas no da un error: da un parecido inventado.
+--  A separate table instead of a `captures` column: vectors belong to a
+--  specific model and can be rebuilt with a better model without touching any
+--  captures. Each vector stores its `dim` because other models have different
+--  dimensions; comparing vectors of different dimensions does not fail, it
+--  produces a fabricated similarity.
 CREATE TABLE capture_vectors (
     capture_id TEXT PRIMARY KEY REFERENCES captures(id) ON DELETE CASCADE,
     dim INTEGER NOT NULL,
@@ -319,26 +328,26 @@ CREATE TABLE revisit_events (
     outcome TEXT
 );
 
---  Por lo que se pregunta de verdad. El duplicado se busca por estos tres, y
---  sin índice cada arrastre leería la biblioteca entera para contestar.
+--  The fields used for duplicate detection. Without an index, every drop would
+--  scan the entire library.
 CREATE INDEX captures_canonical ON captures(canonical_url) WHERE canonical_url IS NOT NULL;
 CREATE INDEX captures_content_hash ON captures(content_hash) WHERE content_hash IS NOT NULL;
 CREATE INDEX captures_blob_hash ON captures(blob_hash) WHERE blob_hash IS NOT NULL;
---  Y la lista, que siempre va por fecha y sin lo tirado.
+--  The list is always ordered by date and excludes trashed captures.
 CREATE INDEX captures_recientes ON captures(trashed_at, captured_at DESC);
 
---  La búsqueda. Guarda su propia copia del texto en vez de apuntar a
---  `captures` con `content=`: las etiquetas no están en esa tabla, así que una
---  tabla de contenido externo no las podría indexar. Ocupa más y es correcto;
---  el truco de ahorrar espacio dejaría fuera justo lo que el plan pide indexar.
---  Los tres espacios que nombra el plan. Se siembran porque la navegación de
---  la lámina los enseña por su nombre, y una biblioteca recién hecha con la
---  barra lateral vacía no se parece a lo que se diseñó. Se pueden borrar; lo
---  que no se puede es empezar sin ninguno y que la página tenga sentido.
+--  Search keeps its own copy of the text instead of indexing `captures` with
+--  `content=`: tags are not in that table, so an external-content table could
+--  not index them. It uses more space, but saving space would leave out exactly
+--  what the plan requires us to index.
+--  The three spaces named in the plan. They are seeded because the design's
+--  navigation shows them by name, and a new library with an empty sidebar
+--  would not match the design. They can be deleted, but the page needs at
+--  least one space to make sense.
 INSERT INTO spaces (id, name, color) VALUES
-    ('proyectos',  'Proyectos',   '#8fbfa8'),
-    ('leer-luego', 'Leer luego',  '#8aa4d6'),
-    ('inspiracion','Inspiración', '#d8a244');
+    ('proyectos',  'Projects',    '#8fbfa8'),
+    ('leer-luego', 'Read later',  '#8aa4d6'),
+    ('inspiracion','Inspiration', '#d8a244');
 
 CREATE VIRTUAL TABLE captures_fts USING fts5(
     capture_id UNINDEXED,
@@ -347,8 +356,8 @@ CREATE VIRTUAL TABLE captures_fts USING fts5(
 );
 "#;
 
-//  Vuelca al índice lo que ahora mismo dice la base sobre una captura. Se llama
-//  después de crearla, de editarla y de tocarle las etiquetas.
+//  Write the database's current representation of a capture to the index. Call
+//  after creating it, editing it, or changing its tags.
 pub fn reindexar(db: &Connection, id: &str) -> Result<()> {
     db.execute("DELETE FROM captures_fts WHERE capture_id = ?1", [id])?;
     indexar(db, id)
@@ -360,7 +369,10 @@ pub fn reindexar(db: &Connection, id: &str) -> Result<()> {
 //  and a drop arriving meanwhile failed with «database is locked».
 pub fn desindexar_varias(db: &Connection, ids: &[String]) -> Result<()> {
     let lista = serde_json::to_string(ids).unwrap_or_else(|_| "[]".into());
-    db.execute("DELETE FROM captures_fts WHERE capture_id IN (SELECT value FROM json_each(?1))", [lista])?;
+    db.execute(
+        "DELETE FROM captures_fts WHERE capture_id IN (SELECT value FROM json_each(?1))",
+        [lista],
+    )?;
     Ok(())
 }
 
@@ -383,8 +395,8 @@ pub fn indexar(db: &Connection, id: &str) -> Result<()> {
             ))
         },
     );
-    //  Lo tirado a la basura no se indexa. Es lo que hace que buscar no lo
-    //  encuentre sin tener que filtrar en cada consulta.
+    //  Trashed items are not indexed. This keeps them out of search without
+    //  requiring a filter on every query.
     let (title, author, excerpt, summary, note, texto, direccion) = match fila {
         Ok(f) => f,
         Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(()),
@@ -405,8 +417,17 @@ pub fn indexar(db: &Connection, id: &str) -> Result<()> {
         "INSERT INTO captures_fts
          (capture_id, title, author, excerpt, summary, note, content_text, tags, site)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-        rusqlite::params![id, title, author, excerpt, summary, note, texto, etiquetas,
-                          crate::util::sitio_buscable(&direccion)],
+        rusqlite::params![
+            id,
+            title,
+            author,
+            excerpt,
+            summary,
+            note,
+            texto,
+            etiquetas,
+            crate::util::sitio_buscable(&direccion)
+        ],
     )?;
     Ok(())
 }

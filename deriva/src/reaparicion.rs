@@ -1,41 +1,41 @@
-//  Qué te devuelve, y por qué esa y no otra.
+//  What resurfaces for you, and why that one.
 //
-//  El motor es LOCAL Y DETERMINISTA, que es lo que pide el plan y no es un
-//  detalle de implementación: significa que la razón por la que algo ha vuelto
-//  se puede explicar con una frase, y que la misma biblioteca en el mismo
-//  momento devuelve lo mismo. Un modelo eligiendo qué recordarte sería más
-//  listo y completamente inauditable.
+//  The engine is LOCAL AND DETERMINISTIC, as required by the plan; this is not
+//  an implementation detail. It means the reason something resurfaced can be
+//  explained in one sentence, and the same library at the same moment returns
+//  the same result. A model choosing what to remind you about would be smarter
+//  and completely unauditable.
 //
-//  Y no infiere nada de ti. Se apunta lo que pasó con cada aparición —abierta,
-//  aplazada, descartada— y sirve para NO INSISTIR. El plan lo dice con todas
-//  las letras: «no se usa para inferir el estado emocional del usuario».
+//  It also infers nothing about you. It records what happened with each
+//  appearance —opened, snoozed, dismissed—and uses that to STOP INSISTING. The
+//  plan explicitly says: “it is not used to infer the user's emotional state.”
 
 use rusqlite::{params, Connection};
 use serde::Serialize;
 
-//  Cuánto hace que la abriste para que deje de contar como reciente.
+//  How long since you opened it for it to stop counting as recent.
 const RECIENTE_DIAS: i64 = 7;
-//  Cuántas veces se le puede enseñar algo sin que haga nada antes de callarse.
+//  How many times something can be shown without an action before it goes quiet.
 const INSISTIR_MAX: i64 = 3;
-//  Qué es «favorito olvidado» y «lectura pendiente corta».
+//  What counts as a “forgotten favorite” and a “short pending read.”
 const OLVIDADO_DIAS: i64 = 30;
 const LECTURA_CORTA: i64 = 2000; //  caracteres
 
 #[derive(Debug, Serialize)]
 pub struct Devuelta {
     pub item: crate::search::Fila,
-    //  Por qué esta. Es una enumeración cerrada y sale tal cual a la interfaz:
-    //  si no se puede nombrar la razón, la captura no es elegible.
+    //  Why this one. This is a closed enumeration exposed directly to the
+    //  interface: if the reason cannot be named, the capture is not eligible.
     pub reason: String,
-    //  Y en palabras, para poder enseñarlo sin traducir enumeraciones en QML.
+    //  Also expose it as text, so QML does not have to translate enum values.
     pub why: String,
 }
 
-//  La regla de elegibilidad del plan, entera y en un sitio.
+//  The plan's complete eligibility rule, in one place.
 //
-//  Va como texto SQL y no como filtro en Rust a propósito: son cinco
-//  condiciones sobre la misma tabla, y hacerlas en memoria significaría leer la
-//  biblioteca entera para descartar el 99 %.
+//  Deliberately express it as SQL rather than a Rust filter: there are five
+//  conditions on the same table, and doing this in memory would mean reading
+//  the entire library to discard 99%.
 fn elegibles() -> &'static str {
     "c.trashed_at IS NULL
      AND (c.snoozed_until IS NULL OR c.snoozed_until <= :ahora)
@@ -48,14 +48,14 @@ fn elegibles() -> &'static str {
          WHERE s.color = 'silenciado')"
 }
 
-//  Y la prioridad, también del plan:
+//  The priority order, also from the plan:
 //
-//      fecha explícita > proyecto o aplicación asociada > favorito olvidado
-//        > lectura pendiente corta > elemento antiguo al azar con diversidad
+//      explicit date > associated project or application > ignored favorite
+//        > short pending read > random old item with diversity
 //
-//  Se resuelve en orden y se para en la primera que dé algo. Un `ORDER BY` con
-//  todas mezcladas daría el mismo resultado y no se podría explicar: así, la
-//  razón que se enseña es literalmente la consulta que acertó.
+//  Evaluate them in order and stop at the first one that returns a result. An
+//  `ORDER BY` mixing them all might return the same item but would not explain
+//  it; this way, the displayed reason is literally the query that succeeded.
 pub fn siguiente(
     db: &Connection,
     espacio_de_la_app: Option<&str>,
@@ -64,7 +64,8 @@ pub fn siguiente(
     let hace_poco = ahora - RECIENTE_DIAS * 86_400_000;
     let olvidado = ahora - OLVIDADO_DIAS * 86_400_000;
 
-    //  1. Fecha explícita: la aplazaste para hoy. Es lo único que pediste tú.
+    //  1. Explicit date: you snoozed it until today. This is the only one you
+    //     asked for.
     if let Some(id) = uno(
         db,
         &format!(
@@ -73,13 +74,17 @@ pub fn siguiente(
               ORDER BY c.snoozed_until DESC LIMIT 1",
             elegibles()
         ),
-        &[(":ahora", &ahora), (":hace_poco", &hace_poco), (":insistir", &INSISTIR_MAX)],
+        &[
+            (":ahora", &ahora),
+            (":hace_poco", &hace_poco),
+            (":insistir", &INSISTIR_MAX),
+        ],
     )? {
-        return armar(db, &id, "scheduled", "la aplazaste para hoy");
+        return armar(db, &id, "scheduled", "you snoozed this until today");
     }
 
-    //  2. El espacio asociado a lo que tienes delante. La asociación es opt-in y
-    //  llega desde fuera: aquí no se mira ni una ventana.
+    //  2. The folder associated with what is in front of you. Association is
+    //     opt-in and comes from outside; no windows are inspected here.
     if let Some(espacio) = espacio_de_la_app {
         if !espacio.is_empty() {
             if let Some(id) = uno(
@@ -98,12 +103,12 @@ pub fn siguiente(
                     (":espacio", &espacio),
                 ],
             )? {
-                return armar(db, &id, "app_context", "va con lo que tienes abierto");
+                return armar(db, &id, "app_context", "related to what you have open");
             }
         }
     }
 
-    //  3. Favorito olvidado: lo marcaste y llevas un mes sin mirarlo.
+    //  3. Forgotten favorite: you marked it and have not looked at it for a month.
     if let Some(id) = uno(
         db,
         &format!(
@@ -120,12 +125,17 @@ pub fn siguiente(
             (":olvidado", &olvidado),
         ],
     )? {
-        return armar(db, &id, "forgotten_favorite", "lo marcaste y lleva un mes ahí");
+        return armar(
+            db,
+            &id,
+            "forgotten_favorite",
+            "you marked this and have not opened it in a month",
+        );
     }
 
-    //  4. Lectura pendiente corta. Corta a propósito: devolverte un ensayo de
-    //  diez mil palabras mientras trabajas no es una ayuda, es una interrupción
-    //  con buenas intenciones.
+    //  4. Short pending read. Deliberately short: resurfacing a ten-thousand-
+    //     word essay while you work is not help, but a well-intentioned
+    //     interruption.
     if let Some(id) = uno(
         db,
         &format!(
@@ -143,16 +153,16 @@ pub fn siguiente(
             (":corta", &LECTURA_CORTA),
         ],
     )? {
-        return armar(db, &id, "short_read", "es corto y lo dejaste para luego");
+        return armar(db, &id, "short_read", "a short read you saved for later");
     }
 
-    //  5. Algo antiguo, con diversidad.
+    //  5. Something old, with diversity.
     //
-    //  «Al azar» de verdad repetiría del mismo sitio: si tienes cuatrocientas
-    //  capturas de arquitectura y doce de cocina, el azar puro te enseña
-    //  arquitectura casi siempre. Se elige primero el espacio menos visto
-    //  últimamente y de ahí lo más viejo, que es lo que hace que la biblioteca
-    //  entera vaya rotando en vez de un rincón de ella.
+    //  Truly “random” selection would repeat the same area: if you have four
+    //  hundred architecture captures and twelve about cooking, pure random
+    //  selection would almost always show architecture. Choose the least-
+    //  recently viewed folder first, then its oldest item, so the entire
+    //  library rotates instead of just one corner.
     if let Some(id) = uno(
         db,
         &format!(
@@ -166,7 +176,11 @@ pub fn siguiente(
              LIMIT 1",
             elegibles()
         ),
-        &[(":ahora", &ahora), (":hace_poco", &hace_poco), (":insistir", &INSISTIR_MAX)],
+        &[
+            (":ahora", &ahora),
+            (":hace_poco", &hace_poco),
+            (":insistir", &INSISTIR_MAX),
+        ],
     )? {
         return armar(db, &id, "old_random", "llevaba mucho sin salir");
     }
@@ -196,8 +210,8 @@ fn armar(
     }))
 }
 
-//  Se apunta que se enseñó, SIN resultado todavía. Es lo que permite dejar de
-//  insistir con algo que enseñas y nadie toca.
+//  Record that it was shown, with NO outcome yet. This lets us stop insisting
+//  on something that is shown but never touched.
 pub fn apuntar_mostrada(db: &Connection, id: &str, razon: &str) -> rusqlite::Result<i64> {
     db.execute(
         "INSERT INTO revisit_events (capture_id, reason, shown_at) VALUES (?1, ?2, ?3)",
@@ -206,7 +220,7 @@ pub fn apuntar_mostrada(db: &Connection, id: &str, razon: &str) -> rusqlite::Res
     Ok(db.last_insert_rowid())
 }
 
-//  Y qué hiciste con ella. Cerrado: `opened`, `snoozed`, `dismissed`,
+//  What you did with it. Closed set: `opened`, `snoozed`, `dismissed`,
 //  `saved_to_project`.
 pub const RESULTADOS: &[&str] = &["opened", "snoozed", "dismissed", "saved_to_project"];
 
@@ -221,25 +235,26 @@ pub fn apuntar_resultado(db: &Connection, evento: i64, resultado: &str) -> rusql
     Ok(n > 0)
 }
 
-//  Cuántas seguidas no han servido de nada —ignoradas o descartadas—, para
-//  callarse hasta mañana. La cuenta la
-//  lleva el worker porque es quien tiene el historial; el silencio lo aplica
-//  quien enseña, que es quien sabe qué hora es para el usuario.
+//  How many consecutive appearances were ignored or dismissed, so resurfacing
+//  can go quiet until tomorrow. The worker keeps the count because it has the
+//  history; the caller applies the quiet period because it knows the user's
+//  local time.
 pub fn descartes_seguidos(db: &Connection) -> rusqlite::Result<i64> {
     let mut s = db.prepare(
-        //  Por `id` además de por la hora: dos apariciones del mismo
-        //  milisegundo se ordenaban al azar, y entonces «seguidos» dejaba de
-        //  significar nada. El `id` es un contador y siempre sube.
+        //  Sort by `id` as well as time: two appearances in the same
+        //  millisecond were ordered randomly, making “consecutive” meaningless.
+        //  The `id` is a counter and always increases.
         //
-        //  Y SIN `outcome IS NOT NULL`, que era lo que rompía el freno entero.
-        //  Filtrando por resultado solo se veían las que el usuario había
-        //  descartado A MANO, y descartar a mano es ir a la página, elegir la
-        //  tarjeta y pulsar un botón de 26 píxeles. Quien no quiere algo no
-        //  hace ese viaje: lo ignora. Así que la cuenta se quedaba en cero
-        //  para siempre —quince apariciones seguidas, ni una con resultado— y
-        //  el silencio prometido no llegó a activarse nunca.
+        //  And do NOT require `outcome IS NOT NULL`, which broke the entire
+        //  circuit breaker. Filtering by outcome only showed items the user
+        //  had manually dismissed, and manually dismissing one means opening
+        //  the page, choosing the card, and pressing a 26-pixel button. Someone
+        //  who does not want something does not make that trip; they ignore it.
+        //  So the count stayed at zero forever —fifteen consecutive
+        //  appearances, none with an outcome—and the promised quiet period
+        //  never started.
         //
-        //  Ignorar es la respuesta más común y ahora cuenta como lo que es.
+        //  Ignoring is the most common response, and now counts as what it is.
         "SELECT outcome FROM revisit_events
           WHERE shown_at >= ?1 ORDER BY shown_at DESC, id DESC LIMIT 8",
     )?;
@@ -249,9 +264,9 @@ pub fn descartes_seguidos(db: &Connection) -> rusqlite::Result<i64> {
         .collect();
     let mut n = 0;
     for o in ultimos {
-        //  Sin resultado es «se la enseñé y no hizo nada»; `dismissed` es
-        //  «ya la he visto». Las dos dicen que no hace falta insistir. Abrir
-        //  o aplazar corta la racha, porque las dos son que sí servía.
+        //  No outcome means “I showed it and nothing happened”; `dismissed`
+        //  means “I've seen it.” Both mean there is no need to insist. Opening
+        //  or snoozing breaks the streak because both mean it was useful.
         match o.as_deref() {
             None | Some("dismissed") => n += 1,
             _ => break,
@@ -260,14 +275,14 @@ pub fn descartes_seguidos(db: &Connection) -> rusqlite::Result<i64> {
     Ok(n)
 }
 
-//  Y desde cuándo cuenta «hoy». En un sitio porque lo miran dos: el tope
-//  diario y el silencio, que el plan promete «hasta el día siguiente» y sin
-//  esta línea era hasta el fin de los tiempos.
+//  When “today” starts. Keep this in one place because it is used by both the
+//  daily limit and the quiet period, which the plan promises lasts “until the
+//  next day”; without this line it would last forever.
 fn inicio_de_hoy() -> i64 {
     (crate::util::ahora_ms() / 86_400_000) * 86_400_000
 }
 
-//  Cuántas se han enseñado hoy, para el tope diario.
+//  How many have been shown today, for the daily limit.
 pub fn mostradas_hoy(db: &Connection) -> rusqlite::Result<i64> {
     db.query_row(
         "SELECT COUNT(*) FROM revisit_events WHERE shown_at >= ?1",
@@ -276,11 +291,11 @@ pub fn mostradas_hoy(db: &Connection) -> rusqlite::Result<i64> {
     )
 }
 
-//  Cuándo fue la última, para el hueco mínimo entre apariciones.
+//  When the last one was shown, for the minimum gap between appearances.
 //
-//  Lo pregunta quien enseña, que tenía el dato en una propiedad de QML y lo
-//  perdía en cada recarga. Aquí está en disco desde el principio: la tabla es
-//  la misma que lleva el historial, y no hacía falta más que devolverlo.
+//  The caller that displays them asks for this. It had the value in a QML
+//  property and lost it on every reload. It has been on disk here all along:
+//  the history table already stores it, so all we needed was to return it.
 pub fn ultima_aparicion(db: &Connection) -> rusqlite::Result<i64> {
     db.query_row(
         "SELECT COALESCE(MAX(shown_at), 0) FROM revisit_events",

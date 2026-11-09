@@ -3746,6 +3746,20 @@ run("mkdir", { "-p", ART_DIR }, function() end)
 local function url_decode(s)
     return (tostring(s):gsub("%%(%x%x)", function(h) return string.char(tonumber(h, 16)) end))
 end
+-- Only globally routable IPv4 destinations may be fetched.
+local function public_ipv4(ip)
+    local a, b, c, d = ip:match("^(%d+)%.(%d+)%.(%d+)%.(%d+)$")
+    a, b, c, d = tonumber(a), tonumber(b), tonumber(c), tonumber(d)
+    if not a or a > 255 or b > 255 or c > 255 or d > 255 then return false end
+    if a == 0 or a == 10 or a == 127 or a >= 224 then return false end
+    if a == 100 and b >= 64 and b <= 127 then return false end
+    if a == 169 and b == 254 then return false end
+    if a == 172 and b >= 16 and b <= 31 then return false end
+    if a == 192 and (b == 0 or b == 168 or (b == 88 and c == 99)) then return false end
+    if a == 198 and (b == 18 or b == 19 or (b == 51 and c == 100)) then return false end
+    if a == 203 and b == 0 and c == 113 then return false end
+    return true
+end
 sys.watch("media", function(m)
     m = m or {}
     fact["media.has"] = tostring(m.title or "") ~= ""
@@ -3754,6 +3768,10 @@ sys.watch("media", function(m)
     local art = tostring(m.art or "")
     if art == art_seen then return end
     art_seen = art
+    local function no_cover()
+        model.cover = {}
+        fact["media.art"] = false
+    end
     --  Square, cut from its centre: a video's 16:9 frame squeezed into the
     --  square looked squashed.
     local function square(from)
@@ -3769,13 +3787,60 @@ sys.watch("media", function(m)
     if art:match("^file://") then
         square(url_decode(art:sub(8)))
     elseif art:match("^https?://") then
-        local raw = ART_DIR .. "/cover-download"
-        run("curl", { "-s", "--max-time", "8", "-o", raw, art }, function(_, code)
-            if code == 0 and art == art_seen then square(raw) end
+        local scheme, authority = art:match("^(https?)://([^/%?#]+)")
+        local host, port
+        if authority then host, port = authority:match("^([%w%.%-]+):?(%d*)$") end
+        port = tonumber(port) or (scheme == "https" and 443 or 80)
+        if not host or not host:find("%.") or host:match("^[%.%-]") or host:match("[%.%-]$") then
+            no_cover()
+            return
+        end
+        if (scheme == "https" and port ~= 443) or (scheme == "http" and port ~= 80) then
+            no_cover()
+            return
+        end
+        run("getent", { "ahostsv4", host }, function(out, code)
+            if art ~= art_seen then return end
+            if code ~= 0 then
+                no_cover()
+                return
+            end
+            local address
+            for line in tostring(out or ""):gmatch("[^\r\n]+") do
+                local ip = line:match("^(%d+%.%d+%.%d+%.%d+)%s")
+                if not ip or not public_ipv4(ip) then
+                    no_cover()
+                    return
+                end
+                address = address or ip
+            end
+            if not address then
+                no_cover()
+                return
+            end
+            local raw = ART_DIR .. "/cover-download"
+            -- Pin curl to the address we checked, so DNS rebinding cannot change the destination.
+            run("curl", {
+                "--disable",
+                "-sS",
+                "--noproxy", "*",
+                "--proto", "=" .. scheme,
+                "--max-time", "8",
+                "--resolve", host .. ":" .. port .. ":" .. address,
+                "-o", raw,
+                "--",
+                art,
+            }, function(_, curl_code)
+                if art ~= art_seen then return end
+                if curl_code == 0 then
+                    square(raw)
+                else
+                    no_cover()
+                end
+            end)
         end)
     else
-        model.cover = {}
-        fact["media.art"] = false
+        no_cover()
     end
 end)
 end)()

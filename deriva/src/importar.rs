@@ -1,15 +1,15 @@
-//  Traerse lo que ya tenías.
+//  Import what you already have.
 //
-//  Tres puertas, y las tres existen por la misma razón: una biblioteca que solo
-//  se llena arrastrando cosas de una en una tarda un año en ser útil, y hasta
-//  entonces no hay motivo para abrirla.
+//  Three entry points, all for the same reason: a library filled only by
+//  dragging things in one at a time takes a year to become useful, and until
+//  then there is no reason to open it.
 //
-//  Y las tres son EXPLÍCITAS. Ninguna se ejecuta sola, ninguna vigila una
-//  carpeta y ninguna sale a la red. Importar es una operación que se pide, como
-//  exportar; el plan las separa de borrar por lo mismo.
+//  All three are EXPLICIT. None runs on its own, watches a directory, or
+//  accesses the network. Import is an operation that must be requested, like
+//  export; for the same reason, the plan separates both from deletion.
 //
-//  Lo que NO hace ninguna: adivinar. Un fichero que no se sabe leer se cuenta y
-//  se dice; no se guarda a medias con la esperanza de que sirva.
+//  What none of them do is guess. A file that cannot be read is counted and
+//  reported; it is not saved incompletely in the hope that it will be useful.
 
 use rusqlite::Connection;
 use serde::Serialize;
@@ -19,8 +19,9 @@ pub struct Resumen {
     pub saved: usize,
     pub duplicates: usize,
     pub skipped: usize,
-    //  Los primeros motivos por los que algo no entró. No todos: un informe con
-    //  cuatro mil líneas no lo lee nadie, y las cuatro mil dicen lo mismo.
+    //  The first reasons an item was not imported. Not every reason: nobody
+    //  reads a report with four thousand lines, and all four thousand say the
+    //  same thing.
     pub reasons: Vec<String>,
 }
 
@@ -42,12 +43,12 @@ impl Resumen {
     }
 }
 
-//  ── una carpeta de ficheros ──────────────────────────────────────
+//  ── a directory of files ─────────────────────────────────────────
 //
-//  Recursiva, con tope de profundidad y de cuántos. Los dos topes son de
-//  seguridad y no de gusto: una carpeta con un enlace a `/` y sin tope de
-//  profundidad es un bucle infinito, y «importar mi disco entero» no es una
-//  operación que nadie quiera de verdad.
+//  Recursive, with limits on depth and item count. Both limits are for safety,
+//  not preference: a directory with a link to `/` and no depth limit is an
+//  infinite loop, and “import my entire disk” is not an operation anyone
+//  actually wants.
 pub fn carpeta(db: &Connection, dir: &std::path::Path, tope: usize) -> Resumen {
     let mut r = Resumen::default();
     let mut pendientes = vec![(dir.to_path_buf(), 0usize)];
@@ -66,17 +67,19 @@ pub fn carpeta(db: &Connection, dir: &std::path::Path, tope: usize) -> Resumen {
                 break;
             }
             let p = e.path();
-            //  Los ocultos no. Quien importa una carpeta quiere sus cosas, no
-            //  su `.git` ni su `.cache`.
+            //  Skip hidden items. Someone importing a directory wants their
+            //  files, not its `.git` or `.cache`.
             if p.file_name()
                 .map(|n| n.to_string_lossy().starts_with('.'))
                 .unwrap_or(false)
             {
                 continue;
             }
-            //  `symlink_metadata` y no `metadata`: un enlace a un directorio de
-            //  más arriba es como se recorre un disco entero sin querer.
-            let Ok(meta) = std::fs::symlink_metadata(&p) else { continue };
+            //  Use `symlink_metadata`, not `metadata`: a link to a parent
+            //  directory is how to accidentally traverse an entire disk.
+            let Ok(meta) = std::fs::symlink_metadata(&p) else {
+                continue;
+            };
             if meta.is_symlink() {
                 continue;
             }
@@ -98,9 +101,9 @@ pub fn carpeta(db: &Connection, dir: &std::path::Path, tope: usize) -> Resumen {
     r
 }
 
-//  De qué es, por su extensión. La misma pista que usa el enrutador de
-//  arrastres, y por la misma razón: es para elegir el icono, no una verdad
-//  sobre el contenido.
+//  Determine the type from its extension. This is the same clue used by the
+//  drag router, for the same reason: it selects an icon, not a truth about the
+//  content.
 fn tipo_de(p: &std::path::Path) -> String {
     let ext = p
         .extension()
@@ -111,23 +114,23 @@ fn tipo_de(p: &std::path::Path) -> String {
         "mp4" | "webm" | "mkv" | "mov" => "video",
         "mp3" | "flac" | "opus" | "ogg" | "wav" => "audio",
         "pdf" | "epub" | "odt" | "docx" | "rtf" | "md" | "txt" => "document",
-        "js" | "mjs" | "ts" | "py" | "rs" | "go" | "c" | "h" | "cpp" | "qml" | "sh"
-        | "json" | "yaml" | "yml" | "toml" | "html" | "css" => "code",
+        "js" | "mjs" | "ts" | "py" | "rs" | "go" | "c" | "h" | "cpp" | "qml" | "sh" | "json"
+        | "yaml" | "yml" | "toml" | "html" | "css" => "code",
         _ => "file",
     }
     .to_string()
 }
 
-//  ── marcadores de navegador ──────────────────────────────────────
+//  ── browser bookmarks ────────────────────────────────────────────
 //
-//  El formato Netscape, que es el que exportan TODOS: Chrome, Firefox, Safari,
-//  Zen. Es HTML de 1994 y se lee con dos expresiones tontas, y esa es
-//  exactamente la razón de elegirlo en vez de leer la base de datos de cada
-//  navegador: un fichero que exportas tú no depende de que nadie mantenga un
-//  esquema, y no hace falta cerrar el navegador para leerlo.
+//  The Netscape format, exported by EVERY browser: Chrome, Firefox, Safari, and
+//  Zen. It is HTML from 1994 and can be read with two simple expressions. That
+//  is exactly why we chose it instead of reading each browser's database: a
+//  file you export does not depend on anyone maintaining a schema, and the
+//  browser does not need to be closed to read it.
 //
-//  No se interpreta como HTML. Se buscan las etiquetas `<A HREF=...>` y se saca
-//  su texto; el resto del fichero no se ejecuta ni se representa.
+//  Do not parse it as HTML. Find the `<A HREF=...>` tags and extract their text;
+//  do not execute or render the rest of the file.
 pub fn marcadores(db: &Connection, fichero: &std::path::Path, espacio: Option<&str>) -> Resumen {
     let mut r = Resumen::default();
     let Ok(texto) = std::fs::read_to_string(fichero) else {
@@ -155,26 +158,30 @@ pub fn marcadores(db: &Connection, fichero: &std::path::Path, espacio: Option<&s
     r
 }
 
-//  A mano y sin caja de expresiones regulares: son dos búsquedas de texto y una
-//  caja entera para esto es una dependencia que hay que mantener para siempre.
+//  Do it by hand, without a regular-expression crate: this needs two text
+//  searches, and a whole crate for that is a dependency to maintain forever.
 fn enlaces(html: &str) -> Vec<(String, String)> {
     let mut fuera = Vec::new();
     let bajo = html.to_lowercase();
     let mut i = 0usize;
     while let Some(rel) = bajo[i..].find("<a ") {
         let inicio = i + rel;
-        let Some(fin_etiqueta) = bajo[inicio..].find('>') else { break };
+        let Some(fin_etiqueta) = bajo[inicio..].find('>') else {
+            break;
+        };
         let etiqueta = &html[inicio..inicio + fin_etiqueta];
         i = inicio + fin_etiqueta + 1;
 
-        let Some(url) = atributo(etiqueta, "href") else { continue };
-        //  Solo web. Un marcador a `javascript:` es un «bookmarklet» —código
-        //  que el navegador ejecuta— y no tiene nada que hacer en una
-        //  biblioteca de cosas leídas.
+        let Some(url) = atributo(etiqueta, "href") else {
+            continue;
+        };
+        //  Web only. A `javascript:` bookmark is a “bookmarklet” —code
+        //  executed by the browser— and has no place in a library of things
+        //  to read.
         if !url.starts_with("http://") && !url.starts_with("https://") {
             continue;
         }
-        //  El texto hasta el cierre.
+        //  The text up to the closing tag.
         let titulo = match bajo[i..].find("</a>") {
             Some(n) => sin_etiquetas(&html[i..i + n]),
             None => String::new(),
@@ -196,8 +203,8 @@ fn atributo(etiqueta: &str, nombre: &str) -> Option<String> {
     resto.find(comilla).map(|n| resto[..n].to_string())
 }
 
-//  El texto de dentro, sin marcas y con las cuatro entidades que salen de
-//  verdad en un fichero de marcadores.
+//  The inner text, without markup, decoding the four entities that actually
+//  appear in a bookmark file.
 fn sin_etiquetas(s: &str) -> String {
     let mut fuera = String::new();
     let mut dentro = false;
@@ -221,12 +228,12 @@ fn sin_etiquetas(s: &str) -> String {
         .collect()
 }
 
-//  ── una exportación de Deriva ────────────────────────────────────
+//  ── a Deriva export ──────────────────────────────────────────────
 //
-//  La vuelta de `export`. Es lo que convierte «puedes irte» en «puedes volver»:
-//  una exportación que no se puede reimportar es un archivo muerto con formato
-//  bonito, y hasta que no se prueba el viaje de ida y vuelta no se sabe si lo
-//  exportado estaba completo.
+//  The counterpart to `export`. It turns “you can leave” into “you can come
+//  back”: an export that cannot be reimported is a dead archive with a pretty
+//  format, and we cannot know whether it is complete until the round trip is
+//  tested.
 pub fn desde_export(db: &Connection, dir: &std::path::Path) -> Resumen {
     let mut r = Resumen::default();
     let jsonl = dir.join("captures.jsonl");
@@ -251,7 +258,11 @@ pub fn desde_export(db: &Connection, dir: &std::path::Path) -> Resumen {
         let mut p = crate::ingest::Peticion {
             tipo: {
                 let t = cadena("type");
-                if crate::ingest::TIPOS.contains(&t.as_str()) { t } else { "file".into() }
+                if crate::ingest::TIPOS.contains(&t.as_str()) {
+                    t
+                } else {
+                    "file".into()
+                }
             },
             title: Some(cadena("title")).filter(|x| !x.is_empty()),
             author: Some(cadena("author")).filter(|x| !x.is_empty()),
@@ -270,10 +281,10 @@ pub fn desde_export(db: &Connection, dir: &std::path::Path) -> Resumen {
                 .unwrap_or_default(),
             ..Default::default()
         };
-        //  Y el adjunto, si lo hubiera y siguiera al lado. La ruta viene del
-        //  manifiesto y se resuelve DENTRO de la carpeta exportada: una ruta que
-        //  apuntara fuera sería una manera de que un fichero de importación
-        //  eligiera qué copiar de tu disco.
+        //  Include the attachment too, if one exists and is still alongside
+        //  it. The path comes from the manifest and is resolved INSIDE the
+        //  exported directory: a path pointing outside would let an import
+        //  file choose what to copy from your disk.
         let fichero = cadena("file");
         if !fichero.is_empty() && !fichero.contains("..") && !fichero.starts_with('/') {
             let ruta = dir.join(&fichero);

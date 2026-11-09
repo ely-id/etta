@@ -1,14 +1,14 @@
-//  El socket.
+//  The socket.
 //
-//  Unix y privado, en `XDG_RUNTIME_DIR`, con permisos de solo el dueño. No hay
-//  puerto TCP ni lo va a haber: lo que se guarda aquí es lo que has ido
-//  recogiendo durante meses, y un puerto —aunque sea en `localhost`— lo alcanza
-//  cualquier proceso de la máquina, incluida cualquier pestaña con un `fetch`.
+//  Unix and private, in `XDG_RUNTIME_DIR`, with owner-only permissions. There
+//  is no TCP port and there will not be one: this stores what you have collected
+//  over months, and any process on the machine —including any browser tab using
+//  `fetch`— can reach a port, even on `localhost`.
 //
-//  Un hilo por conexión, cada uno con su propia conexión a SQLite. Con WAL eso
-//  es correcto: leer no bloquea escribir. Compartir una `Connection` entre
-//  hilos no se puede —no es `Sync`— y serializarlo todo en un hilo haría que un
-//  cliente colgado dejara al resto esperando.
+//  One thread per connection, each with its own SQLite connection. With WAL
+//  this is correct: reads do not block writes. A `Connection` cannot be shared
+//  between threads —it is not `Sync`— and serializing everything on one thread
+//  would let a hung client hold up the rest.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -25,16 +25,19 @@ pub fn servir() -> std::io::Result<()> {
         let _ = std::fs::set_permissions(p, perm);
     }
 
-    //  Un socket que quedó de un arranque anterior. Si alguien contesta detrás,
-    //  ya hay un worker y este sobra —arrancar el segundo daría dos procesos
-    //  escribiendo la misma base—. Si no contesta nadie, el fichero es basura y
-    //  se quita.
+    //  A socket left over from a previous startup. If someone answers, a
+    //  worker is already running and this one is unnecessary —starting a
+    //  second would mean two processes writing to the same database. If
+    //  nobody answers, the file is stale and can be removed.
     if ruta.exists() {
         if UnixStream::connect(&ruta).is_ok() {
-            eprintln!("deriva-worker: ya hay uno escuchando en {}", ruta.display());
+            eprintln!(
+                "deriva-worker: another worker is already listening at {}",
+                ruta.display()
+            );
             return Err(std::io::Error::new(
                 std::io::ErrorKind::AddrInUse,
-                "ya hay un worker",
+                "another worker is already running",
             ));
         }
         let _ = std::fs::remove_file(&ruta);
@@ -48,8 +51,8 @@ pub fn servir() -> std::io::Result<()> {
         let _ = std::fs::set_permissions(&ruta, perm);
     }
 
-    //  Lo que quedó a medias de la vez anterior, antes de aceptar a nadie: es
-    //  el único momento en que se sabe que nadie está escribiendo blobs.
+    //  Anything left incomplete from last time, before accepting connections:
+    //  this is the only time we know nobody is writing blobs.
     let barridos = crate::blobs::limpiar_temporales().unwrap_or(0);
     eprintln!(
         "deriva-worker: escuchando en {} · esquema v{} · {} temporales barridos",
@@ -68,7 +71,7 @@ pub fn servir() -> std::io::Result<()> {
         let ruta = ruta.clone();
         std::thread::spawn(move || {
             if let Err(e) = atender(flujo, &parando, &ruta) {
-                eprintln!("deriva-worker: conexión terminada: {}", e);
+                eprintln!("deriva-worker: connection ended: {}", e);
             }
         });
     }
@@ -76,11 +79,7 @@ pub fn servir() -> std::io::Result<()> {
     Ok(())
 }
 
-fn atender(
-    flujo: UnixStream,
-    parando: &AtomicBool,
-    ruta: &std::path::Path,
-) -> std::io::Result<()> {
+fn atender(flujo: UnixStream, parando: &AtomicBool, ruta: &std::path::Path) -> std::io::Result<()> {
     let db = crate::db::abrir()
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
     let mut salida = flujo.try_clone()?;
@@ -92,8 +91,8 @@ fn atender(
             continue;
         }
         if linea.len() > crate::proto::TOPE_LINEA {
-            //  No se intenta interpretar: si la línea no cabe, el `id` que
-            //  llevaba dentro tampoco se puede leer con garantías.
+            //  Do not try to parse it: if the line does not fit, its `id`
+            //  cannot be read reliably either.
             let r = crate::proto::Respuesta::mal("", "linea_larga", "no cabe");
             contestar(&mut salida, &r)?;
             continue;
@@ -111,9 +110,9 @@ fn atender(
         let r = crate::proto::despachar(&db, &peticion);
         contestar(&mut salida, &r)?;
         if apagar {
-            //  Se contesta ANTES de parar, y se despierta al `accept` que está
-            //  bloqueado conectándose al propio socket. Sin eso el proceso se
-            //  quedaría esperando una conexión que no va a llegar.
+            //  Reply BEFORE stopping, and wake the `accept` call blocked by
+            //  connecting to the socket itself. Otherwise the process would
+            //  wait for a connection that will never arrive.
             parando.store(true, Ordering::SeqCst);
             let _ = UnixStream::connect(ruta);
             break;

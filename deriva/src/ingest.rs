@@ -1,33 +1,32 @@
-//  Guardar algo. Es la operación que importa.
+//  Save something. This is the core operation.
 //
-//  Una petición puede traer varias cosas —un lote de ficheros— y sale una
-//  captura por cada una, con su resultado propio. Que el lote entero se
-//  resuelva en un único «bien» o «mal» sería mentir en el caso normal: de
-//  sesenta ficheros arrastrados, cincuenta y nueve nuevos y uno repetido no es
-//  un fallo.
+//  A request can contain several items —a batch of files— and produces one
+//  capture for each, with its own result. Reporting the entire batch as one
+//  “success” or “failure” would be misleading in the common case: of sixty
+//  dragged files, fifty-nine new and one duplicate is not a failure.
 //
-//  El orden de los pasos es el del plan y no es negociable:
+//  The steps follow the plan's order, which is not negotiable:
 //
-//      identificar → hashear → mirar si ya estaba → escribir el blob →
-//      confirmar en SQLite → indexar
+//      identify → hash → check whether it already exists → write the blob →
+//      commit to SQLite → index
 //
-//  El blob antes que la fila. Un corte entre ambos deja, como mucho, bytes sin
-//  dueño en el disco; al revés dejaría una captura visible apuntando a un
-//  fichero que no existe, y eso ya no se puede reparar leyendo la base.
+//  Blob before row. An interruption between the two leaves, at worst, orphaned
+//  bytes on disk; the reverse would leave a visible capture pointing to a
+//  nonexistent file, which cannot be repaired by reading the database.
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
-//  Los tipos que se saben guardar. Cerrado a propósito: `type` acaba en la
-//  interfaz decidiendo iconos y filtros, y una lista abierta significa que
-//  cualquier cliente puede inventarse una categoría que la página no dibuja.
+//  The types that can be saved. Deliberately closed: `type` determines icons
+//  and filters in the interface, and an open list would let any client invent
+//  a category the page cannot render.
 pub const TIPOS: &[&str] = &[
     "text", "url", "image", "document", "code", "video", "audio", "file",
 ];
 
-//  El texto de una captura tiene tope. No es por el disco —SQLite se lo traga—
-//  sino porque `content_text` entra entero en el índice de búsqueda y en cada
-//  resultado que lo devuelve.
+//  Capture text has a limit. Not because of disk space —SQLite can handle it—
+//  but because all of `content_text` goes into the search index and every
+//  result that returns it.
 pub const TOPE_TEXTO: usize = 4 * 1024 * 1024;
 
 #[derive(Debug, Deserialize, Default)]
@@ -40,16 +39,17 @@ pub struct Peticion {
     pub excerpt: Option<String>,
     pub note: Option<String>,
     pub text: Option<String>,
-    //  Ficheros del disco del usuario. Una captura por cada uno.
+    //  Files from the user's disk. One capture for each.
     #[serde(default)]
     pub paths: Vec<String>,
-    //  O los bytes en línea, para lo que no tiene fichero: una imagen
-    //  arrastrada desde una página.
+    //  Or inline bytes for an item without a file: an image dragged from a
+    //  page.
     pub inline: Option<EnLinea>,
     #[serde(default)]
     pub tags: Vec<String>,
     pub space: Option<String>,
-    //  Para la reaparición: si viene, la captura nace dormida hasta esa fecha.
+    //  For resurfacing: if provided, the capture stays dormant until that
+    //  date.
     pub snoozed_until: Option<i64>,
 }
 
@@ -65,17 +65,19 @@ pub struct Resultado {
     pub status: String, //  saved · duplicate · rejected · failed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
-    //  De qué dirección era, en lo que se guardó. La canónica si la hay.
+    //  The saved source address, if any; use the canonical one when
+    //  available.
     //
-    //  Está aquí para que quien acaba de guardar pueda ir a por su portada sin
-    //  volver a preguntar por la captura entera: sabe el id, pero el id no dice
-    //  a qué página salir, y un `get` de vuelta para leer un campo que quien
-    //  llama ya tenía en la mano es un viaje por nada.
+    //  This lets the caller fetch the thumbnail immediately after saving
+    //  without requesting the entire capture again: it knows the ID, but
+    //  the ID does not say which page to visit, and a `get` just to read a
+    //  field the caller already had would be a wasted round trip.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
-    //  Y dónde ha quedado el fichero, por lo mismo: para poder abrirlo y
-    //  sacarle el texto sin esperar al siguiente repaso. Un PDF que acabas de
-    //  soltar tiene que poder buscarse por dentro esta misma tarde.
+    //  Also return where the file ended up, for the same reason: it can be
+    //  opened and its text extracted without waiting for the next review. A
+    //  PDF you just dropped in should be searchable by its contents right
+    //  away.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -86,12 +88,24 @@ pub struct Resultado {
 
 impl Resultado {
     fn guardado(id: String) -> Self {
-        Resultado { status: "saved".into(), id: Some(id), url: None, path: None,
-                    duplicate_of: None, reason: None }
+        Resultado {
+            status: "saved".into(),
+            id: Some(id),
+            url: None,
+            path: None,
+            duplicate_of: None,
+            reason: None,
+        }
     }
     fn duplicado(de: String) -> Self {
-        Resultado { status: "duplicate".into(), id: None, url: None, path: None,
-                    duplicate_of: Some(de), reason: None }
+        Resultado {
+            status: "duplicate".into(),
+            id: None,
+            url: None,
+            path: None,
+            duplicate_of: Some(de),
+            reason: None,
+        }
     }
     fn rechazado(por: &str) -> Self {
         Resultado {
@@ -104,8 +118,14 @@ impl Resultado {
         }
     }
     fn fallido(por: String) -> Self {
-        Resultado { status: "failed".into(), id: None, url: None, path: None,
-                    duplicate_of: None, reason: Some(por) }
+        Resultado {
+            status: "failed".into(),
+            id: None,
+            url: None,
+            path: None,
+            duplicate_of: None,
+            reason: Some(por),
+        }
     }
 }
 
@@ -115,7 +135,7 @@ pub fn ingerir(db: &Connection, p: &Peticion) -> Vec<Resultado> {
     }
     let mut fuera = Vec::new();
 
-    //  Los ficheros, uno por uno.
+    //  Process files one by one.
     for ruta in &p.paths {
         fuera.push(match una_de_fichero(db, p, ruta) {
             Ok(r) => r,
@@ -123,9 +143,9 @@ pub fn ingerir(db: &Connection, p: &Peticion) -> Vec<Resultado> {
         });
     }
 
-    //  Y lo que no venía en un fichero: los bytes en línea o el texto. Solo si
-    //  no había ficheros: un arrastre trae una cosa u otra, y guardar las dos
-    //  duplicaría la misma captura con dos formas distintas.
+    //  Also handle items not provided as files: inline bytes or text. Only
+    //  if there were no files; a drag provides one or the other, and saving
+    //  both would duplicate the same capture in two different forms.
     if p.paths.is_empty() {
         fuera.push(match una_suelta(db, p) {
             Ok(r) => r,
@@ -135,7 +155,7 @@ pub fn ingerir(db: &Connection, p: &Peticion) -> Vec<Resultado> {
     fuera
 }
 
-// ── una captura que viene de un fichero ──────────────────────────
+// ── a capture from a file ────────────────────────────────────────
 
 fn una_de_fichero(db: &Connection, p: &Peticion, ruta: &str) -> Result<Resultado, String> {
     let real = match resolver(ruta) {
@@ -148,17 +168,17 @@ fn una_de_fichero(db: &Connection, p: &Peticion, ruta: &str) -> Result<Resultado
         return Ok(Resultado::duplicado(id));
     }
 
-    //  El blob primero.
+    //  Write the blob first.
     let g = crate::blobs::guardar_fichero(&real).map_err(|e| e.to_string())?;
     let nombre = real
         .file_name()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_default();
-    //  El tipo, por la extensión. Es una PISTA para dibujar —¿enseño esto como
-    //  una miniatura o como un icono?— y no una verdad sobre el contenido: lo
-    //  real lo dice quien lo abra. Sin ella, una foto guardada desde el gestor
-    //  de archivos se dibujaba con el icono de «fichero», que es la cosa más
-    //  inútil que se puede poner encima de una foto.
+    //  Determine the type from the extension. It is a CLUE for rendering —
+    //  should this be shown as a thumbnail or an icon?—not a truth about
+    //  the content; whoever opens it determines that. Without it, a photo
+    //  saved from the file manager appeared with a generic “file” icon, the
+    //  most useless thing to put on top of a photo.
     let mime = mime_por_extension(&nombre);
     let titulo = p.title.clone().unwrap_or_else(|| nombre.clone());
 
@@ -191,17 +211,17 @@ fn una_de_fichero(db: &Connection, p: &Peticion, ruta: &str) -> Result<Resultado
         crate::blobs::guardar_fichero(&real).map_err(|e| e.to_string())?;
     }
     let mut r = Resultado::guardado(id);
-    //  Dónde ha quedado, para poder mirar dentro sin esperar al siguiente
-    //  repaso: un PDF recién soltado tiene que buscarse por dentro hoy.
+    //  Where it ended up, so its contents can be inspected without waiting
+    //  for the next review: a newly dropped PDF should be searchable today.
     r.path = Some(crate::paths::blob_de(&g.hash).to_string_lossy().to_string());
     Ok(r)
 }
 
-//  Una ruta que se puede copiar, o el porqué de que no.
+//  A path that can be copied, or why it cannot.
 //
-//  Los enlaces se resuelven ANTES de mirar nada: el plan lo pide, y sin eso un
-//  enlace a `/etc/shadow` con nombre de foto se copiaría a la biblioteca con
-//  toda la inocencia del mundo.
+//  Resolve symlinks BEFORE inspecting anything: the plan requires it, and
+//  without this, a symlink to `/etc/shadow` named like a photo would be copied
+//  into the library without a second thought.
 fn resolver(ruta: &str) -> Result<std::path::PathBuf, &'static str> {
     let bruta = std::path::Path::new(ruta.trim_start_matches("file://"));
     if !bruta.is_absolute() {
@@ -215,32 +235,32 @@ fn resolver(ruta: &str) -> Result<std::path::PathBuf, &'static str> {
     if meta.len() > crate::blobs::TOPE_FICHERO {
         return Err("demasiado_grande");
     }
-    //  Los sistemas de ficheros que no son ficheros. Copiar de `/proc` da
-    //  tamaños de cero y contenido que cambia mientras lo lees.
+    //  Filesystem entries that are not regular files. Copying from `/proc`
+    //  gives zero-size files whose contents change while being read.
     for prohibido in ["/proc", "/sys", "/dev"] {
         if real.starts_with(prohibido) {
             return Err("ruta_del_sistema");
         }
     }
-    //  Y la biblioteca no se copia a sí misma.
+    //  Do not let the library copy itself.
     if real.starts_with(crate::paths::base()) {
         return Err("ya_es_de_la_biblioteca");
     }
     Ok(real)
 }
 
-// ── una captura que no viene de un fichero ───────────────────────
+// ── a capture that is not from a file ────────────────────────────
 
-//  ¿El título que tiene es uno de los de apaño?
+//  Is its title one of the fallback titles?
 //
-//  Hace falta para enriquecer: el título de la portada de la página puede pisar
-//  «ejemplo.com», pero no puede pisar el que traía el arrastre —ese lo puso el
-//  navegador leyendo la misma página— ni, desde luego, uno escrito a mano.
+//  Needed for enrichment: the page's actual title can replace “example.com,”
+//  but not a title provided by the drag —the browser read it from the same
+//  page—or, of course, one entered by hand.
 //
-//  La forma de saberlo es volver a calcular el apaño y compararlo. Es más largo
-//  que guardar un booleano en una columna, y es lo correcto: un booleano habría
-//  que migrarlo, mantenerlo al día y creérselo, y esto no puede desincronizarse
-//  con la regla porque ES la regla.
+//  Check by recalculating the fallback and comparing it. This is more work
+//  than storing a boolean column, but it is the right approach: a boolean
+//  would need to be migrated, kept up to date, and trusted; this cannot get out
+//  of sync with the rule because it IS the rule.
 pub fn titulo_de_emergencia(titulo: &str, origen: Option<&str>, canonica: Option<&str>) -> bool {
     let t = titulo.trim();
     if t.is_empty() {
@@ -252,30 +272,31 @@ pub fn titulo_de_emergencia(titulo: &str, origen: Option<&str>, canonica: Option
     if !u.starts_with("http") {
         return false;
     }
-    //  La dirección tal cual, en cualquiera de sus dos formas.
+    //  The address as-is, in either of its forms.
     if t == u || canonica == Some(t) {
         return true;
     }
-    //  Y lo que sacaría hoy el adaptador de esa misma URL: el dominio, el slug
-    //  del hilo, «@usuario», «dueño/repo», el nombre del fichero.
+    //  Also include what the adapter would derive from that URL today: the
+    //  domain, thread slug, “@user,” “owner/repo,” or filename.
     crate::adaptadores::leer(u).titulo.as_deref() == Some(t)
 }
 
 fn una_suelta(db: &Connection, p: &Peticion) -> Result<Resultado, String> {
-    //  De qué sitio viene. Sin salir a la red: es todo lo que se puede saber
-    //  mirando la URL, y es bastante. Lo que hace falta traer de fuera —el
-    //  título de verdad, la miniatura— lo trae el lado de la casa, que es quien
-    //  tiene la armadura anti-SSRF escrita y revisada.
+    //  Where it came from. Do not access the network: this is everything
+    //  that can be learned from the URL, which is quite a lot. Anything
+    //  that must be fetched externally —the actual title or thumbnail—is
+    //  fetched by the host, which has reviewed anti-SSRF protections.
     let leido = p
         .source_url
         .as_deref()
         .filter(|u| u.starts_with("http"))
         .map(crate::adaptadores::leer);
 
-    //  La canónica del adaptador MANDA sobre la genérica: `youtu.be/ID` y
-    //  `youtube.com/watch?v=ID&t=90` son el mismo vídeo, y la regla general no
-    //  puede saberlo. Sin esto, el mismo vídeo desde el móvil y desde el
-    //  escritorio son dos capturas y el duplicado no lo ve.
+    //  The adapter's canonical URL takes precedence over the generic one:
+    //  `youtu.be/ID` and `youtube.com/watch?v=ID&t=90` are the same video,
+    //  which the general rule cannot know. Without this, the same video
+    //  from a phone and desktop becomes two captures, and duplicate
+    //  detection misses it.
     let canonical = leido
         .as_ref()
         .and_then(|l| l.canonica.clone())
@@ -285,7 +306,7 @@ fn una_suelta(db: &Connection, p: &Peticion) -> Result<Resultado, String> {
         return Ok(Resultado::rechazado("texto_demasiado_largo"));
     }
 
-    //  Los bytes en línea, si los hay.
+    //  Inline bytes, if any.
     let mut blob: Option<crate::blobs::Guardado> = None;
     if let Some(en_linea) = &p.inline {
         let datos = match crate::util::base64(&en_linea.base64) {
@@ -313,7 +334,7 @@ fn una_suelta(db: &Connection, p: &Peticion) -> Result<Resultado, String> {
         Some(crate::util::hash_de_texto(texto))
     };
 
-    //  Nada que guardar no es un fallo, es que no había nada.
+    //  Nothing to save is not a failure; there was simply nothing there.
     if blob.is_none() && content_hash.is_none() && canonical.is_none() {
         return Ok(Resultado::rechazado("sin_contenido"));
     }
@@ -324,9 +345,9 @@ fn una_suelta(db: &Connection, p: &Peticion) -> Result<Resultado, String> {
         return Ok(Resultado::duplicado(id));
     }
 
-    //  El título por defecto: el que diga el adaptador, la primera línea del
-    //  texto, o la URL. En ese orden, porque «@usuario» o «dueño/repo» dicen
-    //  más que una dirección entera, y una dirección entera dice más que nada.
+    //  The default title: what the adapter provides, the first line of
+    //  text, or the URL, in that order. “@user” or “owner/repo” say more
+    //  than a full address, and a full address says more than nothing.
     let titulo = p.title.clone().unwrap_or_else(|| {
         leido
             .as_ref()
@@ -335,17 +356,17 @@ fn una_suelta(db: &Connection, p: &Peticion) -> Result<Resultado, String> {
             .or_else(|| canonical.clone())
             .unwrap_or_default()
     });
-    //  Y el extracto, si nadie lo trae, del principio del texto. Sirve para la
-    //  tarjeta sin tener que leer `content_text` entero.
+    //  If no excerpt is provided, use the beginning of the text. This
+    //  supplies the card without reading all of `content_text`.
     let extracto = p
         .excerpt
         .clone()
         .unwrap_or_else(|| recortar(texto.trim(), 280));
 
-    //  El tipo del adaptador manda solo sobre el genérico. Si quien ingiere ya
-    //  dijo «documento», sabe más que nosotros; si dijo «url», es lo que dice
-    //  cualquier arrastre de un enlace, y ahí el adaptador sí sabe más: un
-    //  enlace de YouTube es un vídeo aunque la URL no acabe en `.mp4`.
+    //  The adapter's type overrides only the generic type. If the caller
+    //  already said “document,” it knows more than we do; if it said “url,”
+    //  that is what any dragged link says, and the adapter knows more: a
+    //  YouTube link is a video even if the URL does not end in `.mp4`.
     let tipo = leido
         .as_ref()
         .filter(|_| p.tipo == "url")
@@ -387,17 +408,20 @@ fn una_suelta(db: &Connection, p: &Peticion) -> Result<Resultado, String> {
         }
     }
     let mut r = Resultado::guardado(id);
-    //  La canónica antes que la de origen: es la que hay que visitar, y la de
-    //  origen puede traer media línea de parámetros de campaña.
+    //  Prefer the canonical URL over the source URL: it is the one to visit,
+    //  while the source may contain a long string of campaign parameters.
     r.url = canonical.clone().or_else(|| p.source_url.clone());
     Ok(r)
 }
 
-//  Lo justo para saber si se puede enseñar. Cerrado a propósito: no es un
-//  detector de tipos, es la lista de lo que esta interfaz sabe dibujar.
+//  Just enough to know whether it can be displayed. Deliberately closed: this
+//  is not a type detector, but a list of what this interface can render.
 fn mime_por_extension(nombre: &str) -> Option<&'static str> {
     let n = nombre.to_lowercase();
-    let ext = n.rsplit_once('.').map(|(_, e)| e.to_string()).unwrap_or_default();
+    let ext = n
+        .rsplit_once('.')
+        .map(|(_, e)| e.to_string())
+        .unwrap_or_default();
     Some(match ext.as_str() {
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",
@@ -418,7 +442,7 @@ fn mime_por_extension(nombre: &str) -> Option<&'static str> {
 }
 
 fn recortar(s: &str, n: usize) -> String {
-    //  Por caracteres y no por bytes: cortar un UTF-8 por la mitad revienta.
+    //  Count characters, not bytes: cutting UTF-8 in half breaks it.
     let mut fuera: String = s.chars().take(n).collect();
     if s.chars().count() > n {
         fuera.push('…');
@@ -426,14 +450,14 @@ fn recortar(s: &str, n: usize) -> String {
     fuera
 }
 
-// ── lo que ya estaba ─────────────────────────────────────────────
+// ── existing items ───────────────────────────────────────────────
 //
-//  El plan: «existe el mismo `canonical_url` o hash». Los tres en un sitio, y
-//  en este orden: la URL manda sobre el contenido porque la misma página
-//  cambia de texto entre visitas y sigue siendo la misma página.
+//  The plan says “the same `canonical_url` or hash exists.” Check all three in
+//  one place and in this order: the URL takes precedence over content because
+//  a page can change its text between visits and still be the same page.
 //
-//  Lo tirado a la basura no cuenta. Volver a guardar algo que borraste tiene
-//  que funcionar, o el borrado sería una condena.
+//  Trashed items do not count. Saving something you deleted must work again,
+//  or deletion would be a life sentence.
 fn ya_estaba(
     db: &Connection,
     canonical: Option<&str>,
@@ -453,14 +477,17 @@ fn ya_estaba(
             "SELECT id FROM captures WHERE {} = ?1 AND trashed_at IS NULL LIMIT 1",
             columna
         );
-        if let Some(id) = db.query_row(&sql, [v], |r| r.get::<_, String>(0)).optional()? {
+        if let Some(id) = db
+            .query_row(&sql, [v], |r| r.get::<_, String>(0))
+            .optional()?
+        {
             return Ok(Some(id));
         }
     }
     Ok(None)
 }
 
-// ── escribir la fila ─────────────────────────────────────────────
+// ── write the row ─────────────────────────────────────────────────
 
 struct Nueva<'a> {
     tipo: &'a str,
@@ -479,15 +506,16 @@ struct Nueva<'a> {
     snoozed_until: Option<i64>,
     tags: &'a [String],
     space: Option<&'a str>,
-    //  De qué sitio viene, del adaptador. Vacío para lo que no sale de una URL.
+    //  Source from the adapter. Empty for items that do not come from a URL.
     fuente: &'a str,
 }
 
 fn escribir(db: &Connection, n: Nueva) -> rusqlite::Result<String> {
     let id = crate::util::nuevo_id();
-    //  Todo en una transacción: la fila, sus etiquetas, su espacio y su índice.
-    //  Una captura a medias —guardada pero sin indexar— es una captura que no
-    //  se puede encontrar, que a efectos del usuario es una captura perdida.
+    //  Everything in one transaction: the row, its tags, its folder, and
+    //  its index entry.
+    //  A partial capture —saved but not indexed—is a capture that cannot be
+    //  found, which is the same as a lost capture to the user.
     let tx = db.unchecked_transaction()?;
     tx.execute(
         "INSERT INTO captures
@@ -532,9 +560,9 @@ pub fn poner_etiqueta(db: &Connection, capture: &str, nombre: &str) -> rusqlite:
     if limpio.is_empty() {
         return Ok(());
     }
-    //  La etiqueta se crea si no estaba. El id es el propio nombre normalizado:
-    //  dos etiquetas con el mismo nombre son la misma etiqueta, y con un id
-    //  aleatorio harían falta comprobaciones en cada sitio que las escribe.
+    //  Create the tag if it does not exist. Its ID is the normalized name:
+    //  two tags with the same name are the same tag, whereas random IDs
+    //  would require checks everywhere tags are written.
     db.execute(
         "INSERT OR IGNORE INTO tags (id, name) VALUES (?1, ?1)",
         [&limpio],
@@ -546,15 +574,15 @@ pub fn poner_etiqueta(db: &Connection, capture: &str, nombre: &str) -> rusqlite:
     Ok(())
 }
 
-//  El identificador de una carpeta a partir de su nombre.
+//  A folder ID derived from its name.
 //
-//  Minúsculas, sin acentos y con guiones: «Cosas de casa» → `cosas-de-casa`.
-//  Hace falta porque el id viaja en el filtro de la página y en las órdenes de
-//  la línea de comandos, y un id con espacios y tildes es un id que hay que
-//  escapar en cada sitio por el que pasa.
+//  Lowercase, without accents, and hyphenated: “Home stuff” → `home-stuff`.
+//  This is needed because the ID travels in page filters and command-line
+//  arguments, and an ID with spaces and accents would need escaping everywhere
+//  it goes.
 //
-//  Y una vez puesto NO cambia aunque se renombre la carpeta: es lo que hace que
-//  renombrar sea renombrar y no crear otra.
+//  Once assigned, it does NOT change when the folder is renamed: that makes a
+//  rename a rename rather than creating another folder.
 pub fn id_de_espacio(nombre: &str) -> String {
     let mut fuera = String::new();
     let mut guion = false;
@@ -583,13 +611,12 @@ pub fn id_de_espacio(nombre: &str) -> String {
     fuera.chars().take(48).collect()
 }
 
-//  Mete una captura en una carpeta, y crea la carpeta si no estaba.
+//  Put a capture in a folder, creating the folder if needed.
 //
-//  Acepta el id o el nombre: quien llama desde la página manda el id que sacó
-//  de la lista, y quien llama desde una herramienta de la IA manda «leer luego»
-//  porque es lo que ha escrito una persona. Los dos tienen que funcionar, y
-//  probar primero por id es lo que evita que «Leer luego» cree una carpeta
-//  nueva al lado de la que ya existe.
+//  Accept either the ID or the name: the page caller sends the ID from the
+//  list, while an AI tool caller sends “read later,” as a person would write
+//  it. Both must work, and checking the ID first prevents “Read later” from
+//  creating a new folder beside the existing one.
 pub fn poner_espacio(db: &Connection, capture: &str, nombre: &str) -> rusqlite::Result<()> {
     let limpio = nombre.trim();
     if limpio.is_empty() {
@@ -599,8 +626,9 @@ pub fn poner_espacio(db: &Connection, capture: &str, nombre: &str) -> rusqlite::
     if id.is_empty() {
         return Ok(());
     }
-    //  Si ya hay una carpeta con ese id, se usa esa y se respeta su nombre: al
-    //  revés, mover algo a «leer-luego» le cambiaría el nombre a «leer-luego».
+    //  If a folder with that ID already exists, use it and keep its name;
+    //  otherwise, moving something to “read-later” would rename the folder
+    //  to “read-later.”
     db.execute(
         "INSERT OR IGNORE INTO spaces (id, name) VALUES (?1, ?2)",
         params![id, limpio],

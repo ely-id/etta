@@ -1,15 +1,15 @@
-//  Deriva · el worker de la biblioteca local.
+//  Deriva · the local library worker.
 //
-//  Un solo binario pequeño. Guarda lo que le sueltas a Etta, lo busca y lo
-//  devuelve; nada de esto vive en QML, porque QML se recarga cuando guardas un
-//  fichero del repo y una base de datos a medio escribir no sobrevive a eso.
+//  One small binary. It saves what you drop into Etta, searches for it, and
+//  returns it; none of this lives in QML, because QML reloads when you save a
+//  repository file, and a half-written database would not survive that.
 //
-//  Dos maneras de hablarle, el mismo despachador detrás: el socket —que es como
-//  le habla Etta— y la línea de órdenes, que es como se diagnostica cuando
-//  algo va mal sin tener que levantar el escritorio entero.
+//  Two ways to talk to it, with the same dispatcher behind both: the socket —
+//  used by Etta— and the command line, used to diagnose problems without
+//  starting the entire desktop.
 //
-//  Lo que NO hace, y es a propósito: no sale a la red, no abre puertos, no
-//  ejecuta nada y no borra nada que no le pidan por su nombre.
+//  What it does NOT do, by design: access the network, open ports, execute
+//  anything, or delete anything unless explicitly named.
 
 mod adaptadores;
 mod blobs;
@@ -67,14 +67,16 @@ fn main() {
         //  it is not done on another database: there it would delete files
         //  the live one still uses.
         "purge" if opcion(&args, "--db").is_some() => {
-            eprintln!("deriva-worker: purge no va con --db: los ficheros son de la biblioteca viva");
+            eprintln!(
+                "deriva-worker: purge cannot be used with --db: files belong to the live library"
+            );
             std::process::exit(2);
         }
         "trash" | "untrash" | "purge" => por_metodo(orden, Some(ids_params(&args))),
         "stats" => por_metodo("stats", None),
         "doctor" => por_metodo("doctor", None),
         "import" => {
-            //  `--folder <ruta>`, `--bookmarks <fichero>` o `--deriva <carpeta>`.
+            //  `--folder <path>`, `--bookmarks <file>`, or `--deriva <directory>`.
             let (que, clave, valor) = if let Some(v) = opcion(&args, "--folder") {
                 ("folder", "directory", v)
             } else if let Some(v) = opcion(&args, "--bookmarks") {
@@ -82,7 +84,7 @@ fn main() {
             } else if let Some(v) = opcion(&args, "--deriva") {
                 ("deriva", "directory", v)
             } else {
-                eprintln!("deriva-worker: import necesita --folder, --bookmarks o --deriva");
+                eprintln!("deriva-worker: import requires --folder, --bookmarks, or --deriva");
                 std::process::exit(2);
             };
             let espacio = opcion(&args, "--space").unwrap_or_default();
@@ -97,24 +99,30 @@ fn main() {
                 )),
             )
         }
-        //  Todo lo que la página pide al abrirse, de una vez. Por la línea de
-        //  órdenes sirve para otra cosa: dejar en un fichero exactamente lo que
-        //  ve la interfaz, y que una prueba visual lo reproduzca sin socket.
+        //  Everything the page requests on startup, all at once. On the command
+        //  line, this serves another purpose: save exactly what the interface
+        //  sees to a file, so a visual test can reproduce it without a socket.
         "home" => {
             let n = opcion(&args, "--limit").unwrap_or_else(|| "60".into());
             por_metodo("home", Some(format!(r#"{{"limit":{}}}"#, n)))
         }
         "sections" => por_metodo("sections", None),
-        //  Qué toca recordar y por qué. Por la línea de órdenes sirve para
-        //  auditar el motor: es determinista, así que preguntarlo dos veces
-        //  tiene que dar lo mismo, y eso se comprueba mirándolo.
+        //  What should be remembered and why. On the command line, this audits
+        //  the engine: it is deterministic, so asking twice must give the same
+        //  result, which can be checked by inspecting it.
         "revisit" => {
             let e = opcion(&args, "--space").unwrap_or_default();
-            por_metodo("revisit", Some(format!(r#"{{"space":{}}}"#, json_texto(&e))))
+            por_metodo(
+                "revisit",
+                Some(format!(r#"{{"space":{}}}"#, json_texto(&e))),
+            )
         }
         "integrity-check" => {
             let profundo = args.iter().any(|a| a == "--deep");
-            por_metodo("integrity_check", Some(format!(r#"{{"deep":{}}}"#, profundo)))
+            por_metodo(
+                "integrity_check",
+                Some(format!(r#"{{"deep":{}}}"#, profundo)),
+            )
         }
         "repair-index" => por_metodo("repair_index", None),
         "backup" => {
@@ -123,10 +131,13 @@ fn main() {
         }
         "export" => {
             let d = opcion(&args, "--directory").unwrap_or_default();
-            por_metodo("export", Some(format!(r#"{{"directory":{}}}"#, json_texto(&d))))
+            por_metodo(
+                "export",
+                Some(format!(r#"{{"directory":{}}}"#, json_texto(&d))),
+            )
         }
         "where" => {
-            //  Dónde está todo. La primera pregunta cuando algo no aparece.
+            //  Where everything is. The first question when something is missing.
             println!(
                 "{}",
                 serde_json::json!({
@@ -145,7 +156,7 @@ fn main() {
             return;
         }
         otro => {
-            eprintln!("deriva-worker: no sé hacer «{}»", otro);
+            eprintln!("deriva-worker: unknown command '{}'", otro);
             ayuda();
             std::process::exit(2);
         }
@@ -157,13 +168,12 @@ fn main() {
     }
 }
 
-//  Una orden de la línea de órdenes es una petición del protocolo. Un solo
-//  camino hacia la base: dos serían dos comportamientos y una prueba que cubre
-//  uno de los dos.
+//  A command-line instruction is a protocol request. One path to the database:
+//  two paths would mean two behaviors and a test covering only one of them.
 fn por_metodo(metodo: &str, params: Option<String>) -> (String, bool) {
-    //  `--db` abre OTRA base: sirve para mirar una copia de seguridad antes de
-    //  restaurarla, que es la mitad de tener copias. Sin esto, comprobar que
-    //  una copia está entera exige sustituir la biblioteca buena por ella.
+    //  `--db` opens ANOTHER database: use it to inspect a backup before
+    //  restoring it, which is half the point of having backups. Without
+    //  this, checking a backup requires replacing the working library.
     let args: Vec<String> = std::env::args().skip(1).collect();
     let abrir = match opcion(&args, "--db") {
         Some(p) => db::abrir_en(std::path::Path::new(&p)),
@@ -213,7 +223,10 @@ fn opcion(args: &[String], nombre: &str) -> Option<String> {
 fn ids_params(args: &[String]) -> String {
     match opcion(args, "--ids") {
         Some(lista) => format!(r#"{{"ids":{}}}"#, lista),
-        None => format!(r#"{{"id":{}}}"#, json_texto(&opcion(args, "--id").unwrap_or_default())),
+        None => format!(
+            r#"{{"id":{}}}"#,
+            json_texto(&opcion(args, "--id").unwrap_or_default())
+        ),
     }
 }
 
@@ -223,33 +236,33 @@ fn json_texto(s: &str) -> String {
 
 fn ayuda() {
     eprintln!(
-        r#"deriva-worker · la biblioteca local de Deriva
+        r#"deriva-worker · Deriva's local library
 
-  serve                              atiende el socket; es como le habla Etta
-  ingest   --request <json>          guarda algo
-  search   --query <texto> [--limit] busca
-  get      --id <id>                 una captura entera
-  list     [--limit N] [--before ms] lo último guardado (hasta 500 por vez)
-  trash    --id <id> | --ids <json>  a la papelera (se puede deshacer)
-  untrash  --id <id> | --ids <json>  de vuelta de la papelera
-  purge    --id <id> | --ids <json>  borra de verdad, con sus ficheros
-  stats                              cuántas cosas hay
-  doctor                             versión, esquema, rutas e integridad
-  import   --folder <ruta>           una carpeta de ficheros
-           --bookmarks <fichero>     marcadores exportados del navegador
-           --deriva <carpeta>        una exportación de Deriva, de vuelta
-  home     [--limit N]               lo que ve la página al abrirse
-  revisit  [--space <id>]            qué toca recordar, y por qué esa
-  integrity-check [--deep]           comprueba que todo sigue ahí
-  repair-index                       reconstruye lo que falte del índice
-  backup   [--keep N]                copia de seguridad, conservando N
-  export   --directory <ruta>        todo lo tuyo, fuera de aquí
-  where                              dónde está cada cosa
+  serve                              serve the socket used by Etta
+  ingest   --request <json>          store a capture
+  search   --query <text> [--limit]  search the library
+  get      --id <id>                 retrieve a complete capture
+  list     [--limit N] [--before ms] list recent captures (up to 500)
+  trash    --id <id> | --ids <json>  move captures to trash (reversible)
+  untrash  --id <id> | --ids <json>  restore captures from trash
+  purge    --id <id> | --ids <json>  permanently delete captures and files
+  stats                              show library statistics
+  doctor                             show versions, paths, and integrity
+  import   --folder <path>           import a directory of files
+           --bookmarks <file>        import browser bookmarks
+           --deriva <directory>      import a Deriva export
+  home     [--limit N]               show the page's startup data
+  revisit  [--space <id>]            show what is due for revisiting, and why
+  integrity-check [--deep]           verify library integrity
+  repair-index                       rebuild missing search index entries
+  backup   [--keep N]                create a backup, keeping N copies
+  export   --directory <path>        export the library to a directory
+  where                              show library paths
 
-Con `--db <ruta>` cualquiera de ellas mira OTRA base: así se comprueba una
-copia de seguridad sin restaurarla encima de la buena.
+Use `--db <path>` to run a command against another database, for example to
+inspect a backup without restoring it over the live library.
 
-Todo sale como una línea de JSON. `ETTA_DERIVA_DIR` mueve la biblioteca
-entera, que es como se prueba sin tocar la del usuario."#
+All output is a single line of JSON. `ETTA_DERIVA_DIR` relocates the library,
+which lets tests run without touching the user's data."#
     );
 }

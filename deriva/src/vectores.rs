@@ -1,36 +1,37 @@
-//  Buscar por lo que quiere decir, y no solo por las palabras que trae.
+//  Search by what it means, not just by the words it contains.
 //
-//  FTS5 encuentra lo que contiene tus palabras. Es exacto, es rápido y no sabe
-//  que «fondos de pantalla» y «wallpapers» son lo mismo, ni que un editor de
-//  vídeo tiene que ver con «montar un clip». Esto es lo otro: cada captura se
-//  convierte en un vector, la pregunta también, y se comparan por ángulo.
+//  FTS5 finds what contains your words. It is exact and fast, but does not know
+//  that “wallpapers” and “wallpaper backgrounds” are the same, or that a video
+//  editor has anything to do with “putting a clip together.” This is the other
+//  approach: each capture becomes a vector, as does the query, and they are
+//  compared by angle.
 //
-//  Cuatro decisiones, y las cuatro son de las que se pagan más tarde:
+//  Four decisions, each with consequences that show up later:
 //
-//  EL MODELO ES LOCAL Y EL WORKER SIGUE SIN RED. El crate se compila con
-//  `local-only` a propósito: sin esa bandera se trae la capacidad de descargar
-//  modelos, y eso convertiría en mentira la frase que hay escrita en el README.
-//  Quien baja el modelo es la casa, con `./marea deriva modelo`.
+//  THE MODEL IS LOCAL AND THE WORKER STILL HAS NO NETWORK. The crate is
+//  deliberately compiled with `local-only`: without that flag it gains the
+//  ability to download models, making the statement in the README untrue. The
+//  host downloads the model with `./marea deriva modelo`.
 //
-//  Y SI NO ESTÁ, NO PASA NADA. Sin modelo se busca exactamente como antes.
-//  Media gracia de esto es que sea opcional: son 506 MB en el disco de alguien,
-//  y una biblioteca que deja de funcionar porque falta un fichero de medio giga
-//  no es una biblioteca, es una promesa.
+//  AND IF IT ISN'T THERE, NOTHING BREAKS. Without a model, search works exactly
+//  as before. Making it optional is half the point: it takes 506 MB on someone's
+//  disk, and a library that stops working because a half-gigabyte file is
+//  missing is not a library, just a promise.
 //
-//  SE CARGA UNA VEZ Y SE QUEDA. Leer medio giga de safetensors en cada búsqueda
-//  sería más lento que no tener búsqueda.
+//  IT LOADS ONCE AND STAYS LOADED. Reading half a gigabyte of safetensors on
+//  every search would be slower than having no search at all.
 //
-//  Y SE GUARDA CRUDO, en `f32` little-endian. No es por ahorrar: es que un
-//  vector es una lista de números y meterlo en JSON lo hace cuatro veces más
-//  grande para que luego haya que parsearlo entero en cada comparación.
+//  AND IT IS STORED RAW, as little-endian `f32`. Not to save space: a vector is
+//  a list of numbers, and putting it in JSON makes it four times larger, only to
+//  parse the whole thing on every comparison.
 
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 
 use model2vec_rs::model::StaticModel;
 
-//  Dónde vive el modelo. Un directorio con los tres ficheros que pide el
-//  formato: los pesos, el tokenizador y su configuración.
+//  Where the model lives. A directory with the three files required by the
+//  format: the weights, tokenizer, and its configuration.
 pub fn modelo_dir() -> PathBuf {
     crate::paths::base().join("modelo")
 }
@@ -42,8 +43,8 @@ pub fn hay_modelo() -> bool {
         .all(|f| d.join(f).is_file())
 }
 
-//  Cargado una vez, y con la posibilidad de no haberlo. `OnceLock` guarda
-//  también el «no hay»: si falta, no se vuelve a intentar en cada búsqueda.
+//  Loaded once, with the option that it may be absent. `OnceLock` also stores
+//  “not found”: if it is missing, we do not retry on every search.
 static MODELO: OnceLock<Option<Mutex<StaticModel>>> = OnceLock::new();
 
 fn modelo() -> Option<&'static Mutex<StaticModel>> {
@@ -52,8 +53,8 @@ fn modelo() -> Option<&'static Mutex<StaticModel>> {
             if !hay_modelo() {
                 return None;
             }
-            //  Normalizado: así comparar dos vectores es multiplicarlos, y no
-            //  hay que dividir por sus longitudes en cada comparación.
+            //  Normalized: comparing two vectors is now just multiplying them,
+            //  with no need to divide by their lengths on every comparison.
             match StaticModel::from_pretrained(modelo_dir(), None, Some(true), None) {
                 Ok(m) => Some(Mutex::new(m)),
                 Err(e) => {
@@ -69,9 +70,10 @@ pub fn listo() -> bool {
     modelo().is_some()
 }
 
-//  Cuántos números tiene cada vector. Se guarda con cada uno porque un modelo
-//  distinto da otra medida, y comparar vectores de medidas distintas no da un
-//  error: da un parecido inventado.
+//  How many numbers each vector contains. Stored with each one because a
+//  different model gives a different dimension, and comparing vectors with
+//  different dimensions does not produce an error; it produces a made-up
+//  similarity.
 pub fn medida() -> usize {
     vector("hola").map(|v| v.len()).unwrap_or(0)
 }
@@ -83,17 +85,17 @@ pub fn vector(texto: &str) -> Option<Vec<f32>> {
 pub fn varios(textos: &[String]) -> Option<Vec<Vec<f32>>> {
     let m = modelo()?;
     let g = m.lock().ok()?;
-    //  Tope de tokens por texto: un artículo entero diluye lo que dice hasta
-    //  que el vector deja de parecerse a nada. Lo que se resume en un vector es
-    //  DE QUÉ VA, y para eso el principio vale más que el final.
+    //  Token limit per text: a whole article dilutes its meaning until the
+    //  vector stops resembling anything. A vector summarizes WHAT IT IS ABOUT,
+    //  and the beginning matters more than the end for that.
     Some(g.encode_with_args(textos, Some(512), 32))
 }
 
-//  Con qué se representa una captura.
+//  What represents a capture.
 //
-//  El título, el resumen, las etiquetas y el principio del texto, en ese orden
-//  y recortado. NO el contenido entero: un vector es una media, y la media de
-//  cuarenta páginas se parece un poco a todo y mucho a nada.
+//  The title, summary, tags, and beginning of the text, in that order and
+//  truncated. NOT the entire content: a vector is an average, and the average
+//  of forty pages resembles a little bit of everything and a lot of nothing.
 pub fn texto_de(
     titulo: &str,
     resumen: &str,
@@ -112,8 +114,8 @@ pub fn texto_de(
         }
         t.push_str(limpio);
     }
-    //  Y del cuerpo, solo lo que falte para llenar el hueco: si ya hay título y
-    //  resumen, el cuerpo aporta poco y estorba.
+    //  From the body, only what is needed to fill the remaining space: if there
+    //  is already a title and summary, the body adds little and gets in the way.
     if t.chars().count() < 400 {
         let falta = 1200 - t.chars().count().min(1200);
         let principio: String = cuerpo.trim().chars().take(falta).collect();
@@ -143,9 +145,10 @@ pub fn de_bytes(b: &[u8]) -> Vec<f32> {
         .collect()
 }
 
-//  El coseno de dos vectores YA NORMALIZADOS, que es su producto. Se comprueba
-//  la medida antes: dos vectores de tamaños distintos son de modelos distintos,
-//  y compararlos hasta donde alcancen daría un número que parece un parecido.
+//  The cosine of two ALREADY NORMALIZED vectors, which is their dot product.
+//  Check the dimension first: vectors of different sizes come from different
+//  models, and comparing them up to the shorter length would produce a number
+//  that looks like a similarity.
 pub fn parecido(a: &[f32], b: &[f32]) -> f32 {
     if a.len() != b.len() || a.is_empty() {
         return -1.0;

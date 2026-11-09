@@ -1,26 +1,27 @@
-//  El protocolo, y el sitio único donde se decide qué hace cada método.
+//  The protocol, and the single place that decides what each method does.
 //
-//  JSON Lines versionado, como el del agente y por los mismos motivos: una
-//  línea es un mensaje, el canal de datos es solo stdout —los avisos van a
-//  stderr, o una traza se convierte en un mensaje mal formado, o peor, en uno
-//  que parece válido— y hay tope de línea, porque sin tope el búfer del que lee
-//  crece con lo que diga el otro lado.
+//  Versioned JSON Lines, like the agent's and for the same reasons: one line
+//  is one message; stdout is only for data —warnings go to stderr, or a trace
+//  becomes a malformed message, or worse, one that looks valid—and there is a
+//  line limit, because without one the reader's buffer grows to whatever the
+//  other side sends.
 //
-//  El mismo despachador atiende el socket y la línea de órdenes. Dos caminos
-//  distintos hacia la misma base es como se acaba teniendo dos comportamientos
-//  para lo mismo y una prueba que solo cubre uno.
+//  The same dispatcher handles the socket and the command line. Two different
+//  paths to the same database lead to two behaviors for the same operation and
+//  a test that covers only one.
 
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 
-//  Lo que puede pesar una miniatura que llega de fuera. Medio mega es el mismo
-//  tope que pone `tools/web` al traerla; repetirlo aquí no es desconfianza de
-//  esa herramienta, es que este proceso no sabe quién le está escribiendo.
+//  The maximum size of a thumbnail arriving from outside. Half a megabyte is
+//  the same limit `tools/web` applies when fetching it; repeating the limit
+//  here does not mean we distrust that tool, but that this process does not
+//  know who is writing to it.
 const TOPE_MINIATURA: usize = 512 * 1024;
 
 pub const VERSION: u32 = 1;
-//  Lo más gordo que puede viajar en una línea: una imagen en línea de 64 MiB
-//  en base64 crece un tercio, más el resto del mensaje.
+//  The largest payload that can travel in one line: a 64 MiB inline image grows
+//  by a third when base64-encoded, plus the rest of the message.
 pub const TOPE_LINEA: usize = 90 * 1024 * 1024;
 
 #[derive(Debug, Deserialize)]
@@ -53,7 +54,13 @@ pub struct Error {
 
 impl Respuesta {
     pub fn bien(id: &str, r: serde_json::Value) -> Self {
-        Respuesta { v: VERSION, id: id.into(), ok: true, result: Some(r), error: None }
+        Respuesta {
+            v: VERSION,
+            id: id.into(),
+            ok: true,
+            result: Some(r),
+            error: None,
+        }
     }
     pub fn mal(id: &str, code: &str, message: impl Into<String>) -> Self {
         Respuesta {
@@ -61,15 +68,18 @@ impl Respuesta {
             id: id.into(),
             ok: false,
             result: None,
-            error: Some(Error { code: code.into(), message: message.into() }),
+            error: Some(Error {
+                code: code.into(),
+                message: message.into(),
+            }),
         }
     }
 }
 
-//  Lo que se puede pedir. Cerrado, y sin ninguno que reciba una ruta libre
-//  salvo `export`: el plan lo dice —«no se aceptan rutas arbitrarias en los
-//  métodos del agente»— y exportar es la excepción porque la ruta la elige el
-//  usuario y la valida el controlador antes de llegar aquí.
+//  What can be requested. This list is closed, and no method accepts an
+//  arbitrary path except `export`: the plan says “arbitrary paths are not
+//  accepted by agent methods,” and export is the exception because the user
+//  chooses the path and the controller validates it before it gets here.
 pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
     if p.v != 0 && p.v != VERSION {
         return Respuesta::mal(&p.id, "version", format!("solo hablo la v{}", VERSION));
@@ -115,10 +125,10 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
             }
         }
 
-        //  Lo que la página necesita de una vez al abrirse: la navegación con
-        //  sus números, lo que ha vuelto a la superficie y la primera página de
-        //  la biblioteca. Tres viajes por el socket para pintar una pantalla es
-        //  tres oportunidades de pintarla a medias.
+        //  Everything the page needs on startup: navigation and its counts,
+        //  items that resurfaced, and the first page of the library. Three
+        //  socket round trips to render one screen are three chances to
+        //  render it only partially.
         "home" => {
             let n = p.params.get("limit").and_then(|v| v.as_u64()).unwrap_or(60) as usize;
             let f: crate::search::Filtro =
@@ -126,17 +136,17 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
             let r = (|| -> rusqlite::Result<serde_json::Value> {
                 Ok(serde_json::json!({
                     "sections": crate::search::secciones(db)?,
-                    //  Con su porqué. Todas las de aquí volvieron por la misma
-                    //  razón —las aplazaste y ya toca—, pero la página lo
-                    //  enseña, y una razón que hay que adivinar mirando el
-                    //  código no la enseña nadie.
+                    //  Include the reason. All items here returned for the
+                    //  same reason —you snoozed them and they are due—but
+                    //  the page displays it, and nobody can display a
+                    //  reason that must be guessed by reading the code.
                     "surfaced": crate::search::reaparecidas(db, 3)?
                         .into_iter()
                         .map(|f| {
                             let mut v = serde_json::to_value(f).unwrap_or_default();
                             if let Some(o) = v.as_object_mut() {
                                 o.insert("porque".into(),
-                                         serde_json::json!("la aplazaste para hoy"));
+                                         serde_json::json!("you snoozed this until today"));
                             }
                             v
                         })
@@ -151,16 +161,17 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
             }
         }
 
-        //  ── las carpetas ─────────────────────────────────────────
+        //  ── folders ──────────────────────────────────────────────
         //
-        //  Hasta ahora una carpeta solo existía si le metías algo dentro: se
-        //  creaba de camino, en `poner_espacio`. Eso vale para las tres de
-        //  fábrica y no vale para las tuyas, porque las tuyas se hacen ANTES de
-        //  tener qué meter —«voy a tener una de la mudanza»— y porque una
-        //  carpeta que desaparece al sacar lo último no es una carpeta.
+        //  Until now, a folder existed only if it contained something: it
+        //  was created along the way in `poner_espacio`. That works for the
+        //  three built-in folders, but not for user folders, which are
+        //  created BEFORE there is anything to put in them —“I'll have one
+        //  for the move”— and because a folder that disappears when its
+        //  last item is removed is not a folder.
         //
-        //  El id se saca del nombre y NO cambia al renombrar: es lo que hace
-        //  que renombrar sea renombrar y no crear otra al lado.
+        //  The ID comes from the name and does NOT change when renamed:
+        //  that makes renaming a rename rather than creating another folder.
         "space_put" => {
             let nombre = p
                 .params
@@ -172,9 +183,10 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
                 .take(60)
                 .collect::<String>();
             if nombre.is_empty() {
-                return Respuesta::mal(&p.id, "sin_nombre", "una carpeta necesita un nombre");
+                return Respuesta::mal(&p.id, "sin_nombre", "a folder needs a name");
             }
-            //  Con id se renombra la que hay; sin él se crea una nueva.
+            //  With an ID, rename the existing folder; without one, create
+            //  a new folder.
             let id = p
                 .params
                 .get("id")
@@ -182,8 +194,11 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| crate::ingest::id_de_espacio(&nombre));
             if id.is_empty() {
-                return Respuesta::mal(&p.id, "nombre_invalido",
-                                      "de ese nombre no sale ningún identificador");
+                return Respuesta::mal(
+                    &p.id,
+                    "nombre_invalido",
+                    "that name does not produce a valid identifier",
+                );
             }
             let color = p
                 .params
@@ -198,42 +213,38 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
                 rusqlite::params![id, nombre, color],
             );
             match r {
-                Ok(_) => Respuesta::bien(
-                    &p.id,
-                    serde_json::json!({ "id": id, "name": nombre }),
-                ),
+                Ok(_) => Respuesta::bien(&p.id, serde_json::json!({ "id": id, "name": nombre })),
                 Err(e) => Respuesta::mal(&p.id, "db", e.to_string()),
             }
         }
 
-        //  Y quitarla. Lo de dentro NO se borra: se queda en la biblioteca sin
-        //  carpeta, que es lo que espera cualquiera que haya borrado una
-        //  carpeta en su vida. Borrar una estantería no quema los libros.
+        //  And remove it. Its contents are NOT deleted: they stay in the
+        //  library without a folder, as anyone who has ever deleted a
+        //  folder would expect. Removing a bookshelf does not burn the books.
         "space_delete" => {
             let id = p.params.get("id").and_then(|v| v.as_str()).unwrap_or("");
             if id.is_empty() {
-                return Respuesta::mal(&p.id, "sin_id", "hay que decir cuál");
+                return Respuesta::mal(&p.id, "sin_id", "an ID is required");
             }
             let sueltas = db
                 .execute("DELETE FROM capture_spaces WHERE space_id = ?1", [id])
                 .unwrap_or(0);
             match db.execute("DELETE FROM spaces WHERE id = ?1", [id]) {
-                Ok(0) => Respuesta::mal(&p.id, "no_existe", "no hay ninguna carpeta con ese id"),
-                Ok(_) => Respuesta::bien(
-                    &p.id,
-                    serde_json::json!({ "id": id, "released": sueltas }),
-                ),
+                Ok(0) => Respuesta::mal(&p.id, "no_existe", "no folder exists with that ID"),
+                Ok(_) => {
+                    Respuesta::bien(&p.id, serde_json::json!({ "id": id, "released": sueltas }))
+                }
                 Err(e) => Respuesta::mal(&p.id, "db", e.to_string()),
             }
         }
 
-        //  Las etiquetas que ya usas, con cuántas cosas tienen cada una.
+        //  The tags you already use, and how many items each one has.
         //
-        //  La sección «Etiquetas» solo llevaba el número, así que no había
-        //  manera de saber cuáles son. Hace falta para dos cosas: enseñarlas, y
-        //  poder decirle a la IA «usa estas» —sin eso estrena taxonomía en cada
-        //  tanda y a la semana hay doscientas etiquetas de una captura cada
-        //  una—.
+        //  The “Tags” section showed only the count, so there was no way to
+        //  know which tags they were. This is needed for two things:
+        //  displaying them and telling the AI “use these”—otherwise it
+        //  invents a new taxonomy every batch, and a week later there are
+        //  two hundred tags with one capture each.
         "tags" => {
             let r = (|| -> rusqlite::Result<Vec<serde_json::Value>> {
                 let mut s = db.prepare(
@@ -268,9 +279,9 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
             Err(e) => Respuesta::mal(&p.id, "db", e.to_string()),
         },
 
-        //  Aplazar: vuelve a la superficie cuando toque. La fecha la calcula
-        //  quien la pide; aquí solo se guarda, porque «dentro de una semana»
-        //  depende de un calendario y esto no tiene ninguno.
+        //  Snooze: resurface when due. The caller calculates the date; this
+        //  only stores it, because “in a week” depends on a calendar, and
+        //  this component has none.
         "snooze" => {
             let id = p.params.get("id").and_then(|v| v.as_str()).unwrap_or("");
             let hasta = p.params.get("until").and_then(|v| v.as_i64());
@@ -278,19 +289,19 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
                 "UPDATE captures SET snoozed_until = ?2 WHERE id = ?1",
                 rusqlite::params![id, hasta],
             ) {
-                Ok(0) => Respuesta::mal(&p.id, "no_existe", "no hay ninguna con ese id"),
+                Ok(0) => Respuesta::mal(&p.id, "no_existe", "nothing exists with that ID"),
                 Ok(_) => Respuesta::bien(&p.id, serde_json::json!({ "id": id })),
                 Err(e) => Respuesta::mal(&p.id, "db", e.to_string()),
             }
         }
 
-        //  La nota personal, las etiquetas y el favorito: lo único que la
-        //  página escribe de una captura. El contenido no se edita —lo que
-        //  guardaste es lo que había—, y por eso no hay un método para tocarlo.
+        //  The personal note, tags, and favorite: the only capture fields
+        //  the page writes. Content is not edited —what you saved is what
+        //  was there—which is why there is no method to change it.
         "annotate" => {
             let id = p.params.get("id").and_then(|v| v.as_str()).unwrap_or("");
             if crate::search::una(db, id).ok().flatten().is_none() {
-                return Respuesta::mal(&p.id, "no_existe", "no hay ninguna con ese id");
+                return Respuesta::mal(&p.id, "no_existe", "nothing exists with that ID");
             }
             if let Some(n) = p.params.get("note").and_then(|v| v.as_str()) {
                 if let Err(e) = db.execute(
@@ -300,9 +311,9 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
                     return Respuesta::mal(&p.id, "db", e.to_string());
                 }
             }
-            //  Que la has abierto. Es lo que hace que deje de volver: la regla
-            //  de reaparición descarta lo que has mirado hace poco, y sin esto
-            //  no habría manera de que se enterara.
+            //  Record that you opened it. This stops it from resurfacing:
+            //  the resurfacing rule excludes items you viewed recently, and
+            //  without this it would have no way to know.
             if p.params.get("opened").and_then(|v| v.as_bool()) == Some(true) {
                 let _ = db.execute(
                     "UPDATE captures SET last_opened_at = ?2 WHERE id = ?1",
@@ -327,21 +338,21 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
                     let _ = crate::ingest::poner_espacio(db, id, e);
                 }
             }
-            //  Y el vector, que describe lo mismo que el índice: si cambia el
-            //  título o el resumen, lo que la captura «quiere decir» cambia con
-            //  ellos. Rehacerlo aquí es lo que evita tener dos verdades.
+            //  And the vector, which describes the same thing as the index:
+            //  if the title or summary changes, so does what the capture
+            //  “means.” Rebuilding it here avoids having two sources of truth.
             let _ = crate::search::revectorizar(db, id);
 
             match crate::db::reindexar(db, id) {
                 Ok(()) => match crate::search::una(db, id) {
                     Ok(Some(f)) => Respuesta::bien(&p.id, serde_json::json!({ "item": f })),
-                    _ => Respuesta::mal(&p.id, "db", "no se pudo releer"),
+                    _ => Respuesta::mal(&p.id, "db", "could not read the capture again"),
                 },
                 Err(e) => Respuesta::mal(&p.id, "db", e.to_string()),
             }
         }
 
-        //  Lo que sigue sin portada, para ir a buscarla. Ver
+        //  Items still missing a thumbnail, so it can be fetched. See
         //  `search::por_enriquecer`.
         "to_enrich" => {
             let n = p
@@ -356,29 +367,30 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
             }
         }
 
-        //  ── lo que se sabe de fuera ──────────────────────────────
+        //  ── external metadata ───────────────────────────────────
         //
-        //  El título de verdad, quién lo hizo y la miniatura. NO lo trae el
-        //  worker: aquí no hay red y no la va a haber. Lo trae la casa con
-        //  `tools/web`, que es donde viven las reglas anti-SSRF ya revisadas, y
-        //  entra por aquí ya leído.
+        //  The actual title, author, and thumbnail. The worker does NOT
+        //  fetch these: it has no network access and will not get it. The
+        //  host fetches them with `tools/web`, where the reviewed anti-SSRF
+        //  rules live, and passes them in here.
         //
-        //  La regla de qué se pisa y qué no es lo importante de este método:
+        //  The important part of this method is the rule for what can and
+        //  cannot be overwritten:
         //
-        //  NUNCA pisa lo tuyo. La nota, las etiquetas, el favorito y el espacio
-        //  no se tocan, y ni siquiera se leen.
+        //  It NEVER overwrites your data. The note, tags, favorite, and
+        //  folder are not touched or even read.
         //
-        //  Y el título solo si el que hay es de emergencia. Al guardar, un
-        //  enlace se titula con lo que se pueda sacar de la propia dirección
-        //  —el dominio, el slug—; eso es un apaño hasta que llegue el de
-        //  verdad. Pero si al soltarlo el arrastre traía un título —y un
-        //  navegador lo trae—, ese lo puso el sitio de donde venía y vale igual
-        //  que este. Distinguirlos es la única manera de que enriquecer no sea
-        //  un «pisa lo que había» con otro nombre.
+        //  The title is updated only if the existing one is a fallback.
+        //  When saved, a link is titled with what can be derived from its
+        //  address —the domain or slug—as a placeholder until the real one
+        //  arrives. But if the drag supplied a title —and browsers do—,
+        //  that came from the source site and is just as valid. Distinguishing
+        //  the two is the only way to ensure enrichment is not just
+        //  “overwrite what was there” under another name.
         "enrich" => {
             let id = p.params.get("id").and_then(|v| v.as_str()).unwrap_or("");
             let Ok(Some(antes)) = crate::search::una(db, id) else {
-                return Respuesta::mal(&p.id, "no_existe", "no hay ninguna con ese id");
+                return Respuesta::mal(&p.id, "no_existe", "nothing exists with that ID");
             };
             let dice = |k: &str| -> String {
                 p.params
@@ -389,12 +401,12 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
                     .to_string()
             };
 
-            //  La miniatura se comprueba ANTES de escribir nada.
+            //  Validate the thumbnail BEFORE writing anything.
             //
-            //  Al revés —validándola donde se guarda— una foto ilegible dejaba
-            //  el título y el autor ya escritos y devolvía un error: quien
-            //  llama lo reintenta, y lo que hay guardado no es ni lo de antes
-            //  ni lo de después.
+            //  The reverse —validating it where it is stored— would leave
+            //  the title and author written when an unreadable image returns
+            //  an error: the caller retries, and the saved data is neither
+            //  what it was before nor what it should be.
             let foto = dice("preview_b64");
             let bytes_foto = if foto.is_empty() {
                 None
@@ -411,14 +423,14 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
                 }
             };
 
-            //  Y de paso, de qué sitio era.
+            //  Also update where it came from.
             //
-            //  Lo guardado antes de que existieran los adaptadores no tiene
-            //  `source`, y eso no se arregla solo: se saca de la propia
-            //  dirección, sin red, exactamente igual que al guardar. Se hace
-            //  aquí porque este es el momento en que alguien vuelve a mirar una
-            //  captura vieja; recorrer la biblioteca entera en la migración
-            //  habría sido leer cien mil filas por si acaso.
+            //  Items saved before adapters existed have no `source`, and
+            //  that is not fixed automatically: derive it from the URL,
+            //  without network access, just as when saving. Do it here
+            //  because this is when someone revisits an old capture;
+            //  scanning the entire library during migration would mean
+            //  reading a hundred thousand rows just in case.
             if antes.source.is_empty() {
                 if let Some(u) = antes
                     .canonical_url
@@ -431,8 +443,9 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
                         "UPDATE captures SET source = ?2 WHERE id = ?1",
                         rusqlite::params![id, l.fuente.id],
                     );
-                    //  Y el tipo, solo si era el genérico: un enlace de YouTube
-                    //  es un vídeo. Si ya decía otra cosa, alguien sabía más.
+                    //  Update the type only if it was generic: a YouTube link
+                    //  is a video. If it already said something else, someone
+                    //  knew more.
                     if antes.tipo == "url" {
                         let _ = db.execute(
                             "UPDATE captures SET type = ?2 WHERE id = ?1",
@@ -455,8 +468,8 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
                     rusqlite::params![id, &titulo.chars().take(300).collect::<String>()],
                 );
             }
-            //  El autor y el resumen solo si están vacíos: ahí no hay nada que
-            //  pisar, y si hay algo lo puso alguien que sabía más.
+            //  Set the author and summary only if empty: there is nothing to
+            //  overwrite, and if something is there, someone knew more.
             let autor = dice("author");
             if !autor.is_empty() && antes.author.is_empty() {
                 let _ = db.execute(
@@ -471,17 +484,18 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
                     rusqlite::params![id, &resumen.chars().take(600).collect::<String>()],
                 );
             }
-            //  Y el texto de dentro: el cuerpo de la página o lo que se haya
-            //  podido sacar del fichero.
+            //  And the content: the page body or whatever could be extracted
+            //  from the file.
             //
-            //  Solo si no había, y esa es la regla de siempre. Pero aquí tiene
-            //  un motivo extra: el contenido es lo que se guardó, y una captura
-            //  cuyo texto cambia sola deja de ser una copia de lo que viste.
-            //  Volver a leer la página dentro de un mes traería otra cosa.
+            //  Only if it was absent; that is the usual rule. Here there is
+            //  an additional reason: the content is what was saved, and a
+            //  capture whose text changes on its own stops being a copy of
+            //  what you saw. Reading the page again in a month would yield
+            //  something else.
             //
-            //  Va al índice, que es para lo que se lee: sin esto, buscar una
-            //  frase de dentro de un artículo que guardaste no encuentra nada,
-            //  y la biblioteca solo sabe de títulos.
+            //  Add it to the index, which is why it is read: without this,
+            //  searching for a phrase inside a saved article finds nothing,
+            //  and the library only knows about titles.
             let cuerpo = dice("text");
             if !cuerpo.is_empty()
                 && antes.excerpt.len() < crate::ingest::TOPE_TEXTO
@@ -495,19 +509,20 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
                     )
                     .unwrap_or(0);
                 if vacio == 1 {
-                    //  Y vuelve a la cola de la IA —`summary_at = NULL`—: se
-                    //  miró con lo que había entonces, a lo mejor solo un
-                    //  título, y ahora hay un artículo entero. Es la única vez
-                    //  que se descarta un intento, y es porque el material que
-                    //  se miró ya no es el mismo.
+                    //  Put it back in the AI queue —`summary_at = NULL`—: it
+                    //  was processed with what was available then, perhaps
+                    //  only a title, and now there is a whole article. This
+                    //  is the only time an attempt is discarded, because
+                    //  the material has changed.
                     let _ = db.execute(
                         "UPDATE captures SET content_text = ?2, content_hash = ?3,
                                 summary_at = NULL
                           WHERE id = ?1",
                         rusqlite::params![id, &cuerpo, crate::util::hash_de_texto(&cuerpo)],
                     );
-                    //  Y si no había extracto, el principio del texto sirve: es
-                    //  lo que se enseña en la tarjeta y lo que ve el modelo.
+                    //  If there was no excerpt, use the beginning of the
+                    //  text: it is what the card displays and what the model
+                    //  sees.
                     if antes.excerpt.is_empty() {
                         let _ = db.execute(
                             "UPDATE captures SET excerpt = ?2 WHERE id = ?1",
@@ -520,8 +535,9 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
                 }
             }
 
-            //  Y la canónica, que es la que decide los duplicados. Solo si no
-            //  había: cambiarla después movería a qué se parece esto.
+            //  And the canonical URL, which determines duplicates. Only if
+            //  it was absent: changing it later would change what this
+            //  matches.
             let canonica = dice("canonical_url");
             if !canonica.is_empty() && antes.canonical_url.is_none() {
                 if let Some(c) = crate::util::canonizar_url(&canonica) {
@@ -532,8 +548,8 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
                 }
             }
 
-            //  Y la miniatura al almacén de siempre, por su hash: la misma
-            //  portada en veinte capturas ocupa una vez.
+            //  Store the thumbnail in the usual content-addressed store:
+            //  the same cover across twenty captures takes up space once.
             if let Some(bytes) = bytes_foto {
                 if antes.preview_path.is_none() {
                     match crate::blobs::guardar_bytes(&bytes) {
@@ -548,42 +564,45 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
                 }
             }
 
-            //  Y el vector, que describe lo mismo que el índice: si cambia el
-            //  título o el resumen, lo que la captura «quiere decir» cambia con
-            //  ellos. Rehacerlo aquí es lo que evita tener dos verdades.
+            //  And the vector, which describes the same thing as the index:
+            //  if the title or summary changes, so does what the capture
+            //  “means.” Rebuilding it here avoids having two sources of truth.
             let _ = crate::search::revectorizar(db, id);
 
             match crate::db::reindexar(db, id) {
                 Ok(()) => match crate::search::una(db, id) {
                     Ok(Some(f)) => Respuesta::bien(&p.id, serde_json::json!({ "item": f })),
-                    _ => Respuesta::mal(&p.id, "db", "no se pudo releer"),
+                    _ => Respuesta::mal(&p.id, "db", "could not read the capture again"),
                 },
                 Err(e) => Respuesta::mal(&p.id, "db", e.to_string()),
             }
         }
 
-        //  ── lo que la IA entendió ────────────────────────────────
+        //  ── what the AI understood ──────────────────────────────
         //
-        //  Un resumen, unas etiquetas y, como mucho, en qué carpeta va. Entra
-        //  por aquí ya escrito: aquí no hay modelo ninguno, igual que no hay
-        //  red. Lo pide la casa, con el motor del usuario y con su permiso.
+        //  A summary, some tags, and at most a folder. The results arrive
+        //  already written: there is no model here, just as there is no
+        //  network. The host requests them with the user's engine and
+        //  permission.
         //
-        //  Las reglas de qué se pisa son MÁS estrictas que las de `enrich`, y
-        //  a propósito: un título que trae una página es un hecho, y esto es
-        //  una opinión de un modelo.
+        //  The rules for overwriting are stricter than those for `enrich`,
+        //  by design: a title from a page is a fact, while this is a model's
+        //  opinion.
         //
-        //  NUNCA la nota: esa es tuya y no la escribe nadie más.
-        //  El resumen, solo si no había: reescribirlo en cada repaso haría que
-        //  lo que leíste ayer diga otra cosa hoy sin que tú hayas tocado nada.
-        //  Las etiquetas SE SUMAN, no se reemplazan. `annotate` reemplaza
-        //  porque ahí el que escribe eres tú; aquí borrar las tuyas para poner
-        //  las suyas sería que la IA te ordena el armario a su gusto.
-        //  Y la carpeta, solo si no estaba en ninguna: moverte algo de sitio es
-        //  la clase de ayuda que hace que no encuentres tus cosas.
+        //  NEVER overwrite the note: it belongs to you, and nobody else
+        //  writes it.
+        //  Set the summary only if it was absent: rewriting it during every
+        //  review would make what you read yesterday say something else
+        //  today, without you changing anything.
+        //  Tags are ADDED, not replaced. `annotate` replaces them because
+        //  you are the one writing there; deleting yours to add the model's
+        //  would let the AI organize your closet to its liking.
+        //  Set the folder only if there was none: moving something for you
+        //  is the kind of help that makes you lose track of your things.
         "classify" => {
             let id = p.params.get("id").and_then(|v| v.as_str()).unwrap_or("");
             let Ok(Some(antes)) = crate::search::una(db, id) else {
-                return Respuesta::mal(&p.id, "no_existe", "no hay ninguna con ese id");
+                return Respuesta::mal(&p.id, "no_existe", "nothing exists with that ID");
             };
 
             let resumen = p
@@ -602,7 +621,7 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
                 );
             }
 
-            //  Hasta seis suyas, y las tuyas se quedan donde estaban.
+            //  Up to six model-generated tags; yours stay as they are.
             let mut puestas = 0;
             if let Some(ts) = p.params.get("tags").and_then(|v| v.as_array()) {
                 for t in ts.iter().filter_map(|x| x.as_str()) {
@@ -615,7 +634,7 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
                 }
             }
 
-            //  Y la carpeta solo si estaba suelta.
+            //  Set the folder only if the capture was unfiled.
             let mut movida = false;
             if let Some(e) = p.params.get("space").and_then(|v| v.as_str()) {
                 let suelta: i64 = db
@@ -631,22 +650,23 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
                 }
             }
 
-            //  Y queda apuntado que se miró, salga lo que salga.
+            //  Record that it was processed, whatever the result.
             //
-            //  Este método se llama TAMBIÉN cuando el modelo no supo decir
-            //  nada, y ese es el caso que importa: sin la marca, lo que no se
-            //  puede resumir se vuelve a preguntar cada veinte segundos para
-            //  siempre. «No se pudo decir nada» es una respuesta.
+            //  This method is ALSO called when the model had nothing to say,
+            //  which is the important case: without the marker, anything
+            //  that cannot be summarized is requested again every twenty
+            //  seconds forever. “Nothing could be said” is a response.
             let _ = db.execute(
                 "UPDATE captures SET summary_at = ?2 WHERE id = ?1",
                 rusqlite::params![id, crate::util::ahora_ms()],
             );
 
-            //  Y al índice, que es la mitad de para qué existe esto: un resumen
-            //  que no se encuentra buscando no le sirve ni a la IA ni a ti.
-            //  Y el vector, que describe lo mismo que el índice: si cambia el
-            //  título o el resumen, lo que la captura «quiere decir» cambia con
-            //  ellos. Rehacerlo aquí es lo que evita tener dos verdades.
+            //  Add it to the index, which is half the reason this exists: a
+            //  summary that cannot be found by searching is useful neither
+            //  to the AI nor to you.
+            //  And the vector, which describes the same thing as the index:
+            //  if the title or summary changes, so does what the capture
+            //  “means.” Rebuilding it here avoids having two sources of truth.
             let _ = crate::search::revectorizar(db, id);
 
             match crate::db::reindexar(db, id) {
@@ -655,15 +675,15 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
                         &p.id,
                         serde_json::json!({ "item": f, "tagged": puestas, "moved": movida }),
                     ),
-                    _ => Respuesta::mal(&p.id, "db", "no se pudo releer"),
+                    _ => Respuesta::mal(&p.id, "db", "could not read the capture again"),
                 },
                 Err(e) => Respuesta::mal(&p.id, "db", e.to_string()),
             }
         }
 
-        //  Lo que todavía no ha mirado nadie. Mismo papel que `to_enrich` y con
-        //  la misma razón: sin una lista de pendientes, lo que guardaste antes
-        //  de encender esto se queda sin resumen para siempre.
+        //  Items nobody has processed yet. Same role as `to_enrich` and for
+        //  the same reason: without a pending-items list, things saved
+        //  before this was enabled would remain without a summary forever.
         "to_classify" => {
             let n = p
                 .params
@@ -677,10 +697,11 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
             }
         }
 
-        //  Solo el parecido, con su número. Es la herramienta de diagnóstico
-        //  de todo esto: `search` mezcla lo exacto y lo parecido a propósito, y
-        //  cuando algo sale raro hay que poder ver cuál de los dos lo trajo y
-        //  con cuánta confianza. Sin esto, calibrar el umbral es adivinar.
+        //  Similarity only, with its score. This is the diagnostic tool for
+        //  all of this: `search` deliberately combines exact and similar
+        //  matches, and when something looks wrong we need to see which one
+        //  returned it and with what confidence. Without this, tuning the
+        //  threshold would be guesswork.
         "similar" => {
             let q = p.params.get("query").and_then(|v| v.as_str()).unwrap_or("");
             let n = p
@@ -713,12 +734,13 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
             }
         }
 
-        //  Los vectores del parecido por significado, de N en N.
+        //  Semantic-similarity vectors, N at a time.
         //
-        //  Aquí no hay red y no hace falta: el modelo está en el disco. Se hace
-        //  a trozos para que instalarlo con dos mil capturas dentro no bloquee
-        //  la biblioteca cinco minutos, y quien lo llama es el mismo repaso que
-        //  ya trae portadas y resúmenes.
+        //  There is no network here, nor is one needed: the model is on
+        //  disk. Process items in batches so installing it with two
+        //  thousand captures does not block the library for five minutes.
+        //  The caller is the same review process that fetches covers and
+        //  summaries.
         "embed" => {
             let n = p
                 .params
@@ -743,7 +765,7 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
             let id = p.params.get("id").and_then(|v| v.as_str()).unwrap_or("");
             match crate::search::una(db, id) {
                 Ok(Some(f)) => Respuesta::bien(&p.id, serde_json::json!({ "item": f })),
-                Ok(None) => Respuesta::mal(&p.id, "no_existe", "no hay ninguna con ese id"),
+                Ok(None) => Respuesta::mal(&p.id, "no_existe", "nothing exists with that ID"),
                 Err(e) => Respuesta::mal(&p.id, "db", e.to_string()),
             }
         }
@@ -754,7 +776,11 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
         },
 
         "integrity_check" => {
-            let profundo = p.params.get("deep").and_then(|v| v.as_bool()).unwrap_or(false);
+            let profundo = p
+                .params
+                .get("deep")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             match crate::mantenimiento::integridad(db, profundo) {
                 Ok(i) => Respuesta::bien(&p.id, serde_json::to_value(i).unwrap_or_default()),
                 Err(e) => Respuesta::mal(&p.id, "db", e.to_string()),
@@ -767,8 +793,7 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
         },
 
         "backup" => {
-            let conservar =
-                p.params.get("keep").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
+            let conservar = p.params.get("keep").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
             match crate::mantenimiento::respaldar(db, conservar) {
                 Ok(c) => Respuesta::bien(&p.id, serde_json::to_value(c).unwrap_or_default()),
                 Err(e) => Respuesta::mal(&p.id, "db", e.to_string()),
@@ -776,9 +801,13 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
         }
 
         "export" => {
-            let dir = p.params.get("directory").and_then(|v| v.as_str()).unwrap_or("");
+            let dir = p
+                .params
+                .get("directory")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             if dir.is_empty() || !std::path::Path::new(dir).is_absolute() {
-                return Respuesta::mal(&p.id, "params", "hace falta una ruta absoluta");
+                return Respuesta::mal(&p.id, "params", "an absolute path is required");
             }
             match crate::mantenimiento::exportar(db, std::path::Path::new(dir)) {
                 Ok(x) => Respuesta::bien(&p.id, serde_json::to_value(x).unwrap_or_default()),
@@ -786,9 +815,10 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
             }
         }
 
-        //  Tirar a la basura y sacar de ella. Borrar de verdad es otra cosa y
-        //  tiene su propio método: el plan separa exportar de borrar, y por el
-        //  mismo motivo separa tirar de destruir.
+        //  Move to trash and restore from it. Permanent deletion is
+        //  different and has its own method: the plan separates export from
+        //  delete, and for the same reason separates trashing from
+        //  destruction.
         "trash" | "untrash" => {
             //  One by its `id`, as ever, or several at once in `ids`: clearing
             //  her page throws away everything it shows, in one transaction,
@@ -799,7 +829,11 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
                 return Respuesta::mal(&p.id, "params", "an id, or a list of them in ids");
             }
             let tirar = p.method == "trash";
-            let cuando = if tirar { Some(crate::util::ahora_ms()) } else { None };
+            let cuando = if tirar {
+                Some(crate::util::ahora_ms())
+            } else {
+                None
+            };
             let r = (|| -> rusqlite::Result<Vec<String>> {
                 let tx = rusqlite::Transaction::new_unchecked(db, TransactionBehavior::Immediate)?;
                 let mut hechas = Vec::new();
@@ -812,8 +846,8 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
                         hechas.push(id.clone());
                     }
                 }
-                //  Y el índice detrás: lo tirado deja de encontrarse, lo
-                //  recuperado vuelve a encontrarse.
+                //  Update the index too: trashed items stop appearing in
+                //  search, and restored items appear again.
                 crate::db::desindexar_varias(&tx, &hechas)?;
                 if !tirar {
                     for id in &hechas {
@@ -826,7 +860,7 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
             match r {
                 Ok(hechas) if p.params.get("ids").is_none() => match hechas.first() {
                     Some(id) => Respuesta::bien(&p.id, serde_json::json!({ "id": id })),
-                    None => Respuesta::mal(&p.id, "no_existe", "no hay ninguna con ese id"),
+                    None => Respuesta::mal(&p.id, "no_existe", "nothing exists with that ID"),
                 },
                 Ok(hechas) => Respuesta::bien(
                     &p.id,
@@ -861,7 +895,9 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
                             |r| Ok((r.get(0)?, r.get(1)?)),
                         )
                         .optional()?;
-                    let Some((blob, miniatura)) = fila else { continue };
+                    let Some((blob, miniatura)) = fila else {
+                        continue;
+                    };
                     hashes.extend(blob);
                     hashes.extend(miniatura);
                     hechas.push(id.clone());
@@ -909,7 +945,7 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
             })();
             match r {
                 Ok((hechas, _, _)) if hechas.is_empty() && p.params.get("ids").is_none() => {
-                    Respuesta::mal(&p.id, "no_existe", "no hay ninguna con ese id")
+                    Respuesta::mal(&p.id, "no_existe", "nothing exists with that ID")
                 }
                 Ok((hechas, ficheros, bytes)) => Respuesta::bien(
                     &p.id,
@@ -922,11 +958,12 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
             }
         }
 
-        //  ── reaparición ─────────────────────────────────────────
+        //  ── resurfacing ─────────────────────────────────────────
         //
-        //  El motor decide QUÉ; cuándo y cuántas veces lo decide quien la
-        //  enseña, que es quien sabe si estás grabando o si es medianoche.
-        //  Aquí se le dan los datos para que pueda decidirlo.
+        //  The engine decides WHAT; the caller that displays it decides
+        //  when and how often, because it knows whether you are recording
+        //  or whether it is midnight. This provides the data needed to
+        //  decide.
         "revisit" => {
             let espacio = p.params.get("space").and_then(|v| v.as_str());
             let r = (|| -> rusqlite::Result<serde_json::Value> {
@@ -943,12 +980,16 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
             }
         }
 
-        //  Se apunta que se enseñó, y luego qué se hizo. Dos métodos y no uno
-        //  porque entre los dos pasa el tiempo: enseñar es ahora, y lo que
-        //  hagas puede ser dentro de un minuto o nunca.
+        //  Record that it was displayed, then what happened. These are two
+        //  methods because time passes between them: displaying is now, and
+        //  you may act a minute later or never.
         "revisit_shown" => {
             let id = p.params.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let razon = p.params.get("reason").and_then(|v| v.as_str()).unwrap_or("");
+            let razon = p
+                .params
+                .get("reason")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             match crate::reaparicion::apuntar_mostrada(db, id, razon) {
                 Ok(evento) => Respuesta::bien(&p.id, serde_json::json!({ "event": evento })),
                 Err(e) => Respuesta::mal(&p.id, "db", e.to_string()),
@@ -956,27 +997,40 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
         }
         "revisit_outcome" => {
             let evento = p.params.get("event").and_then(|v| v.as_i64()).unwrap_or(0);
-            let cual = p.params.get("outcome").and_then(|v| v.as_str()).unwrap_or("");
+            let cual = p
+                .params
+                .get("outcome")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             match crate::reaparicion::apuntar_resultado(db, evento, cual) {
                 Ok(true) => Respuesta::bien(&p.id, serde_json::json!({ "ok": true })),
-                Ok(false) => Respuesta::mal(&p.id, "params",
-                    format!("resultado desconocido; los que hay son {:?}",
-                            crate::reaparicion::RESULTADOS)),
+                Ok(false) => Respuesta::mal(
+                    &p.id,
+                    "params",
+                    format!(
+                        "resultado desconocido; los que hay son {:?}",
+                        crate::reaparicion::RESULTADOS
+                    ),
+                ),
                 Err(e) => Respuesta::mal(&p.id, "db", e.to_string()),
             }
         }
 
-        //  ── traerse lo que ya tenías ────────────────────────────
+        //  ── importing existing items ────────────────────────────
         //
-        //  Tres puertas, todas explícitas: ninguna se ejecuta sola, ninguna
-        //  vigila una carpeta y ninguna sale a la red. La ruta la elige el
-        //  usuario y la valida el controlador, igual que en `export`.
+        //  Three entry points, all explicit: none runs on its own, watches
+        //  a directory, or accesses the network. The user chooses the path
+        //  and the controller validates it, just as for `export`.
         "import" => {
             let desde = p.params.get("directory").and_then(|v| v.as_str());
             let fichero = p.params.get("file").and_then(|v| v.as_str());
             let que = p.params.get("kind").and_then(|v| v.as_str()).unwrap_or("");
             let espacio = p.params.get("space").and_then(|v| v.as_str());
-            let tope = p.params.get("limit").and_then(|v| v.as_u64()).unwrap_or(5000) as usize;
+            let tope = p
+                .params
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(5000) as usize;
 
             fn absoluta(r: Option<&str>) -> Option<&str> {
                 r.filter(|x| !x.is_empty() && std::path::Path::new(x).is_absolute())
@@ -988,7 +1042,7 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
                         std::path::Path::new(d),
                         tope.clamp(1, 50_000),
                     )),
-                    None => Err("hace falta un directorio absoluto"),
+                    None => Err("an absolute directory is required"),
                 },
                 "bookmarks" => match absoluta(fichero) {
                     Some(f) => Ok(crate::importar::marcadores(
@@ -996,13 +1050,13 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
                         std::path::Path::new(f),
                         espacio,
                     )),
-                    None => Err("hace falta un fichero absoluto"),
+                    None => Err("an absolute file path is required"),
                 },
                 "deriva" => match absoluta(desde) {
                     Some(d) => Ok(crate::importar::desde_export(db, std::path::Path::new(d))),
-                    None => Err("hace falta un directorio absoluto"),
+                    None => Err("an absolute directory is required"),
                 },
-                _ => Err("no sé importar eso; hay folder, bookmarks y deriva"),
+                _ => Err("unsupported import type; expected folder, bookmarks, or deriva"),
             };
             match r {
                 Ok(v) => Respuesta::bien(&p.id, serde_json::to_value(v).unwrap_or_default()),
@@ -1010,14 +1064,15 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
             }
         }
 
-        //  ── el parte médico ─────────────────────────────────────
+        //  ── the health report ───────────────────────────────────
         //
-        //  Lo que hay que saber cuando algo no va, en una sola respuesta. La
-        //  primera pregunta al diagnosticar es siempre «¿qué versión de qué
-        //  está hablando con qué?», y contestarla exige mirar cuatro sitios.
+        //  Everything needed to diagnose a problem, in one response. The
+        //  first diagnostic question is always “what version of what is
+        //  talking to what?”, and answering it requires checking four places.
         "doctor" => {
-            //  Un booleano, no el informe entero: el parte médico se lee de un
-            //  vistazo, y para el detalle está `integrity-check`.
+            //  A boolean, not the full report: the health report should be
+            //  readable at a glance, and `integrity-check` provides the
+            //  details.
             let entera = crate::mantenimiento::integridad(db, false)
                 .map(|x| x.ok)
                 .unwrap_or(false);
@@ -1045,7 +1100,7 @@ pub fn despachar(db: &Connection, p: &Peticion) -> Respuesta {
 
         "shutdown" => Respuesta::bien(&p.id, serde_json::json!({ "bye": true })),
 
-        otro => Respuesta::mal(&p.id, "metodo", format!("no sé hacer «{}»", otro)),
+        otro => Respuesta::mal(&p.id, "metodo", format!("unknown method '{}'", otro)),
     }
 }
 

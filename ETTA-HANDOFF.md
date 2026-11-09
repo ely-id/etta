@@ -1,436 +1,438 @@
 # Etta — handoff
 
-Estado em **2026-10-04**, à tarde. A etapa "campos, launcher, Deriva,
-Tailscale e Color Picker" está nos quatro commits do fim da tabela do §4.
-Escrito para retomar numa sessão nova sem reler a conversa anterior.
+Status on **2026-10-04**, in the afternoon. The “fields, launcher, Deriva,
+Tailscale, and Color Picker” phase is in the last four commits in the §4
+table. Written so work can resume in a new session without rereading the
+previous conversation.
 
 ---
 
-## 1. O que é o projeto
+## 1. What the project is
 
-**Etta** é um shell de desktop para o compositor Wayland **Halley**
-(<https://github.com/saltnpepper97/halley>, 0.7.0, API 1). Ela nasceu da
-**Marea** (`k4ditano/marea-plm`, BSD-3) a partir do fork `ely-id/marea-plm`,
-branch `halley-compat`. O fork tem o adaptador Halley e foi importado sem
-histórico. A atribuição da licença está em `LICENSE` e `NOTICE.md`.
+**Etta** is a desktop shell for the Wayland compositor **Halley**
+(<https://github.com/saltnpepper97/halley>, 0.7.0, API 1). It was born from
+**Marea** (`k4ditano/marea-plm`, BSD-3), from the `ely-id/marea-plm` fork,
+branch `halley-compat`. The fork has the Halley adapter and was imported
+without history. License attribution is in `LICENSE` and `NOTICE.md`.
 
-- **O nome:** o cometa 1P/Halley deixa a chuva de meteoros Eta Aquáridas; daí
+- **The name:** comet 1P/Halley produces the Eta Aquariids meteor shower; hence
   Etta.
-- **O runtime:** é o **pleamar 0.2.8** instalado. O pleamar **não é forkado**:
-  fonte em `~/Work/pleamar`, origin `k4ditano/pleamar`, commit `4163c91`;
-  binário em `~/.local/bin/pleamar`; backup do 0.2.6 em
+- **The runtime:** the installed **pleamar 0.2.8**. pleamar is **not forked**:
+  source at `~/Work/pleamar`, origin `k4ditano/pleamar`, commit `4163c91`;
+  binary at `~/.local/bin/pleamar`; 0.2.6 backup at
   `~/.local/state/etta-pleamar-0.2.6.bak`.
-- **Idioma:** o produto (textos, comentários, commits) é **só em inglês**. A
-  conversa com o usuário é em português.
+- **Language:** the product (text, comments, commits) is **English only**.
+  Conversation with the user is in Portuguese.
 
-### Regras que não mudam
+### Rules that do not change
 
-1. **O pet fica intacto:** corpo, rosto, acessórios, movimentos, animações e
-   reações. Só pode mudar **onde ela interage com os painéis**, mais os ajustes
-   aprovados:
-   - tamanho maior (56 px padrão, opções 46/52/56/64);
-   - glifos de OSD nos olhos, grossos o bastante para manter a cara dela;
-   - o morph do cadeado na tela de bloqueio;
-   - as peças novas do guarda-roupa.
-2. **Prioridades:** arquitetura, depois funcionalidade, depois UX/UI.
-3. **Ações externas ou irreversíveis precisam de confirmação:** push, publicar,
-   mudar a config do usuário. O usuário aprova cada coisa.
-4. **Commits:** um por marco, terminando com
-   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Identidade git
-   local: "Ely".
+1. **The pet stays intact:** body, face, accessories, movements, animations, and
+   reactions. Only **where she interacts with the panels** may change, along
+   with the approved adjustments:
+   - larger size (56 px default, options 46/52/56/64);
+   - OSD glyphs in the eyes, thick enough to preserve her face;
+   - the lock morph on the lock screen;
+   - the new wardrobe pieces.
+2. **Priorities:** architecture, then functionality, then UX/UI.
+3. **External or irreversible actions require confirmation:** push, publish,
+   change the user's configuration. The user approves each action.
+4. **Commits:** one per milestone, ending with
+   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Local Git
+   identity: “Ely”.
 
-### Etapas
+### Stages
 
-- Etapa 1 (entendimento): ✓
-- Etapa 1.5 (estudo): ✓
-- Etapa 2 (protótipos interativos): ✓, aprovada. Canvas com 27 artboards em
-  <https://claude.ai/artifact/BtBjMxWBmidS49AJUyvfMv>, arquivos
-  `project/*.dc.html`. É a **referência visual de tudo**.
-- **Etapa 3 (implementação): em andamento.**
-  - Fase 1: UX/UI.
-  - Fase 2: integração correta com o Halley.
-  - As duas fases estão andando juntas, porque cada marco já é testado ao vivo
-    no Halley.
+- Stage 1 (understanding): ✓
+- Stage 1.5 (study): ✓
+- Stage 2 (interactive prototypes): ✓, approved. Canvas with 27 artboards at
+  <https://claude.ai/artifact/BtBjMxWBmidS49AJUyvfMv>, files
+  `project/*.dc.html`. It is the **visual reference for everything**.
+- **Stage 3 (implementation): in progress.**
+  - Phase 1: UX/UI.
+  - Phase 2: correct integration with Halley.
+  - Both phases are progressing together, because each milestone is tested
+    live in Halley.
 
 ---
 
-## 2. Onde as coisas estão
+## 2. Where things are
 
-| Caminho | O que é |
+| Path | What it is |
 | --- | --- |
-| `etta.plm` | A cena (≈4 900 linhas): o pet, as superfícies e as regras. Importa `ui/*.plm` e `common/*.plm` |
-| `etta.luau` | A lógica: serviços, persistência e processos externos |
-| `ui/tokens.plm` | Tokens de design (`tk.*`: cores, escala de tipo, raios). Cada token documenta seu uso |
-| `ui/kit.plm` | Kit: `Btn`, `Ib`, `Toggle`, `Slider`, `Seg` (até 5 itens), `Chip`, `Tag`, `Kbd`, `Row`, `Bubble`, `FieldBox` (a placa de um campo de texto), mais as figuras `Kit.i_*` (75 ícones SVG em `ui/icons/`) |
-| `ui/panels.plm` | Todas as páginas do control center como componentes (veja §4) |
-| `ui/showcase.plm` | Cena de vitrine do kit |
-| `common/accessories.plm` | Física das peças: `Perched`, `Pinned`, `Tagalong`. **Não mexer** (é do pet) |
-| `wardrobe/*.svg` | As 20 peças |
-| `wallpapers/*.frag` | 6 field shaders próprios, mais `space.png` (foto do shader do Halley; veja `NOTICE.md`) |
-| `halley/` | Adaptador `etta-halley` (Rust): `outputs` com transform e scale, `window …`. Testes: `cargo test --release --offline` |
-| `tools/shader-thumb/` | `etta-shader-thumb`: GLSL ES do Halley → GLSL 450 → glslangValidator → SPIR-V → wgpu → PNG. Compila offline |
-| `tools/reservas` | Leitor (node) das cotas de Claude Code, Codex, Copilot (via `gh api /copilot_internal/user`) e Grok (sem API: o card diz isso) |
-| `deriva/` | Biblioteca Deriva (`deriva-worker`, já compilado). Testes: `cargo test --release --offline` **com `XDG_DATA_HOME` apontando para uma pasta temporária** (os testes isolam com `ETTA_DERIVA_DIR`; até este marco usavam o nome antigo `MAREA_DERIVA_DIR` e teriam rodado na biblioteca real) |
-| `etta` | Launcher: `start`, `stop`, `status`, `report` e `<evento>`. Coloca `halley/`, `tools/shader-thumb/` e `deriva/` no PATH, exporta `ETTA_DIR` e roda `--stall 0` |
-| `docs/contract/` | Contrato herdado da Marea (animações e medidas) |
+| `etta.plm` | The scene (≈4,900 lines): the pet, surfaces, and rules. Imports `ui/*.plm` and `common/*.plm` |
+| `etta.luau` | The logic: services, persistence, and external processes |
+| `ui/tokens.plm` | Design tokens (`tk.*`: colors, type scale, radii). Each token documents its usage |
+| `ui/kit.plm` | Kit: `Btn`, `Ib`, `Toggle`, `Slider`, `Seg` (up to 5 items), `Chip`, `Tag`, `Kbd`, `Row`, `Bubble`, `FieldBox` (the plate for a text field), plus the `Kit.i_*` figures (75 SVG icons in `ui/icons/`) |
+| `ui/panels.plm` | All control center pages as components (see §4) |
+| `ui/showcase.plm` | Kit showcase scene |
+| `common/accessories.plm` | Piece physics: `Perched`, `Pinned`, `Tagalong`. **Do not touch** (it belongs to the pet) |
+| `wardrobe/*.svg` | The 20 pieces |
+| `wallpapers/*.frag` | 6 custom field shaders, plus `space.png` (photo of Halley's shader; see `NOTICE.md`) |
+| `halley/` | `etta-halley` adapter (Rust): `outputs` with transform and scale, `window …`. Tests: `cargo test --release --offline` |
+| `tools/shader-thumb/` | `etta-shader-thumb`: Halley GLSL ES → GLSL 450 → glslangValidator → SPIR-V → wgpu → PNG. Builds offline |
+| `tools/reservas` | Node reader for Claude Code, Codex, Copilot (via `gh api /copilot_internal/user`), and Grok quotas (no API: the card says so) |
+| `deriva/` | Deriva library (`deriva-worker`, already compiled). Tests: `cargo test --release --offline` **with `XDG_DATA_HOME` pointing to a temporary folder** (tests isolate with `ETTA_DERIVA_DIR`; until this milestone they used the old name `MAREA_DERIVA_DIR` and would have run against the real library) |
+| `etta` | Launcher: `start`, `stop`, `status`, `report`, and `<event>`. Adds `halley/`, `tools/shader-thumb/`, and `deriva/` to PATH, exports `ETTA_DIR`, and runs `--stall 0` |
+| `docs/contract/` | Contract inherited from Marea (animations and measurements) |
 
-**Dados em tempo de execução:**
+**Runtime data:**
 
 - `~/.local/share/pleamar/etta/`: `settings.json`, `history.json`,
   `halley-wallpaper.rune`.
-- Log: `~/.local/state/etta/etta.log`. O launcher guarda **um** log anterior,
-  então uma segunda reinicialização apaga o log de um crash.
-- Cache: `~/.cache/etta/` (miniaturas dos shaders e capas de mídia).
-- Shaders do usuário: `~/.config/etta/shaders/`.
+- Log: `~/.local/state/etta/etta.log`. The launcher keeps **one** previous
+  log, so a second restart erases a crash log.
+- Cache: `~/.cache/etta/` (shader thumbnails and media covers).
+- User shaders: `~/.config/etta/shaders/`.
 
 ---
 
-## 3. Como rodar e testar (na máquina do usuário)
+## 3. Running and testing (on the user's machine)
 
 ```sh
-etta start --screen HDMI-A-1        # ou só `etta start`; o link está em ~/.local/bin/etta
+etta start --screen HDMI-A-1        # or just `etta start`; the link is in ~/.local/bin/etta
 etta status
-pleamar --check etta.plm            # compila a cena com tudo o que importa
-pleamar --say etta "fact open true" # faz algo ao vivo: fact X V · get X · emit EVENTO [payload]
-grim -o HDMI-A-1 /tmp/s.png && magick /tmp/s.png -rotate 180 /tmp/v.png   # o HDMI está físico a 180°
+pleamar --check etta.plm            # compiles the scene and everything it imports
+pleamar --say etta "fact open true" # does something live: fact X V · get X · emit EVENT [payload]
+grim -o HDMI-A-1 /tmp/s.png && magick /tmp/s.png -rotate 180 /tmp/v.png   # HDMI is physically rotated 180°
 ```
 
-- **Hot reload:** a cena e a lógica recarregam ao salvar.
-- **O que exige reiniciar a instância:**
-  - superfícies novas;
-  - variáveis de ambiente.
-- **Permissões** (`permissions { run: …; services: … }`) recarregam ao
-  salvar no pleamar 0.2.8: o log diz "permissions now: …". Mesmo assim, todo
-  binário novo chamado com `run()` precisa entrar na lista.
-- **Para reiniciar sem matar o próprio shell:**
-  `kill $(pgrep -f "^/home/ely/.local/bin/pleamar --scene etta.plm")`, depois
-  `etta start`. **Não use** `pkill -f "pleamar --scene etta.plm"`: casa com a
-  própria linha de comando e mata o shell.
-- **Prévia da tela de bloqueio sem travar a sessão:**
-  `fact lock.preview true`, ou Settings → Lock → Preview.
-- **Recorte de captura simulado:** `fact sel.x/y/w/h …`, depois
+- **Hot reload:** the scene and logic reload when saved.
+- **What requires restarting the instance:**
+  - new surfaces;
+  - environment variables.
+- **Permissions** (`permissions { run: …; services: … }`) reload on save in
+  pleamar 0.2.8: the log says “permissions now: …”. Even so, every new binary
+  called with `run()` must be added to the list.
+- **To restart without killing the shell itself:**
+  `kill $(pgrep -f "^/home/ely/.local/bin/pleamar --scene etta.plm")`, then
+  `etta start`. **Do not use** `pkill -f "pleamar --scene etta.plm"`: it
+  matches its own command line and kills the shell.
+- **Lock-screen preview without locking the session:**
+  `fact lock.preview true`, or Settings → Lock → Preview.
+- **Simulated capture selection:** `fact sel.x/y/w/h …`, then
   `emit shot_commit`.
 
-Numa sessão na nuvem **não há Halley nem Wayland**. Dá para editar e, se o
-pleamar estiver compilado lá, rodar `pleamar --check etta.plm`. Teste visual
-só na máquina do usuário.
+In a cloud session, **there is no Halley or Wayland**. You can edit and, if
+pleamar is compiled there, run `pleamar --check etta.plm`. Visual testing can
+only be done on the user's machine.
 
 ---
 
-## 4. Estado: o que está feito (commits)
+## 4. Status: what is done (commits)
 
-| Commit | Marco |
+| Commit | Milestone |
 | --- | --- |
-| `0c67b3d`…`294fdc8` | Importação, renomeação Marea→Etta, só inglês, tudo em **Geist** (`family: "Geist"` em cada texto) |
-| `846a92d` | Tokens, ícones, kit |
-| `d4a4fed` `f7e8dc2` | Relógio e bateria sempre ao lado dela (card com clima, próximos eventos); OSDs (volume, mute, brilho, mic, caps, carregador, bateria baixa, dispositivo, rede, DND) |
-| `083008f` | Control center e 13 páginas como componentes; quick settings novos (keep awake = `systemd-inhibit`, power = `powerprofilesctl`, night light = `wlsunset`); Bluetooth levanta o rfkill; volume por app; Settings rolável; Agents com 4 provedores e chips; previsão por hora; History com busca e filtros |
-| `62f05b8` | Correções da 1ª revisão: `Ib` não emitia o clique; mídia (pausado também, capa, player); Bluetooth em My devices/Nearby; **sem limite de 60 fps** (judder a 100 Hz); toast e swell redesenhados (mecânica dela mantida) |
-| `90afc94` | Guarda-roupa: 5 lugares (`wear.head/face/ears/neck/side`), 20 peças, aba por lugar, preview; acompanhantes à esquerda dela, depois das pedras |
-| `7acfab3` | Wallpapers no Halley: field shaders e miniaturas; aplicar escreve `halley-wallpaper.rune`, que o `halley.rune` reúne com `gather` |
-| `0c5fd00` | Tela de bloqueio: ela vira o cadeado (pontinhos, `> <` vermelho, `^ ^` com a alça abrindo; destrava 0,9 s depois); prévia segura |
-| `4efb5c8` | Captura de região própria (frame congelado, guias, medidas, ela como HUD de W×H; soltar salva em `~/Pictures/Screenshots/Screenshot_…png` + clipboard; Esc cancela; R/W/S trocam o modo); cartão "saved" compartilhado com gravações |
-| `0dd7a84` | Look: **Glass bloqueado no Halley** (crash de screencopy); Frosted só translúcido |
-| `c7a2f92` | Gravação nativa testada (NVENC + áudio), `~/Videos/Recordings/Recording_…mp4`, rotação de 180° marcada com `ffmpeg -display_rotation` |
-| `3c51cf2` | **Estabilidade no Halley** (veja §4.1) e **Finder, menu, cápsula do Haven e "Welcome back"** redesenhados conforme os protótipos |
-| `cf036be` | **Campos de texto centrados** (o `at` de um `input` é o canto de cima; `FieldBox` no kit, tokens `tk.field.*`/`tk.mid.*`) e **o Finder vê apps novos**: a Etta lê os `.desktop` ela mesma a cada abertura, com as regras do serviço `apps` do pleamar (o que ela lista é o que `apps.launch` aceita); busca por arquivo, programa, classe, keywords e letras em ordem |
-| `8a9ca38` | **Deriva**: chips por cor (links, arquivos, imagens, notas), «Clear» com caixa de três opções (lixeira · excluir de vez · cancelar) e «Undo» de 5 s; lê a biblioteca inteira por páginas; sem «Clear» durante uma busca. `deriva-worker`: `trash`/`untrash` em lote, `purge` (linhas + arquivos que ninguém mais usa; nunca com `--db`), `list --before` |
-| `42e5a28` | **Tailscale**: pílula ao lado do relógio (os 9 pontos: T aceso = ligado, ondulando = transferência, ponto mint = arquivo recebido) que vira card: este dispositivo, os outros (nome do MagicDNS), copiar endereço, enviar arquivos (zenity ou soltar na linha), recebidos em `~/Downloads/Taildrop` com aviso, ligar/desligar |
-| (este commit) | **Color Picker** (Super+Shift+P, menu, Finder): o overlay da captura, sem escurecer, com lupa ×10 que ela segura, HEX/RGB lidos do frame; a cor vai para o clipboard e para **a mini Etta**, que nasce de dentro dela, a segue (abaixo das pedras com ela fora; à direita, perto do relógio, com ela recolhida), usa o rosto dela (o `Face` ganhou `fg`/`hole`, com o padrão de antes) e abre o painel de cores (HEX em destaque, RGB light, cada formato copia ao clicar; «Clear» a devolve para dentro da Etta) |
+| `0c67b3d`…`294fdc8` | Import, rename Marea→Etta, English only, everything in **Geist** (`family: "Geist"` in each text) |
+| `846a92d` | Tokens, icons, kit |
+| `d4a4fed` `f7e8dc2` | Clock and battery always next to her (card with weather, upcoming events); OSDs (volume, mute, brightness, mic, caps, charger, low battery, device, network, DND) |
+| `083008f` | Control center and 13 pages as components; new quick settings (keep awake = `systemd-inhibit`, power = `powerprofilesctl`, night light = `wlsunset`); Bluetooth lifts rfkill; per-app volume; scrollable Settings; Agents with 4 providers and chips; hourly forecast; History with search and filters |
+| `62f05b8` | First review fixes: `Ib` did not emit clicks; media (also paused, cover, player); Bluetooth in My devices/Nearby; **no 60 fps limit** (judder at 100 Hz); toast and swell redesigned (her mechanics preserved) |
+| `90afc94` | Wardrobe: 5 slots (`wear.head/face/ears/neck/side`), 20 pieces, tab by slot, preview; companions to her left, after the stones |
+| `7acfab3` | Wallpapers in Halley: field shaders and thumbnails; applying writes `halley-wallpaper.rune`, which `halley.rune` includes with `gather` |
+| `0c5fd00` | Lock screen: she turns into the lock (dots, red `> <`, `^ ^` as the shackle opens; unlocks 0.9 s later); safe preview |
+| `4efb5c8` | Custom region capture (frozen frame, guides, measurements, her as W×H HUD; release saves to `~/Pictures/Screenshots/Screenshot_…png` + clipboard; Esc cancels; R/W/S switch mode); “saved” card shared with recordings |
+| `0dd7a84` | Look: **Glass blocked on Halley** (screencopy crash); Frosted is translucent only |
+| `c7a2f92` | Native recording tested (NVENC + audio), `~/Videos/Recordings/Recording_…mp4`, 180° rotation marked with `ffmpeg -display_rotation` |
+| `3c51cf2` | **Stability on Halley** (see §4.1) and **Finder, menu, Haven capsule, and “Welcome back”** redesigned according to the prototypes |
+| `cf036be` | **Centered text fields** (an `input`'s `at` is its top corner; `FieldBox` in the kit, `tk.field.*`/`tk.mid.*` tokens) and **Finder sees new apps**: Etta reads `.desktop` files itself on each opening, following pleamar's `apps` service rules (what it lists is what `apps.launch` accepts); searches by file, program, class, keywords, and ordered letters |
+| `8a9ca38` | **Deriva**: color-coded chips (links, files, images, notes), “Clear” with a three-option dialog (trash · permanently delete · cancel) and 5 s “Undo”; reads the entire library in pages; no “Clear” during a search. `deriva-worker`: batched `trash`/`untrash`, `purge` (rows + files no one else uses; never with `--db`), `list --before` |
+| `42e5a28` | **Tailscale**: pill next to the clock (the 9 dots: lit T = connected, wavy = transferring, mint dot = file received) that opens a card: this device, the others (MagicDNS name), copy address, send files (zenity or drop onto the row), received files in `~/Downloads/Taildrop` with a notification, connect/disconnect |
+| (this commit) | **Color Picker** (Super+Shift+P, menu, Finder): capture overlay without dimming, with a ×10 magnifier she holds, HEX/RGB read from the frame; the color goes to the clipboard and to **mini Etta**, which emerges from inside her, follows her (below the stones when she is out; to the right, near the clock, when she is tucked away), uses her face (`Face` gained `fg`/`hole`, with the previous defaults), and opens the color panel (HEX highlighted, RGB light, each format copies on click; “Clear” sends it back inside Etta) |
 
-### 4.1 O que a rodada de estabilidade corrigiu (relatório de testes do usuário)
+### 4.1 What the stability round fixed (user test report)
 
-- **Cliques vazando entre painéis:** o `Seg` declarava `zone box opt.$i`
-  dentro de componente. Nomes com `$` perdem o sufixo da instância, então
-  todos os `Seg` compartilhavam 5 zonas: "Face" no Wardrobe também escolhia
-  Frosted + eDP-1, e qualquer índice 2 ligava "Follow focus". Agora cada
-  opção é uma cópia de `SegOpt`.
-- **Teclado morto** (Esc, Finder, R/W/S): só a última `keyboard: … while`
-  valia (a do lockpreview). Agora há **uma** declaração, na superfície
-  principal, `exclusive`. No Halley, `on_demand` só pega o teclado com
-  clique/hover numa layer que já é on_demand. Enquanto a Etta segura o
-  teclado, os binds do Halley ficam desligados; por isso ela espelha
-  Super+Space, Super+Shift+L/S/V e as teclas de volume, brilho e mídia. Uma
-  regra `on focus … { blur }` tira o cursor de campos invisíveis.
-- **Esc** fecha o que está aberto, de qualquer página. Antes, cancelam:
-  senha do Wi-Fi, editor de cidade e confirmação da sessão.
-- **Captura:** dentro de superfície nomeada, `pointer.y` vem no plano
-  (+10000 por cópia). Cada cópia aprende o próprio deslocamento (`ox`/`oy`)
-  pela zona. O overlay abre em **todos** os monitores; o clicado é o
-  capturado. Window fica escondido no Halley. Clique direito e Cancel saem.
-  O adaptador ganhou `selected` (o output escolhido pelo Halley).
-- **Shaders/Deriva:** a zona de rolagem estava por cima dos cards. Agora vem
-  antes deles. O 7º shader era inalcançável: o limite da rolagem foi
-  arredondado para 0. Agora há paginação "1–6 of 7" com ‹ ›.
-- **Settings/Tray/Calendar:** zonas de linhas roladas não respeitam o
-  `view`. Agora cada controle só fica ativo com a linha inteira visível, e o
-  cabeçalho é desenhado depois da lista.
-- **Frame do relógio:** uma transição atrasada sobrevivia a uma mais nova.
-  Agora os alvos são `if(cond, 1, 0)`, e o card fica recortado.
-- **Prévia do lock:** clicar no fundo não fecha mais. Tem pílula com Close,
-  abre no monitor dela e não mostra suspender/desligar.
-- **Persistência:** o nome do monitor só é gravado quando você escolhe.
-  "View rules" da cápsula não tinha handler e ganhou um.
+- **Clicks leaking between panels:** `Seg` declared `zone box opt.$i`
+  inside a component. Names with `$` lose the instance suffix, so all `Seg`
+  instances shared 5 zones: “Face” in Wardrobe also selected Frosted + eDP-1,
+  and any index 2 enabled “Follow focus”. Now each option is a `SegOpt` copy.
+- **Dead keyboard** (Esc, Finder, R/W/S): only the last
+  `keyboard: … while` declaration applied (the one in lockpreview). There is
+  now **one** declaration, on the main surface, `exclusive`. In Halley,
+  `on_demand` only acquires the keyboard on click/hover in a layer that is
+  already on-demand. While Etta holds the keyboard, Halley keybinds are
+  disabled; so she mirrors Super+Space, Super+Shift+L/S/V, and the volume,
+  brightness, and media keys. An `on focus … { blur }` rule removes focus from
+  invisible fields.
+- **Esc** closes whatever is open, on any page. Previously it cancelled the
+  Wi-Fi password, city editor, and session confirmation.
+- **Capture:** inside a named surface, `pointer.y` is in the plane
+  (+10000 per copy). Each copy learns its own offset (`ox`/`oy`) from the
+  zone. The overlay opens on **all** monitors; the clicked one is captured.
+  Window is hidden on Halley. Right-click and Cancel exit. The adapter gained
+  `selected` (the output selected by Halley).
+- **Shaders/Deriva:** the scroll zone was over the cards. It now comes before
+  them. The 7th shader was unreachable: the scroll limit rounded down to 0.
+  There is now “1–6 of 7” pagination with ‹ ›.
+- **Settings/Tray/Calendar:** zones for scrolled rows did not respect `view`.
+  Each control is now active only when its entire row is visible, and the
+  header is drawn after the list.
+- **Clock frame:** a delayed transition survived a newer one. Targets are now
+  `if(cond, 1, 0)`, and the card is clipped.
+- **Lock preview:** clicking the background no longer closes it. It has a
+  Close pill, opens on her monitor, and does not show suspend/shutdown.
+- **Persistence:** the monitor name is saved only when you choose it. “View
+  rules” in the capsule had no handler; it has one now.
 
 ---
 
-## 5. Mudanças feitas na máquina do usuário (fora do repo)
+## 5. Changes made on the user's machine (outside the repo)
 
 - **`~/.config/halley/halley.rune`** (backups:
-  `halley.rune.bak-before-etta-wallpaper` e `.bak-before-etta-binds`):
+  `halley.rune.bak-before-etta-wallpaper` and `.bak-before-etta-binds`):
   - `gather "~/.local/share/pleamar/etta/halley-wallpaper.rune" as etta_wall`;
-    o bloco `wallpaper:` lê `etta_wall.etta.*`;
-  - autostart: `once "/home/ely/.local/bin/etta start"` (antes era `marea`);
-  - keybinds, com caminho absoluto `/home/ely/.local/bin/etta …`:
+    the `wallpaper:` block reads `etta_wall.etta.*`;
+  - autostart: `once "/home/ely/.local/bin/etta start"` (previously `marea`);
+  - keybinds, with absolute path `/home/ely/.local/bin/etta …`:
     - Super+Space `search`;
     - Super+Shift+L `lock`;
     - Super+Shift+S `shot_region`;
     - Super+Shift+V `record_toggle`;
-    - brilho, mídia e mute do microfone.
+    - brightness, media, and microphone mute.
 - **Link** `~/.local/bin/etta` → `~/Work/etta/etta`.
-- **A Marea (PID 943) ficou rodando** até o próximo login; o usuário pode
-  rodar `marea stop`.
-- **Tailscale:** o usuário se tornou operador (`sudo tailscale set --operator=$USER`,
-  ele mesmo rodou). A Etta criou `~/Downloads/Taildrop` e mantém um
-  `tailscale file get --loop` rodando para receber.
-- **`settings.json`** ganhou `colors` (os HEX, mais novo primeiro) e
+- **Marea (PID 943) was left running** until the next login; the user can run
+  `marea stop`.
+- **Tailscale:** the user became an operator (`sudo tailscale set --operator=$USER`,
+  which they ran themselves). Etta created `~/Downloads/Taildrop` and keeps a
+  `tailscale file get --loop` running to receive files.
+- **`settings.json`** gained `colors` (the HEX values, newest first) and
   `color_format` (`hex`/`rgb`).
-- **Pendente de aprovação:** o atalho do Color Picker no `halley.rune`
-  (veja §7). Até lá, Super+Shift+P só funciona enquanto a Etta segura o
-  teclado.
-- **Arquivos de teste nas pastas do usuário** (pode apagar):
+- **Pending approval:** the Color Picker shortcut in `halley.rune`
+  (see §7). Until then, Super+Shift+P only works while Etta holds the
+  keyboard.
+- **Test files in the user's folders** (can be deleted):
   - `~/Pictures/Screenshots/Screenshot_2026-10-03_06-54-25.png`;
   - `~/Videos/Recordings/Recording_2026-10-03_06-57-34.mp4`, `06-58-11`,
-    `06-58-33` e `07-00-01`.
+    `06-58-33`, and `07-00-01`.
 
 ---
 
-## 6. Armadilhas aprendidas (economizam horas)
+## 6. Lessons learned (save hours)
 
-**pleamar (cena):**
+**pleamar (scene):**
 
-- `text` com `size`, `weight` e `family` **só aceita literais**. Para variar
-  peso ou tamanho, use dois textos com `show`.
-- `let` de cor dentro de componente não enxerga outros lets de cor. Ponha o
-  `pick()`/`mix()` direto no `color:`.
-- `pick()` de texto aceita literais, textos vivos e slots, mas **não** `pick`
-  aninhado: faça um índice único com `if()`.
-- Textos não entram em expressões (`x != ""` não compila). Use um fact vindo da
-  lógica ou um `measure`.
-- `measure nome` precisa ser **declarado** (`measure x`) antes de usar
-  `measure: x` num texto, inclusive dentro de componentes.
-- Um `let` não enxerga facts e props declarados dentro de `repeat`. Use
-  `prop … ~16ms` com `follow`.
-- Valores de enum não podem colidir com outros nomes. Por isso os prefixos:
+- `text` with `size`, `weight`, and `family` **only accepts literals**. To vary
+  weight or size, use two texts with `show`.
+- A color `let` inside a component cannot see other color lets. Put
+  `pick()`/`mix()` directly in `color:`.
+- Text `pick()` accepts literals, live text, and slots, but **not nested
+  `pick`**: use a single index with `if()`.
+- Texts cannot be used in expressions (`x != ""` does not compile). Use a fact
+  from the logic or a `measure`.
+- `measure name` must be **declared** (`measure x`) before using `measure: x`
+  in a text, including inside components.
+- A `let` cannot see facts and props declared inside `repeat`. Use
+  `prop … ~16ms` with `follow`.
+- Enum values cannot collide with other names. Hence the prefixes:
   `o_`, `h_`, `f_`, `e_`, `n_`, `s_`, `l_`, `sm_`, `rk_`.
-- **`grid` desenha todos os registros possíveis do model** (até o `max`):
-  proteja com `show: r.index < model.count`. `column` e `row` com `for` não têm
-  esse problema.
-- Componentes de biblioteca **não exportam** nomes de zona para a cena: as
-  regras `on scroll/press` de uma zona ficam dentro do componente. Nomes de
-  layouts em componente também são internos (`list.content` não resolve; use
-  conta própria).
-- `clip` solto vale até o fim do **grupo**, ou até a próxima `surface` se
-  estiver no nível da cena. Sempre embrulhe num `group`.
-- `shader x = file "…"` numa biblioteca é relativo à biblioteca
+- **`grid` draws every possible record in the model** (up to `max`): guard it
+  with `show: r.index < model.count`. `column` and `row` with `for` do not
+  have this problem.
+- Library components **do not export** zone names to the scene: `on
+  scroll/press` rules for a zone stay inside the component. Layout names inside
+  a component are also internal (`list.content` does not resolve; calculate
+  it yourself).
+- A standalone `clip` applies to the end of the **group**, or to the next
+  `surface` if declared at scene level. Always wrap it in a `group`.
+- `shader x = file "…"` in a library is relative to the library
   (`"../shaders/…"`).
-- `shader { at: }` é o **canto**; `zone box { at: }` é o **centro**;
-  `box { from: }` é o canto.
-- Eventos com `->` chegam à lógica; sem a seta, ficam só na cena. Payload na
-  regra: `on evento(v) { … }`.
-- `on focus` e `on blur` não recebem nome de input.
-- Não há cursor crosshair (vocabulário: default, pointer, text, grab,
+- `shader { at: }` is the **corner**; `zone box { at: }` is the **center**;
+  `box { from: }` is the corner.
+- Events with `->` reach the logic; without the arrow they remain in the
+  scene. Rule payload: `on event(v) { … }`.
+- `on focus` and `on blur` do not receive an input name.
+- There is no crosshair cursor (vocabulary: default, pointer, text, grab,
   grabbing).
-- O kind `lock`: o plano é centrado no monitor; `lockscreen.width/height` dá o
-  tamanho real.
-- Superfícies `screens: each` com regras que leem o ponteiro: abra só no
-  monitor alvo (`open: … and screen.index == X`).
-- **Nome com `$` dentro de componente é compartilhado por todas as cópias**
-  (sem sufixo de instância). Em componente, use nomes fixos ou uma
-  subcópia (`SegOpt`).
-- **`keyboard: … while` é um só para a cena**: a última declarada vale, e o
-  modo é o da superfície principal. Declare só na principal.
-- **No Halley use `exclusive`**, porque `on_demand` não recebe o teclado ao
-  abrir. Com exclusive, os binds do Halley param: espelhe na cena os que
-  importam.
-- Ao ganhar o teclado, o pleamar põe o cursor num campo (até num invisível),
-  e o campo come letras e Enter antes das regras. `blur` resolve. Enter num
-  campo vira submit mesmo com Ctrl.
-- **Zonas ignoram `clip` e `view:`**: linha rolada para fora continua
-  clicável. Proteja por posição (`live:`/`active:`).
-- **Em superfície nomeada, `pointer.x/y` são do plano** (cópia n em
-  y + 10000·n); `local.x/y` em regra de zona são corretos.
-- **Transição atrasada nunca é cancelada**, e o alvo é lido quando ela cai.
-  Escreva `if(cond, 1, 0)`, nunca `1`.
-- `on still X for T` dispara **uma vez**: se a guarda estiver falsa nesse
-  momento, não dispara de novo. (Foi assim que `face = happy` ficou preso.)
-  Prefira gestos (`play …`) para reações curtas.
-- O renderer pinta o frame inteiro no Halley. `PLEAMAR_FULL_REPAINT` só
-  vale para os frames emprestados do pleamar-wm.
-- Mouse simulado (`--mouse`) recebe coordenadas **do plano**: a cópia 0 da
-  primeira superfície nomeada fica em y+10000. `--mouse "focus+@… key:Escape@…
-  type:abc@…"` simula teclado. Dá para testar componentes reais numa cena
-  pequena que importa `ui/`.
+- The `lock` kind: the plane is centered on the monitor;
+  `lockscreen.width/height` gives its actual size.
+- For `screens: each` surfaces with rules that read the pointer, open only on
+  the target monitor (`open: … and screen.index == X`).
+- **A name with `$` inside a component is shared by all copies** (no instance
+  suffix). In a component, use fixed names or a sub-copy (`SegOpt`).
+- **`keyboard: … while` is global to the scene**: the last declaration wins,
+  and the mode is the main surface's. Declare it only on the main surface.
+- **Use `exclusive` in Halley**, because `on_demand` does not receive the
+  keyboard when opening. With exclusive, Halley keybinds stop working: mirror
+  the important ones in the scene.
+- When acquiring the keyboard, pleamar focuses an input (even an invisible
+  one), and the field consumes letters and Enter before the rules. `blur`
+  fixes it. Enter in a field submits even with Ctrl.
+- **Zones ignore `clip` and `view:`**: a scrolled-out row remains clickable.
+  Guard by position (`live:`/`active:`).
+- **On a named surface, `pointer.x/y` are in plane coordinates** (copy n at
+  y + 10000·n); `local.x/y` in a zone rule are correct.
+- **A delayed transition is never cancelled**, and its target is read when it
+  fires. Write `if(cond, 1, 0)`, never `1`.
+- `on still X for T` fires **once**: if the guard is false at that moment, it
+  does not fire again. (That is how `face = happy` got stuck.) Prefer gestures
+  (`play …`) for short reactions.
+- The renderer paints the entire frame on Halley. `PLEAMAR_FULL_REPAINT`
+  applies only to frames borrowed from pleamar-wm.
+- Simulated mouse (`--mouse`) uses **plane** coordinates: copy 0 of the first
+  named surface is at y+10000. `--mouse "focus+@… key:Escape@… type:abc@…"`
+  simulates the keyboard. This can test real components in a small scene that
+  imports `ui/`.
 
-- **O `at` de um `input` é o canto de cima à esquerda** (sem `anchor`; linha =
-  tamanho × 1,3). Para centrar num `y`, use `y - tamanho × 0,65`
-  (`tk.mid.s14` etc.). A zona clicável do campo segue o mesmo `at`.
-- **Uma cor não vem de um fact**, mas uma cor são três expressões por canal e
-  `mix` é linear em cada uma: `mix(mix(mix(#000000,#ff0000,r),
+- **An `input`'s `at` is the top-left corner** (no `anchor`; line height =
+  size × 1.3). To center at a `y`, use `y - size × 0.65`
+  (`tk.mid.s14`, etc.). The field's clickable zone follows the same `at`.
+- **A color does not come from a fact**, but a color is three expressions per
+  channel and `mix` is linear in each: `mix(mix(mix(#000000,#ff0000,r),
   mix(#00ff00,#ffff00,r),g), mix(mix(#0000ff,#ff00ff,r),
-  mix(#00ffff,#ffffff,r),g), b)` dá exatamente (r, g, b).
-- **Um só slot de gesto na cena**: um gesto `state` longo (5 s) recusa as
-  reações dela enquanto dura. Para um pavio, use `spin` (e termine pelo
-  relógio: `spin` para com reduced motion).
-- `on change X` só dispara quando o valor muda: para "de novo, igual", use um
-  contador (`drift.seq`).
-- Imagens são amostradas com filtro **linear** (a lupa ×10 fica suave).
-- Uma zona `nome.$k` num `repeat` da cena se chama `nome.0`, `nome.1`… para
-  `on("drop:nome.0")` na lógica.
+  mix(#00ffff,#ffffff,r),g), b)` gives exactly (r, g, b).
+- **Only one gesture slot per scene**: a long (5 s) `state` gesture rejects
+  her reactions while it lasts. For a fuse, use `spin` (and end it with the
+  clock: `spin` stops with reduced motion).
+- `on change X` only fires when the value changes: to do it “again, unchanged,”
+  use a counter (`drift.seq`).
+- Images are sampled with a **linear** filter (the ×10 magnifier stays smooth).
+- A `name.$k` zone in a scene `repeat` is called `name.0`, `name.1`… for
+  `on("drop:name.0")` in the logic.
 
-**Luau (lógica):**
+**Luau (logic):**
 
-- O chunk principal **está no limite de 200 locais** (duas funções locais a
-  mais derrubaram a lógica neste marco): código novo vai dentro de
-  `;(function() … end)()`, em `fx.*`/`hooks.*`, ou de uma função nomeada
-  (veja o fim de `etta.luau`).
-- `run` e `spawn` só entregam o **stdout** (o stderr vai para o nulo).
-- O serviço `apps` do pleamar lê os `.desktop` **uma vez**, e um segundo
-  `sys.watch("apps")` só acrescenta um ouvinte (não relê): por isso a
-  varredura própria (`fx.read_apps`).
-- Um argumento de processo tem limite de tamanho (128 KB): listas de ids vão
-  em lotes (`fx.drift_batches`, mil por vez).
+- The main chunk **is at the 200-local limit** (two more local functions
+  caused the logic to fail in this milestone): put new code inside
+  `;(function() … end)()`, in `fx.*`/`hooks.*`, or in a named function (see the
+  end of `etta.luau`).
+- `run` and `spawn` only return **stdout** (stderr goes to the null device).
+- pleamar's `apps` service reads `.desktop` files **once**, and a second
+  `sys.watch("apps")` only adds a listener (it does not reread them): hence
+  the custom scan (`fx.read_apps`).
+- A process argument has a size limit (128 KB): ID lists are sent in batches
+  (`fx.drift_batches`, one thousand at a time).
 
-**Tailscale e Agents:**
+**Tailscale and Agents:**
 
-- `tailscale up` com **qualquer** flag (até `--timeout`) exige repetir todas
-  as preferências fora do padrão (aqui `--ssh`) e recusa. O botão usa
-  `tailscale up` sem flags, com `spawn` e um limite de 20 s da própria Etta.
-- O token do Claude Code CLI (`~/.claude/.credentials.json`) vence em ~8 h e
-  só o CLI o renova; o app desktop guarda outro. `tools/reservas` roda
-  `claude -p /usage --no-session-persistence` (comando local: sem turno, sem
-  custo) quando ele venceu, no máximo a cada 10 min, e então lê o servidor.
-  O Codex é lido do servidor (`chatgpt.com/backend-api/wham/usage`, o mesmo
-  do `/status`) com o token de `~/.codex/auth.json`, sem renová-lo.
-- Na API do Claude, `is_active` marca o limite que mais pesa agora, não se a
-  janela começou.
-- `files.write` só escreve na pasta de dados da Etta.
-- `sys.watch(serviço)` pode ser registrado **uma vez**. Ganchos extras usam a
-  tabela `also.network/bluetooth`.
-- Numa recarga, a lógica pode subir antes da cena (erro "no fact called X" uma
-  vez): toque `etta.luau` de novo.
-- `sys.ask("auth.check")` bloqueia a lógica. A cena mostra os estados sozinha.
+- `tailscale up` with **any** flag (even `--timeout`) requires repeating all
+  non-default preferences (here `--ssh`) and refuses to run. The button uses
+  `tailscale up` without flags, with `spawn` and a 20 s timeout from Etta.
+- The Claude Code CLI token (`~/.claude/.credentials.json`) expires in about
+  8 h and only the CLI renews it; the desktop app stores a different one.
+  `tools/reservas` runs `claude -p /usage --no-session-persistence` (local
+  command: no turn, no cost) when it has expired, at most every 10 min, then
+  reads the server. Codex is read from the server
+  (`chatgpt.com/backend-api/wham/usage`, the same as `/status`) using the token
+  from `~/.codex/auth.json`, without renewing it.
+- In the Claude API, `is_active` marks the limit that matters most now, not
+  whether the window has started.
+- `files.write` only writes to Etta's data folder.
+- `sys.watch(service)` can be registered **once**. Additional hooks use the
+  `also.network/bluetooth` table.
+- On reload, the logic can start before the scene (one “no fact called X”
+  error): touch `etta.luau` again.
+- `sys.ask("auth.check")` blocks the logic. The scene displays the states
+  itself.
 
 **Halley:**
 
-- O screencopy gira **duas vezes** monitores com `transform 180`. Captura e
-  vídeo do HDMI saem de cabeça para baixo e são corrigidos pela Etta (veja
-  `freeze()` e `upside_down`). **Reportar ao Halley.**
-- O Glass do pleamar (`lens`) usa `zwlr_screencopy`, e o Halley recusa o buffer
-  ("buffer does not match the advertised capture format"). É um erro de
-  protocolo e o pleamar sai. **Reportar ao Halley e/ou ao pleamar.**
-- O blur de layer-shell no Halley é por regra (`layer-rule namespace`) e vale
-  para a superfície inteira. Todas as superfícies do pleamar usam o namespace
-  `pleamar`, inclusive o catcher de tela cheia, então **não dá para borrar só o
-  painel**.
-- A API v1 não expõe a geometria apresentada das janelas: o modo **Window** da
-  captura não funciona no Halley.
-- O "output focado" do adaptador vem da janela focada. Sem janela focada, a
-  Etta cai para o monitor onde mora.
-- `halleyctl config verify -c ARQUIVO` valida uma cópia. O Halley recarrega
-  sozinho os arquivos reunidos por `gather`.
-- O "output selecionado" (o último clicado) vem de `client.trail(None).output`.
-  É o que a captura de tela inteira e a gravação usam.
-- **Permissões** (`services:`) agora recarregam ao salvar: `clipboard` e
-  `clipboard.*` entraram sem reiniciar.
+- Screencopy rotates monitors with `transform 180` **twice**. HDMI captures
+  and video come out upside down and are corrected by Etta (see `freeze()` and
+  `upside_down`). **Report to Halley.**
+- pleamar's Glass (`lens`) uses `zwlr_screencopy`, and Halley refuses the
+  buffer (“buffer does not match the advertised capture format”). It is a
+  protocol error and pleamar exits. **Report to Halley and/or pleamar.**
+- Halley's layer-shell blur is rule-based (`layer-rule namespace`) and applies
+  to the entire surface. All pleamar surfaces use the `pleamar` namespace,
+  including the full-screen catcher, so **only the panel cannot be blurred**.
+- API v1 does not expose the presented geometry of windows: capture's
+  **Window** mode does not work on Halley.
+- The adapter's “focused output” comes from the focused window. Without a
+  focused window, Etta falls back to the monitor where it lives.
+- `halleyctl config verify -c FILE` validates a copy. Halley automatically
+  reloads files combined with `gather`.
+- The “selected output” (the last one clicked) comes from
+  `client.trail(None).output`. Full-screen capture and recording use it.
+- **Permissions** (`services:`) now reload on save: `clipboard` and
+  `clipboard.*` were added without restarting.
 
 ---
 
-## 7. Próximo marco
+## 7. Next milestone
 
-**Antes de tudo, o que só o teste ao vivo confirma deste marco:**
+**First, the things from this milestone that can only be confirmed by live
+testing:**
 
-- Tailscale: enviar e receber arquivos com o iPhone (Taildrop; o app
-  Tailscale precisa estar aberto/conectado no iPhone); soltar um arquivo numa
-  linha do card; o diálogo do zenity recebendo o teclado no Halley.
-- Color Picker nos dois monitores (o HDMI a 180°), setas para mover o pixel,
-  Enter, H/R, Esc; a mini Etta nascendo, seguindo a Etta (fora e recolhida) e
-  sendo absorvida no «Clear».
-- **Atalho a aprovar** no `halley.rune` (bloco `keybinds:`, ao lado dos
-  outros da Etta):
+- Tailscale: send and receive files with the iPhone (Taildrop; the Tailscale
+  app must be open/connected on the iPhone); drop a file onto a card row; the
+  zenity dialog receiving keyboard input in Halley.
+- Color Picker on both monitors (HDMI is rotated 180°), arrow keys to move the
+  pixel, Enter, H/R, Esc; mini Etta emerging, following Etta (both out and
+  tucked away), and being absorbed by “Clear”.
+- **Shortcut to approve** in `halley.rune` (`keybinds:` block, alongside
+  Etta's other bindings):
 
   ```rune
     "$var.mod+shift+p" "/home/ely/.local/bin/etta pick_color"
   ```
 
-  (`Super+Shift+C` já é `cluster-mode` do Halley.)
+  (`Super+Shift+C` is already Halley's `cluster-mode`.)
 
-**Limitações conhecidas deste marco:**
+**Known limitations in this milestone:**
 
-- O `model frames` declara `image 1920, 1080`: num monitor fora de 16:9 o
-  frame congelado é desenhado ajustado, e o picker (que lê o pixel do arquivo)
-  ficaria desalinhado do que mostra. Hoje os dois monitores são 1920×1080.
-- No pleamar, o arrastar-e-soltar (data device) testa as zonas com as
-  coordenadas locais da superfície, sem a origem do plano: sobre o `catcher`
-  um drop cairia numa zona da superfície principal em outro lugar. Por isso o
-  `catcher` fecha enquanto algo é carregado (`drag.over`).
-- A lupa amplia com filtro linear; o pixel que será pego é pintado por cima
-  com a cor exata lida do frame.
+- The `model frames` declares `image 1920, 1080`: on a monitor that is not
+  16:9, the frozen frame is drawn fitted, and the picker (which reads the pixel
+  from the file) would be misaligned with what it displays. Both monitors are
+  1920×1080 today.
+- In pleamar, drag-and-drop (data device) tests zones using the surface's local
+  coordinates, without the plane origin: over the `catcher`, a drop would hit
+  a zone on the main surface somewhere else. Therefore the `catcher` closes
+  while something is being dragged (`drag.over`).
+- The magnifier enlarges using a linear filter; the pixel to be picked is
+  painted over it using the exact color read from the frame.
 
-**O que veio antes deste marco (ainda vale):**
+**What came before this milestone (still applies):**
 
-**Rodada de polimento e otimização**, junto com os resultados do teste ao
-vivo deste marco:
+**Polish and optimization round**, along with the live test results from this
+milestone:
 
-- alinhamento fino de todas as páginas, comparando com os protótipos (o
-  usuário pediu);
-- sensação de fluidez: medir de novo com `etta report`;
-- conferir ao vivo o que só o teste real confirma (veja a lista na mensagem
-  final do marco): teclado físico no Finder e no menu, Esc em cada página,
-  captura nos dois monitores, Ctrl+Enter, "Keep what I copy" (clipboard via
-  data-control no Halley) e notificações urgentes atravessando o Haven.
+- fine alignment of all pages against the prototypes (requested by the user);
+- perceived smoothness: measure again with `etta report`;
+- live-check what only real testing can confirm (see the list in the final
+  milestone message): physical keyboard in Finder and the menu, Esc on each
+  page, capture on both monitors, Ctrl+Enter, “Keep what I copy” (clipboard
+  via data-control in Halley), and urgent notifications reaching Haven.
 
-**Valores errados no `settings.json` do usuário** (gravados pelo bug do
-`Seg`): `follow: true`, `home: "eDP-1"`, `lock_idle: 2`, `snooze: 2`. O
-usuário reescolhe no Settings. Não editar o arquivo sem pedir.
+**Incorrect values in the user's `settings.json`** (written by the `Seg` bug):
+`follow: true`, `home: "eDP-1"`, `lock_idle: 2`, `snooze: 2`. The user should
+reselect these in Settings. Do not edit the file without asking.
 
-**Backlog conhecido** (fora do marco, anotar e encaixar):
+**Known backlog** (outside this milestone; record and schedule):
 
-- **Lock when idle:** o adaptador precisa usar `ext_idle_notifier_v1`. O fact
-  `idle.k` já existe e é salvo.
-- **Caps Lock:** hoje é lido com `cat` a cada 300 ms. Passar para o adaptador.
-- **Keep awake:** idealmente via `zwp_idle_inhibit` no adaptador. Hoje é
-  logind.
-- **Captura de janela no Halley:** dá para delegar ao seletor nativo do
-  Halley (`client.capture(CaptureMode::Window, …)` na halley-api) com um
+- **Lock when idle:** the adapter needs to use `ext_idle_notifier_v1`. Fact
+  `idle.k` already exists and is saved.
+- **Caps Lock:** currently read with `cat` every 300 ms. Move it to the
+  adapter.
+- **Keep awake:** ideally through `zwp_idle_inhibit` in the adapter. Currently
+  uses logind.
+- **Window capture on Halley:** delegate to Halley's native selector
+  (`client.capture(CaptureMode::Window, …)` in halley-api) using
   `etta-halley capture window`.
-- **Face presa:** a regra genérica que desfaz `face = happy` (OSD de
-  dispositivo/rede, agentes) é de um disparo só. Pode prender a cara feliz
-  se o momento passar com outra coisa acontecendo. Tornar robusta.
-- **Agents:** o Codex aparece como "No window read yet" quando o rollout mais
-  recente não tem `rate_limits`.
-- **README e NOTICE:** atualizar com instalação no Halley (keybinds, autostart,
-  `gather`).
-- **Reportar ao Halley:** a dupla rotação no screencopy, o formato de buffer
-  do screencopy e a falta da geometria apresentada das janelas na API v1.
-- **Reportar ao pleamar** (textos prontos no diagnóstico desta sessão,
+- **Stuck face:** the generic rule that resets `face = happy` (device/network
+  OSD, agents) fires only once. It can leave the happy face stuck if something
+  else is happening at that moment. Make it robust.
+- **Agents:** Codex appears as “No window read yet” when the latest rollout
+  does not have `rate_limits`.
+- **README and NOTICE:** update with installation on Halley (keybinds,
+  autostart, `gather`).
+- **Report to Halley:** double rotation in screencopy, screencopy buffer
+  format, and lack of presented window geometry in API v1.
+- **Report to pleamar** (texts ready in this session's diagnosis,
   `~/.cache/etta-dev/diagnosis.md`):
-  - nome com `$` em componente sem sufixo de instância;
-  - `keyboard: … while` global (a última vence);
-  - zonas que ignoram `clip`/`view`;
-  - `pointer.x/y` no plano em superfície nomeada;
-  - transição atrasada que não é cancelada;
-  - campo invisível que pega o cursor ao ganhar o teclado;
-  - (desta etapa; o usuário pediu para **não reportar ainda**) o serviço
-    `apps` que não relê os `.desktop`; `input` sem `anchor` nem cor de
-    placeholder; imagem sem filtro `nearest`; cor que não vem de um fact.
+  - name with `$` in component without instance suffix;
+  - global `keyboard: … while` (last one wins);
+  - zones ignoring `clip`/`view`;
+  - `pointer.x/y` in plane coordinates on named surfaces;
+  - delayed transition not cancelled;
+  - invisible field that takes focus when keyboard is acquired;
+  - (from this stage; the user asked **not to report yet**) `apps` service not
+    rereading `.desktop` files; `input` without `anchor` or placeholder color;
+    image without `nearest` filter; color not coming from a fact.
 
-## 8. Como o usuário trabalha
+## 8. How the user works
 
-- Comunicação em **português**. Gosta de atualizações curtas durante trabalhos
-  longos.
-- Mudanças em `halley.rune` e em qualquer config dele: **mostrar o trecho
-  antes**. A estrutura de wallpaper com `gather`, os keybinds e o autostart já
-  foram aprovados e aplicados.
-- Valida tudo ao vivo e volta com uma lista de inconsistências.
-- O repositório remoto é **privado**: `github.com/ely-id/etta`.
+- Communication in **Portuguese**. They like short updates during long tasks.
+- For changes to `halley.rune` or any of their configuration: **show the
+  snippet first**. The wallpaper structure with `gather`, keybinds, and
+  autostart have already been approved and applied.
+- They validate everything live and come back with a list of inconsistencies.
+- The remote repository is **private**: `github.com/ely-id/etta`.

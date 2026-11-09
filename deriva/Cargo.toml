@@ -3,22 +3,22 @@ name = "deriva-worker"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-description = "La biblioteca local de Deriva: guarda lo que le sueltas a Marea."
+description = "Deriva's local library worker for storing, searching, and retrieving captures."
 
 [dependencies]
 rusqlite = { version = "0.37", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
-#  El parecido por significado, y CON `local-only`.
+#  Semantic similarity, with `local-only`.
 #
-#  Sin esa bandera el crate se trae `hf-hub` y `ureq`, o sea la capacidad de
-#  descargar modelos de internet, y eso convertiría en mentira la frase que hay
-#  escrita en el README: «el worker no abre ni una conexión». Quien baja el
-#  modelo es la casa; aquí solo se lee de un directorio.
+#  Without this flag the crate includes `hf-hub` and `ureq`, which can download
+#  models from the internet and would contradict the README's claim that the
+#  worker makes no network connections. The host downloads the model; this
+#  worker only reads it from a directory.
 #
-#  `fancy-regex` en vez de `onig` porque `onig` es C y este binario se compila
-#  en cualquier sitio sin pedir nada al sistema.
+#  Use `fancy-regex` instead of `onig` because `onig` is written in C and would
+#  require system dependencies to build this binary.
 model2vec-rs = { version = "0.2", default-features = false, features = ["local-only", "fancy-regex"] }
 
 [profile.release]

@@ -1,12 +1,12 @@
-//  Dónde vive la biblioteca.
+//  Where the library lives.
 //
-//  Las del plan y ninguna más: los datos en `XDG_DATA_HOME`, el socket en
-//  `XDG_RUNTIME_DIR`. Nada en `XDG_STATE_HOME` —ahí solo va el estado pequeño
-//  del plugin, que escribe QML— y nada junto al código.
+//  The locations from the plan, and no others: data in `XDG_DATA_HOME`, the
+//  socket in `XDG_RUNTIME_DIR`. Nothing in `XDG_STATE_HOME` —only the plugin's
+//  small state goes there, written by QML— and nothing alongside the code.
 //
-//  `ETTA_DERIVA_DIR` lo mueve todo. Existe para las pruebas: una prueba que
-//  escribe en la biblioteca del usuario no es una prueba, es un accidente
-//  esperando a que alguien la ejecute en su portátil.
+//  `ETTA_DERIVA_DIR` moves everything. It exists for tests: a test that writes
+//  to the user's library is not a test, but an accident waiting for someone to
+//  run it on their laptop.
 
 use std::io;
 use std::path::PathBuf;
@@ -44,17 +44,17 @@ pub fn exports() -> PathBuf {
 pub fn backups() -> PathBuf {
     base().join("backups")
 }
-//  Los temporales van DENTRO de la carpeta de blobs, no en `/tmp`: un blob se
-//  escribe entero en su temporal y se renombra encima, y `rename` solo es
-//  atómico dentro del mismo sistema de ficheros. Con `/tmp` en tmpfs, que es lo
-//  normal, la copia deja de ser atómica sin avisar.
+//  Temporary files go INSIDE the blobs directory, not in `/tmp`: a blob is
+//  written in full to its temporary file and renamed over the destination, and
+//  `rename` is only atomic within the same filesystem. With `/tmp` on tmpfs, as
+//  is usual, the copy silently stops being atomic.
 pub fn tmp() -> PathBuf {
     blobs().join(".tmp")
 }
 
-//  El socket. En `XDG_RUNTIME_DIR` porque es lo que se borra al cerrar sesión y
-//  ya viene con permisos de solo el usuario; en `/tmp` lo vería cualquiera con
-//  cuenta en la máquina.
+//  The socket. In `XDG_RUNTIME_DIR` because it is cleared at logout and already
+//  has user-only permissions; in `/tmp`, anyone with an account on the machine
+//  could see it.
 pub fn socket() -> PathBuf {
     if let Ok(s) = std::env::var("ETTA_DERIVA_SOCKET") {
         if !s.is_empty() {
@@ -69,8 +69,8 @@ pub fn socket() -> PathBuf {
     run.join("etta/deriva.sock")
 }
 
-//  Sin `libc` como dependencia: es la única llamada que hacía falta y traerse
-//  una caja entera para un `getuid` es pagar de más.
+//  No `libc` dependency: this is the only call we needed, and bringing in a
+//  whole crate for `getuid` is more than it is worth.
 unsafe fn libc_getuid() -> u32 {
     extern "C" {
         fn getuid() -> u32;
@@ -78,9 +78,9 @@ unsafe fn libc_getuid() -> u32 {
     getuid()
 }
 
-//  Todo lo que tiene que existir antes de escribir nada, con los permisos que
-//  toca. 0700 en la carpeta: la biblioteca es lo que has ido guardando durante
-//  meses y no tiene por qué leerla otro usuario de la máquina.
+//  Everything that must exist before writing anything, with the right
+//  permissions. 0700 on the directory: the library holds what you have saved
+//  over months, and other users on the machine have no reason to read it.
 pub fn preparar() -> io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
     for d in [base(), blobs(), previews(), exports(), backups(), tmp()] {
@@ -92,8 +92,8 @@ pub fn preparar() -> io::Result<()> {
     Ok(())
 }
 
-//  Dónde cae un blob por su hash: `blobs/ab/cd/<sha256>`. Dos niveles de dos
-//  caracteres, que es lo que evita un directorio con cien mil entradas dentro.
+//  Where a blob goes based on its hash: `blobs/ab/cd/<sha256>`. Two levels of
+//  two characters keep a directory from containing a hundred thousand entries.
 pub fn blob_de(hash: &str) -> PathBuf {
     blobs().join(&hash[0..2]).join(&hash[2..4]).join(hash)
 }
