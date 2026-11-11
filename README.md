@@ -24,6 +24,33 @@ that lives alongside Halley.
 Etta began as [Marea](https://github.com/k4ditano/marea-plm), by Abel. See
 [`NOTICE.md`](NOTICE.md) for what she keeps from Marea and what is new.
 
+## What is Marea's, what is hers
+
+The character is Marea's and is kept as she was. What Etta changes is what is
+around her, and the compositor she lives on.
+
+| Kept from Marea | New in Etta |
+| --- | --- |
+| The ball and her face | The Halley adapter (`halley/`), and six wallpaper shaders written for Halley |
+| How she breathes, looks, sleeps and celebrates | The control center and its pages, rebuilt as components on shared design tokens and a kit of 75 icons (`ui/`) |
+| How she travels between monitors | The clock and battery card beside her, and the OSDs |
+| How she wears her wardrobe | The lock screen, where she becomes the padlock |
+| Her own shaders (`shaders/`) | Her own capture overlay, and recording |
+| Deriva's library (`deriva/`) | The finder, the Tailscale pill and the colour picker |
+| | A wardrobe of twenty pieces in five spots, where Marea had four pieces |
+
+The contract that says how each of Marea's animations must feel, with its
+measurements and evidence, is kept in [`docs/contract/`](docs/contract/).
+
+## What she needs
+
+- The [Halley](https://github.com/saltnpepper97/halley) compositor. The adapter
+  is pinned to Halley 0.7.0.
+- [pleamar](https://github.com/k4ditano/pleamar) 0.2.8 or newer on the `PATH`.
+- The Geist typeface, which every text is set in.
+- `cargo`, only to build the adapter, the first time she starts.
+- Tailscale, only for her Tailscale pill.
+
 ## Run her
 
 ```sh
@@ -31,8 +58,8 @@ git clone https://github.com/ely-id/etta ~/Work/etta
 ~/Work/etta/etta start            # her log goes to ~/.local/state/etta/etta.log
 ```
 
-She needs pleamar 0.2.8 or newer on the `PATH`. On Halley she builds her small
-adapter (`halley/`) the first time she starts, if `cargo` is installed.
+On Halley she builds her small adapter (`halley/`) the first time she starts,
+if `cargo` is installed.
 
 In `halley.rune`:
 
@@ -70,10 +97,26 @@ saved in `~/.local/share/pleamar/etta/settings.json`.
 
 ## How she is made
 
-One scene (`etta.plm`) and its logic (`etta.luau`); the design tokens and the
-pieces every panel is built from (`ui/`); her wardrobe (`wardrobe/`); her
-shaders (`shaders/`); wallpaper shaders for Halley (`wallpapers/`); the Halley
-adapter (`halley/`) and Deriva's library (`deriva/`).
+| Path | What it is |
+| --- | --- |
+| `etta.plm` | The scene: her, her surfaces and their rules |
+| `etta.luau` | The logic: services, persistence and external processes |
+| `ui/` | The design tokens, the kit every panel is built from, and the control center pages |
+| `common/` | The physics of the pieces she wears |
+| `wardrobe/` | Her twenty pieces |
+| `shaders/` | Her own shaders |
+| `wallpapers/` | Wallpaper shaders for Halley |
+| `halley/` | The Halley adapter, in Rust ([its notes](halley/README.md)) |
+| `deriva/` | Deriva's library, in Rust |
+| `tools/` | The wallpaper thumbnail renderer, and the reader of the agents' quotas |
+| `etta` | The launcher: starts her, stops her, and tells her things |
+| `docs/contract/` | The animation contract kept from Marea |
+
+## Where she stands
+
+She was built in October 2026, against Halley 0.7.0, and has been tried on one
+laptop with a second monitor. The Glass look is kept off on Halley, which
+rejects its screencopy buffer.
 
 ## License
 
